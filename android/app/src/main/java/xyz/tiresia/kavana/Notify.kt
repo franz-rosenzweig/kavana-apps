@@ -96,6 +96,7 @@ object Notify {
             .setOngoing(true).setOnlyAlertOnce(true)
             .setContentIntent(open(ctx)).setCategory(Notification.CATEGORY_PROGRESS)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE) // Android holds it back ~10 s otherwise
         val now = System.currentTimeMillis()
         val a = st?.view?.active
         val brk = st?.view?.onBreak

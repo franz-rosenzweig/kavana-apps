@@ -87,6 +87,10 @@ def leave():
         P.adb('shell', 'am', 'start', '-n', 'xyz.tiresia.kavana/.MainActivity')
 
 
+def doc():
+    return P.adb('shell', 'run-as', P.PKG, 'cat', 'files/doc.json')
+
+
 def running(name):
     """The block is running, from the saved doc (Samsung's uiautomator can't read the timer screen:
     it redraws every second and never goes idle)."""
@@ -148,14 +152,20 @@ try:
     check('the cat over the home screen', P.wait_for("Boo! It's time to focus.", 6))
     step('leave-cat')
     # The first check-in is at minute 15 (45 s): it shows on the cat while still away.
-    check('a check-in on the cat', P.wait_for('Still on: Test block', max(5, 15 * SEC + 7 - (time.time() - t0))))
+    check('a check-in on the cat', P.wait_for('Still on: Test block', max(5, 15 * SEC + 25 - (time.time() - t0))))  # the alarm can be a few seconds late
     step('checkin-cat')
     if P.find('Yes', exact=True):
         P.tap('Yes', exact=True)
         time.sleep(1.5)
     # Back in Kavana, more than 15 s later: Miso wandered off.
     P.adb('shell', 'am', 'start', '-n', ACT)
-    check('the kitten wandered off while away', P.wait_for('wandered off', 8))
+    gone = None
+    end = time.time() + 10
+    while time.time() < end and not gone:
+        b = running('Test block')
+        gone = b.get('goneWhy') if b else None
+        time.sleep(1)
+    check('the kitten wandered off while away', gone == 'away')
     step('back-gone')
     check('the check-in answered on the cat counts', doc().count('"answer":"yes"') == 1)
 
