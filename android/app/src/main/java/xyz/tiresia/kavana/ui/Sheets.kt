@@ -1,0 +1,206 @@
+package xyz.tiresia.kavana.ui
+
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.update
+import xyz.tiresia.kavana.*
+
+// The sheets that come up over the tabs: the check-in, "How did it go?", a cat met, who's coming, park.
+
+private val WHYS = listOf(
+    "phone" to ("📱" to "Phone"), "messages" to ("💬" to "Messages"), "email" to ("✉️" to "Email"),
+    "web" to ("🌐" to "The web"), "thoughts" to ("💭" to "Thoughts"), "people" to ("🙋" to "Someone"),
+    "tired" to ("😴" to "Tired"), "hungry" to ("🍎" to "Hungry"), "other" to ("✨" to "Other"),
+)
+
+@Composable
+fun Sheets(s: UiState, act: MainActivity) {
+    val repo = KavanaApp.repo
+    val a = s.view.active
+    var hidden by remember { mutableStateOf<String?>(null) } // a check-in put away with a swipe ("id:n")
+    var why by remember { mutableStateOf<Pair<String, Int>?>(null) } // after Drifted: what pulled you away?
+    val pending = a?.takeIf { it.pending != null && it.paused == null }
+    val key = pending?.let { "${it.id}:${it.pending}" }
+    if (why != null || (pending != null && hidden != key)) {
+        CheckinSheet(s, pending ?: a, why,
+            onAnswer = { ans ->
+                val b = pending ?: return@CheckinSheet
+                repo.launch(op("answer", "id" to b.id, "n" to b.pending, "answer" to ans))
+                if (ans == "drifted") why = b.id to (b.pending ?: 0)
+            },
+            onWhy = { w ->
+                val (id, n) = why ?: return@CheckinSheet
+                if (w != null) repo.launch(op("answer", "id" to id, "n" to n, "answer" to "drifted", "why" to w))
+                why = null
+            },
+            onHide = { hidden = key; why = null },
+        )
+    }
+    s.view.awaiting?.let { OutcomeSheet(s, it, act) }
+    val meets by repo.meets.collectAsStateWithLifecycle()
+    if (s.view.awaiting == null && pending == null && why == null) meets.firstOrNull()?.let { id ->
+        MeetSheet(s, s.cat(id)) { repo.meets.update { it.drop(1) } }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun CheckinSheet(s: UiState, a: Block?, why: Pair<String, Int>?, onAnswer: (String) -> Unit, onWhy: (String?) -> Unit, onHide: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onHide, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (s.catsOn && a != null) CatArt(Art.portrait(a.cat), 96.dp)
+            if (why == null) {
+                Eyebrow("Check-in")
+                Text("Still on: ${a?.intention ?: ""}?", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Choice("👍", "Yes", Modifier.weight(1f), strong = true) { onAnswer("yes") }
+                    Choice("🌀", "Drifted", Modifier.weight(1f)) { onAnswer("drifted") }
+                }
+            } else {
+                Eyebrow("No worries")
+                Text("What pulled you away?", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp, bottom = 16.dp))
+                FlowRow(maxItemsInEachRow = 3, horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    WHYS.forEach { (id, e) -> Choice(e.first, e.second, Modifier.weight(1f)) { onWhy(id) } }
+                }
+                TextButton(onClick = { onWhy(null) }, modifier = Modifier.padding(top = 8.dp)) { Text("Skip") }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OutcomeSheet(s: UiState, w: Block, act: MainActivity) {
+    val repo = KavanaApp.repo
+    val c = s.cat(w.cat)
+    val state = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = { it != SheetValue.Hidden })
+    fun out(o: String?) = repo.launch(op("outcome", "id" to w.id, "outcome" to o)) { Notify.cancel(act, Notify.ID_PING) }
+    ModalBottomSheet(onDismissRequest = {}, sheetState = state) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Eyebrow(if (w.stopped) "Stopped early" else "Time's up")
+            Text("How did it go?", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 4.dp))
+            Text(w.intention, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            if (s.catsOn) {
+                CatArt(if (w.kitten == "home") Art.portrait(c.id) else Art.GONE, 132.dp, Modifier.padding(top = 10.dp))
+                Text(
+                    when {
+                        w.kitten == "home" -> "${c.name} came home to your café. 🐟 +${w.treats}"
+                        w.goneWhy == "away" -> "${c.name} wandered off while you were away."
+                        else -> "${c.name} wandered off. Next time, stay to the end."
+                    }, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge,
+                )
+            }
+            Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Choice("🎉", "Done", Modifier.weight(1f), strong = true) { out("done") }
+                Choice("🌗", "Partly", Modifier.weight(1f)) { out("partly") }
+                Choice("🌧️", "Not really", Modifier.weight(1f)) { out("notreally") }
+            }
+            if (!w.stopped) {
+                val more = if (w.minutes <= 10) listOf(10, 20) else listOf(5, 10) // after "Just start", offer a real block
+                Row(Modifier.padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("In the flow?", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    more.forEach { m -> FilledTonalButton(onClick = { repo.launch(op("extend", "id" to w.id, "more" to m)) }) { Text("+$m min") } }
+                }
+            }
+            if (w.parked.isNotEmpty()) {
+                Group("You parked") {
+                    w.parked.forEachIndexed { i, t -> if (i > 0) GroupDivider(); Text(t, Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) }
+                }
+                TextButton(onClick = { act.copy(w.parked.joinToString("\n")); repo.toasts.tryEmit("Copied.") }) { Text("Copy Them") }
+            }
+            TextButton(onClick = { out(null) }, modifier = Modifier.padding(top = 4.dp)) { Text("Skip") }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MeetSheet(s: UiState, c: CatInfo, onDone: () -> Unit) {
+    val repo = KavanaApp.repo
+    ModalBottomSheet(onDismissRequest = onDone, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Eyebrow("New friend")
+            Text("You met ${c.name}!", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 4.dp))
+            CatArt(Art.portrait(c.id), 180.dp, Modifier.padding(vertical = 8.dp))
+            Text(c.about, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Button(onClick = { repo.launch(settings("companion" to c.id)); onDone() }, modifier = Modifier.fillMaxWidth().padding(top = 18.dp).height(52.dp)) {
+                Text("Make ${c.name} My Companion")
+            }
+            TextButton(onClick = onDone) { Text("Nice!") }
+        }
+    }
+}
+
+/** Who's coming: the cats you've met; the one picked grows in the next block. */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun InviteSheet(s: UiState, onDone: () -> Unit) {
+    val repo = KavanaApp.repo
+    ModalBottomSheet(onDismissRequest = onDone, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
+            Text("Who's Coming?", style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.CenterHorizontally))
+            FlowRow(Modifier.padding(top = 14.dp), maxItemsInEachRow = 3, horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                s.cats.filter { it.met }.forEach { c ->
+                    val on = c.id == s.companion
+                    Surface(
+                        shape = RoundedCornerShape(18.dp), color = if (on) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = if (on) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
+                        modifier = Modifier.weight(1f).clickable { repo.launch(settings("companion" to c.id)); onDone() },
+                    ) {
+                        Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            CatArt(Art.portrait(c.id), 72.dp)
+                            Text(c.name, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                        }
+                    }
+                }
+            }
+            Text("Meet more cats by focusing.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp, start = 4.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ParkSheet(onDone: () -> Unit) {
+    val repo = KavanaApp.repo
+    var text by remember { mutableStateOf("") }
+    val focus = remember { FocusRequester() }
+    fun park() {
+        if (text.isBlank()) return
+        repo.launch(op("park", "text" to text))
+        onDone()
+    }
+    ModalBottomSheet(onDismissRequest = onDone, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp).imePadding()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onDone) { Text("Cancel") }
+                Text("Park a Thought", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+                TextButton(onClick = { park() }, enabled = text.isNotBlank()) { Text("Park") }
+            }
+            OutlinedTextField(
+                text, { text = it.take(200) }, placeholder = { Text("Reply to that email") }, singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { park() }),
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp).focusRequester(focus),
+            )
+            Text("Write it down so it stops pulling at you. It goes on your Later list.", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp, start = 4.dp))
+        }
+    }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+}
