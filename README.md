@@ -26,7 +26,7 @@ It builds on my Mac over SSH, the same way as Daf and Binah (JDK 17 and `~/andro
 cd ~/Documents/Claude/Projects/kavana-apps/android
 ./gradlew assembleDebug                 # Kavana dev, installs beside the real one
 ./release.sh                            # Kavana-<version>.apk, signed with Dvarim's key
-adb install -r Kavana-0.1.0.apk
+adb install -r Kavana-<version>.apk
 ```
 
 The engine files come from the web repo with `tools/sync-web.sh` (it records the commit in `assets/js/WEB_COMMIT`), and `node tools/test-bridge.js` runs them the way the phone does, with no Android needed.
