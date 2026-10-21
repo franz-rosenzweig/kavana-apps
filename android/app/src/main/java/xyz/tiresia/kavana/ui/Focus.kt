@@ -27,6 +27,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -240,8 +241,10 @@ fun RunScreen(s: UiState, a: Block, now: Long) {
             modifier = Modifier.padding(top = 4.dp),
         )
         Spacer(Modifier.height(18.dp))
-        Dial(frac, paused) {
-            if (s.catsOn) Kitten(a, 1f - frac, paused, 200.dp)
+        // The ring takes about a third of the screen's height, so Stop and Pause stay in view on a short phone.
+        val ring = (LocalConfiguration.current.screenHeightDp * 0.3f).dp.coerceIn(200.dp, 264.dp)
+        Dial(frac, paused, ring) {
+            if (s.catsOn) Kitten(a, 1f - frac, paused, ring * 0.76f)
             else Text(fmtClock(left), style = MaterialTheme.typography.displayMedium.merge(tabular))
         }
         if (s.catsOn) Text(fmtClock(left), style = MaterialTheme.typography.displayMedium.merge(tabular), modifier = Modifier.padding(top = 10.dp))

@@ -46,10 +46,18 @@ def shot(path):
 
 
 def nodes():
-    xml = adb('exec-out', 'uiautomator', 'dump', '--windows', '/dev/tty')
-    xml = xml[xml.find('<?xml'):xml.rfind('>') + 1]
+    for _ in range(4):  # a dump taken mid-transition can come back empty
+        xml = adb('exec-out', 'uiautomator', 'dump', '--windows', '/dev/tty')
+        xml = xml[xml.find('<?xml'):xml.rfind('>') + 1]
+        try:
+            root = ET.fromstring(xml)
+            break
+        except ET.ParseError:
+            time.sleep(0.5)
+    else:
+        return []
     out = []
-    for n in ET.fromstring(xml).iter('node'):
+    for n in root.iter('node'):
         t = n.get('text') or n.get('content-desc') or ''
         b = [int(x) for x in re.findall(r'\d+', n.get('bounds', ''))]
         if t and len(b) == 4:

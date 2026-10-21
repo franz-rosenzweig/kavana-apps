@@ -29,24 +29,22 @@ fun Welcome(act: MainActivity, s: UiState, onDone: () -> Unit) {
     var page by remember { mutableIntStateOf(0) }
     val resumes by act.resumes
     val k = LocalK.current
-    Column(
-        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 28.dp, vertical = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        when (page) {
-            0 -> {
-                CatArt(Art.portrait(s.companion), 140.dp, Modifier.padding(top = 12.dp))
-                Text("Welcome to Kavana", style = MaterialTheme.typography.headlineLarge, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp, bottom = 20.dp))
+    val on = remember(resumes) { act.overlayOn() }
+    // The words scroll if they must; the buttons stay at the bottom, where a thumb finds them.
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding()) {
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 28.dp, vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (page == 0) {
+                CatArt(Art.portrait(s.companion), 120.dp, Modifier.padding(top = 8.dp))
+                Text("Welcome to Kavana", style = MaterialTheme.typography.headlineLarge, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp, bottom = 14.dp))
                 Point(Icons.Rounded.TrackChanges, MaterialTheme.colorScheme.primary, "One thing at a time", "Say what you're working on and pick how long.")
                 Point(Icons.Rounded.Notifications, k.orange, "Gentle check-ins", "\"Still on it?\" every so often, even when the app is closed.")
                 Point(Icons.Rounded.Pets, k.pink, "A kitten grows while you focus", "Stay to the end and it comes home to your Cat Café.")
                 Point(Icons.Rounded.Lock, k.blue, "Stays on your phone", "No account. Nothing is sent anywhere.")
-                Spacer(Modifier.height(24.dp))
-                Button(onClick = { page = 1; if (!act.notificationsOn()) act.askNotifications() }, modifier = Modifier.fillMaxWidth().height(54.dp)) { Text("Continue") }
-            }
-            else -> {
-                val on = remember(resumes) { act.overlayOn() }
-                CatArt(Art.portrait(s.companion), 160.dp, Modifier.padding(top = 24.dp))
+            } else {
+                CatArt(Art.portrait(s.companion), 150.dp, Modifier.padding(top = 16.dp))
                 Text("Let the cat find you", style = MaterialTheme.typography.headlineLarge, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp))
                 Text(
                     "When you wander off to another app in the middle of a block, the cat pops up over it and says \"Boo! It's time to focus.\" Check-ins can show up the same way, with Yes and Drifted right there.",
@@ -54,16 +52,18 @@ fun Welcome(act: MainActivity, s: UiState, onDone: () -> Unit) {
                     modifier = Modifier.padding(top = 12.dp),
                 )
                 Text(
-                    "Android calls this \"Display over other apps\". Find Kavana in the list and switch it on, then come back.",
-                    style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    if (on) "All set." else "Android calls this \"Display over other apps\". Find Kavana in the list and switch it on, then come back.",
+                    style = if (on) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center,
+                    color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 12.dp),
                 )
-                Spacer(Modifier.height(28.dp))
-                if (on) {
-                    Text("All set.", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.height(12.dp))
-                    Button(onClick = onDone, modifier = Modifier.fillMaxWidth().height(54.dp)) { Text("Start Focusing") }
-                } else {
+            }
+        }
+        Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp).padding(top = 8.dp, bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            when {
+                page == 0 -> Button(onClick = { page = 1; if (!act.notificationsOn()) act.askNotifications() }, modifier = Modifier.fillMaxWidth().height(54.dp)) { Text("Continue") }
+                on -> Button(onClick = onDone, modifier = Modifier.fillMaxWidth().height(54.dp)) { Text("Start Focusing") }
+                else -> {
                     Button(onClick = { act.askOverlay() }, modifier = Modifier.fillMaxWidth().height(54.dp)) { Text("Allow") }
                     TextButton(onClick = onDone, modifier = Modifier.padding(top = 4.dp)) { Text("Not Now") }
                 }

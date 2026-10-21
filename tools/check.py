@@ -3,6 +3,7 @@
 taking a screenshot at each step.
 
     python3 tools/check.py <app-debug.apk> <out-dir>           # the phone plugged into the Mac
+    python3 tools/check.py mac:<path on the Mac> <out-dir>     # an APK built on the Mac
     KAVANA_ADB=/path/to/adb python3 tools/check.py ...         # an emulator on this machine
 
 Part 1, the cat over other apps (a minute lasts 3 s): the welcome, the start screen, a block with
@@ -63,12 +64,23 @@ def start_block(name):
     P.type_text(name)
     P.adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')  # the keyboard away
     time.sleep(0.6)
+    P.scroll_to('Start Focus')
     P.tap('Start Focus')
     return P.wait_for('FOCUSING', 8)
 
 
 def notifications():
-    return P.adb('shell', 'dumpsys', 'notification', '--noredact')
+    """Kavana's own notification records only: on a real phone, nobody else's leave the phone."""
+    return P.adb('shell', "dumpsys notification --noredact | awk '/NotificationRecord\\(/{on=/pkg=xyz\\.tiresia\\.kavana\\.debug /} on'")
+
+
+def leave():
+    """Leave Kavana for another app. On a real phone that's the Calculator, never the home screen
+    (its widgets are private) or the notification shade."""
+    if P.LOCAL:
+        P.adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
+    else:
+        P.adb('shell', 'am', 'start', '-a', 'android.intent.action.MAIN', '-c', 'android.intent.category.APP_CALCULATOR')
 
 
 def doc():
@@ -76,11 +88,14 @@ def doc():
 
 
 print('install')
+P.mac('adb uninstall ' + P.PKG + ' >/dev/null 2>&1 || true')  # another machine's debug key can't update it
 if P.LOCAL:
-    print(P.adb('install', '-r', '-t', APK, timeout=300).strip())
+    print(P.adb('install', '-t', APK, timeout=300).strip())
+elif APK.startswith('mac:'):  # built on the Mac: install it from there
+    print(P.mac('adb install -t ' + APK[4:], timeout=180).strip())
 else:
     subprocess.run(['scp', '-q', '-o', 'BatchMode=yes', '-i', '~/.ssh/mac-key', APK, 'user@your-mac:/tmp/kavana-debug.apk'], check=True)
-    print(P.mac('adb install -r -t /tmp/kavana-debug.apk', timeout=180).strip())
+    print(P.mac('adb install -t /tmp/kavana-debug.apk', timeout=180).strip())
 P.adb('shell', 'pm', 'clear', P.PKG)
 P.adb('shell', 'pm', 'grant', P.PKG, 'android.permission.POST_NOTIFICATIONS')
 P.adb('shell', 'appops', 'set', P.PKG, 'SYSTEM_ALERT_WINDOW', 'allow')
@@ -112,8 +127,8 @@ try:
     check('the countdown notification is posted', 'android.title=String (Test block)' in dump and 'chronometerCountDown=Boolean (true)' in dump)
     print('     promoted to a Live Update:', 'PROMOTED_ONGOING' in dump)
 
-    # Leave Kavana: the cat comes up over the home screen.
-    P.adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
+    # Leave Kavana: the cat comes up over the other app.
+    leave()
     check('the cat over the home screen', P.wait_for("Boo! It's time to focus.", 6))
     step('leave-cat')
     # The first check-in is at minute 15 (45 s): it shows on the cat while still away.
@@ -156,7 +171,7 @@ try:
     launch(2000)
     check('the second block runs', start_block('Second'))
     t0 = time.time()
-    P.adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
+    leave()
     time.sleep(2)
     check('"Miso is waiting" as a notification', 'Miso is waiting' in notifications())
     # The check-in at minute 15 (30 s): a notification with Yes and Drifted (a banner as it comes).
@@ -166,26 +181,28 @@ try:
     dump = notifications()
     i = dump.find('Still on: Second?')
     check('the check-in notification, with Yes and Drifted', i >= 0 and '"Yes"' in dump[max(0, i - 4000):i + 2000] and '"Drifted"' in dump[max(0, i - 4000):i + 2000])
-    # The end (50 s) takes its place: answer it from the shade with its own Done button.
-    end = time.time() + 30
-    while time.time() < end and 'Second. Tap to log it.' not in notifications():
-        time.sleep(1)
-    P.adb('shell', 'cmd', 'statusbar', 'expand-notifications')
-    time.sleep(1.5)
-    for _ in range(2):
+    # The end (50 s) takes its place: answer it from the shade with its own Done button. On a real
+    # phone the shade holds other apps' notifications, so this part runs on the emulator only.
+    if P.LOCAL:
+        end = time.time() + 30
+        while time.time() < end and 'Second. Tap to log it.' not in notifications():
+            time.sleep(1)
+        P.adb('shell', 'cmd', 'statusbar', 'expand-notifications')
+        time.sleep(1.5)
+        for _ in range(2):
+            if P.find('Done', exact=True):
+                break
+            e = P.find('Expand', exact=True)
+            if e:
+                P.adb('shell', 'input', 'tap', str(e[0]), str(e[1]))
+                time.sleep(1.2)
+        step('shade')
         if P.find('Done', exact=True):
-            break
-        e = P.find('Expand', exact=True)
-        if e:
-            P.adb('shell', 'input', 'tap', str(e[0]), str(e[1]))
-            time.sleep(1.2)
-    step('shade')
-    if P.find('Done', exact=True):
-        P.tap('Done', exact=True)
-        time.sleep(2.5)
-    P.adb('shell', 'cmd', 'statusbar', 'collapse')
-    second = [b for b in json.loads(doc())['blocks'] if b['intention'] == 'Second']
-    check('Done on the notification was recorded', bool(second) and second[-1].get('outcome') == 'done')
+            P.tap('Done', exact=True)
+            time.sleep(2.5)
+        P.adb('shell', 'cmd', 'statusbar', 'collapse')
+        second = [b for b in json.loads(doc())['blocks'] if b['intention'] == 'Second']
+        check('Done on the notification was recorded', bool(second) and second[-1].get('outcome') == 'done')
 finally:
     mode = re.search(r'Night mode: (\w+)', night)
     P.adb('shell', 'cmd', 'uimode', 'night', mode.group(1) if mode else 'auto')
