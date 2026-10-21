@@ -238,6 +238,7 @@ finally:
     P.adb('shell', 'am', 'force-stop', P.PKG)
     if not P.LOCAL:
         P.adb('shell', 'am', 'force-stop', 'xyz.tiresia.kavana')
+        P.mac('adb uninstall ' + P.PKG + ' >/dev/null 2>&1 || true')  # only the real Kavana stays on the phone
 
 print(f'\n{"all passed" if not fails else str(len(fails)) + " failed: " + "; ".join(fails)}')
 sys.exit(1 if fails else 0)
