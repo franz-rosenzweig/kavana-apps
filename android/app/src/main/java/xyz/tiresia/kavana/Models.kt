@@ -150,7 +150,10 @@ data class Ping(
     val block: String? = null,
     val n: Int? = null,
     val cat: Int? = null,
-)
+) {
+    /** The same ping in two lists (a check-in is its block and number; the end, its block and time). */
+    val key: String get() = "$kind:${block ?: ""}:${n ?: ""}:$at"
+}
 
 @Serializable
 data class Daily(val on: Boolean = false, val time: String = "09:00", val days: List<Int> = emptyList(), val body: String = "", val cat: Boolean = true)

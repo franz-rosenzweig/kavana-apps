@@ -94,9 +94,20 @@ class Repo(private val app: Context) {
     fun docJson(): String = if (file.baseFile.exists()) String(file.readFully()) else "{}"
 
     private fun after(st: UiState) {
+        val before = Alarms.saved(app)
         Alarms.pings(app, st.pings)
         Alarms.daily(app, st.view.settings.daily)
         FocusService.sync(app, st)
+        // Pings whose time came are shown by whatever noticed it: the alarm, the open screen's own
+        // timer, a button. (If only the alarm showed them, the screen's timer, which keeps running
+        // while Kavana is in the background, could move a check-in along first and it was never seen.)
+        // Pings that left the list for other reasons (Stop, Pause, an answer) are still in the future.
+        val now = System.currentTimeMillis()
+        val still = st.pings.map { it.key }.toSet()
+        val due = before.filter { it.at <= now + 1500 && it.key !in still }
+            .groupBy { it.kind }.map { it.value.last() } // several at once (the phone was off): the last of each
+            .filter { it.kind == "end" || now - it.at < 10 * 60_000 } // an old check-in or nudge is no use now
+        for (p in due.sortedBy { it.at }) Deliver.ping(app, p, st)
     }
 
     // ---------- leaving Kavana in the middle of a block (the web's leftKavana/backInKavana) ----------
@@ -125,13 +136,9 @@ class Repo(private val app: Context) {
         }
     }
 
-    /** An alarm went off: show what's due (a check-in, a nudge, the end, a break's end), then move on. */
+    /** An alarm went off: move time on, which shows what came due (see after()). */
     suspend fun deliverDue() {
-        val due = Alarms.saved(app).filter { it.at <= System.currentTimeMillis() + 1500 }
         act(op("tick"))
-        val st = state.value ?: return
-        // Several due at once (the phone was off): the last of each kind is enough.
-        for (p in due.groupBy { it.kind }.map { it.value.last() }.sortedBy { it.at }) Deliver.ping(app, p, st)
     }
 
     companion object {
