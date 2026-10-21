@@ -17,7 +17,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowManager
-import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -113,9 +112,7 @@ object CatOverlay {
         val v = root ?: return@post
         root = null
         kind = null
-        val w = wm
-        v.animate().translationY(v.height + 80f * v.resources.displayMetrics.density).setDuration(240)
-            .withEndAction { runCatching { w?.removeView(v) } }.start()
+        runCatching { wm?.removeView(v) } // the window's own animation slides it away
     }
 
     private fun removeNow() {
@@ -142,14 +139,20 @@ object CatOverlay {
                 gravity = Gravity.BOTTOM
                 fitInsetsTypes = 0
                 setTitle("Kavana")
+                // The slide up and down is the window's, played by Android. A view animation stalls
+                // while Kavana is in the background (seen on the S24+), which left the cat below the
+                // edge: there, but out of sight.
+                windowAnimations = android.R.style.Animation_InputMethod
             }
-            v.translationY = 700f * app.resources.displayMetrics.density
             try { w.addView(v, lp) } catch (e: Exception) { Log.w(Repo.TAG, "cat", e); onTimeout(); return@post }
             root = v
             kind = which
-            v.animate().translationY(0f).setInterpolator(OvershootInterpolator(0.9f)).setDuration(460)
-                .withEndAction { cat.animate().rotation(-5f).setDuration(140).withEndAction { cat.animate().rotation(4f).setDuration(160).withEndAction { cat.animate().rotation(0f).setDuration(140).start() }.start() }.start() }
-                .start()
+            // A little wiggle once it's up; if it stalls too, the cat is still in plain sight.
+            main.postDelayed({
+                cat.animate().rotation(-5f).setDuration(140).withEndAction {
+                    cat.animate().rotation(4f).setDuration(160).withEndAction { cat.animate().rotation(0f).setDuration(140).start() }.start()
+                }.start()
+            }, 350)
             timer = Runnable { hide(which); onTimeout() }.also { main.postDelayed(it, hideAfter) }
         }
     }
