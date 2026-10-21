@@ -4,6 +4,8 @@ These are the native apps for Kavana, my focus app. The web version lives at htt
 
 ## Android (android/)
 
+![Kavana for Android: the start screen, a block with the kitten in the ring, the cat over the home screen, a check-in on the cat, "How did it go?", the Café, Cats, and dark mode](docs/android.webp)
+
 Kavana for Android is a REAL native app, written in Kotlin with Jetpack Compose, which means it looks and feels like an Android app and not like a web page in a frame. The one thing it borrows from the web is the engine: the web app's own `engine.js` runs inside the phone's JavaScript sandbox (the one that comes with Android System WebView). This way the kittens, the treats and the missions follow exactly the same rules on the phone and on the web, instead of two copies that slowly drift apart.
 
 What it does:
