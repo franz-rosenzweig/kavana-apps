@@ -115,7 +115,7 @@ class Repo(private val app: Context) {
     fun back(now: Long) {
         val t = prefs.getLong("left", 0)
         if (t != 0L) prefs.edit().remove("left").apply()
-        CatOverlay.hide("leave")
+        CatOverlay.hide() // whatever the cat was saying, Kavana's own screen says it now
         Notify.cancelAway(app)
         if (t == 0L || now - t <= GRACE) return
         scope.launch {

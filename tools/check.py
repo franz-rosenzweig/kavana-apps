@@ -6,11 +6,11 @@ taking a screenshot at each step.
     python3 tools/check.py mac:<path on the Mac> <out-dir>     # an APK built on the Mac
     KAVANA_ADB=/path/to/adb python3 tools/check.py ...         # an emulator on this machine
 
-Part 1, the cat over other apps (a minute lasts 3 s): the welcome, the start screen, a block with
+Part 1, the cat over other apps (a minute lasts 3 s, 6 s on a phone): the welcome, the start screen, a block with
 the kitten in the ring and the countdown notification, leaving Kavana (the cat over the home
 screen), a check-in answered on the cat while away, the kitten that wandered off, "How did it go?",
 meeting Pepper, every tab, dark mode.
-Part 2, without the cat (a minute lasts 1 s): "Pepper is waiting" as a notification, then a
+Part 2, without the cat (a minute lasts 2 s, 4 s on a phone): "Pepper is waiting" as a notification, then a
 check-in notification answered with its own Yes button.
 
 It clears only the DEBUG app's data (xyz.tiresia.kavana.debug), never the real app's, and puts
@@ -29,6 +29,8 @@ import phone as P  # noqa: E402
 APK, OUT = sys.argv[1], sys.argv[2]
 os.makedirs(OUT, exist_ok=True)
 ACT = f'{P.PKG}/xyz.tiresia.kavana.MainActivity'
+# Seconds per test minute: a phone is driven through the Mac over SSH, which is slow.
+SEC = 3 if P.LOCAL else 6
 fails = []
 n = 0
 
@@ -66,7 +68,7 @@ def start_block(name):
     time.sleep(0.6)
     P.scroll_to('Start Focus')
     P.tap('Start Focus')
-    return P.wait_for('FOCUSING', 8)
+    return running(name)
 
 
 def notifications():
@@ -75,16 +77,29 @@ def notifications():
 
 
 def leave():
-    """Leave Kavana for another app. On a real phone that's the Calculator, never the home screen
-    (its widgets are private) or the notification shade."""
+    """Leave Kavana for another app. On a real phone that's the installed release of Kavana itself
+    (a plain screen with nothing private on it), never the home screen (its widgets are private),
+    the notification shade, an app picked by category (on my phone "calculator" opened a
+    Tasker dialog), or Android's Settings (it hides every app's overlays, the cat's too)."""
     if P.LOCAL:
         P.adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
     else:
-        P.adb('shell', 'am', 'start', '-a', 'android.intent.action.MAIN', '-c', 'android.intent.category.APP_CALCULATOR')
+        P.adb('shell', 'am', 'start', '-n', 'xyz.tiresia.kavana/.MainActivity')
 
 
-def doc():
-    return P.adb('shell', 'run-as', P.PKG, 'cat', 'files/doc.json')
+def running(name):
+    """The block is running, from the saved doc (Samsung's uiautomator can't read the timer screen:
+    it redraws every second and never goes idle)."""
+    end = time.time() + 10
+    while time.time() < end:
+        try:
+            b = [x for x in json.loads(doc())['blocks'] if x['intention'] == name and not x.get('ended')]
+            if b:
+                return b[-1]
+        except (ValueError, RuntimeError, KeyError):
+            pass
+        time.sleep(1)
+    return None
 
 
 print('install')
@@ -105,7 +120,7 @@ P.adb('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
 
 try:
     print('\npart 1: the cat over other apps')
-    launch(3000)
+    launch(SEC * 1000)
     check('welcome shows', P.wait_for('Welcome to Kavana'))
     step('welcome')
     P.tap('Continue')
@@ -115,11 +130,12 @@ try:
     check('the start screen', P.wait_for('Start Focus'))
     step('home')
 
-    check('the block runs', start_block('Test block'))
+    b = start_block('Test block')
     t0 = time.time()
+    check('the block runs', bool(b))
     time.sleep(1)
     step('run')
-    check('the kitten is in the ring', P.wait_for('Miso just arrived', 3))
+    check('Miso is the kitten growing in it', bool(b) and b.get('cat') == 'miso')
     end = time.time() + 6
     while time.time() < end and 'android.title=String (Test block)' not in notifications():
         time.sleep(1)
@@ -132,7 +148,7 @@ try:
     check('the cat over the home screen', P.wait_for("Boo! It's time to focus.", 6))
     step('leave-cat')
     # The first check-in is at minute 15 (45 s): it shows on the cat while still away.
-    check('a check-in on the cat', P.wait_for('Still on: Test block', max(5, 52 - (time.time() - t0))))
+    check('a check-in on the cat', P.wait_for('Still on: Test block', max(5, 15 * SEC + 7 - (time.time() - t0))))
     step('checkin-cat')
     if P.find('Yes', exact=True):
         P.tap('Yes', exact=True)
@@ -143,7 +159,7 @@ try:
     step('back-gone')
     check('the check-in answered on the cat counts', doc().count('"answer":"yes"') == 1)
 
-    check('the end: How did it go?', P.wait_for('How did it go?', max(5, 80 - (time.time() - t0))))
+    check('the end: How did it go?', P.wait_for('How did it go?', max(5, 25 * SEC + 6 - (time.time() - t0))))
     step('outcome')
     P.tap('Done', exact=True)
     check('meeting Pepper after the first block', P.wait_for('You met Pepper', 8))
@@ -168,14 +184,14 @@ try:
 
     print('\npart 2: without the cat, notifications')
     P.adb('shell', 'appops', 'set', P.PKG, 'SYSTEM_ALERT_WINDOW', 'deny')
-    launch(2000)
-    check('the second block runs', start_block('Second'))
+    launch(SEC * 2000 // 3)
+    check('the second block runs', bool(start_block('Second')))
     t0 = time.time()
     leave()
     time.sleep(2)
     check('"Miso is waiting" as a notification', 'Miso is waiting' in notifications())
     # The check-in at minute 15 (30 s): a notification with Yes and Drifted (a banner as it comes).
-    end = time.time() + 40
+    end = time.time() + 15 * SEC * 2 // 3 + 12
     while time.time() < end and 'Still on: Second?' not in notifications():
         time.sleep(1)
     dump = notifications()
@@ -208,6 +224,8 @@ finally:
     P.adb('shell', 'cmd', 'uimode', 'night', mode.group(1) if mode else 'auto')
     P.adb('shell', 'appops', 'set', P.PKG, 'SYSTEM_ALERT_WINDOW', 'allow')
     P.adb('shell', 'am', 'force-stop', P.PKG)
+    if not P.LOCAL:
+        P.adb('shell', 'am', 'force-stop', 'xyz.tiresia.kavana')
 
 print(f'\n{"all passed" if not fails else str(len(fails)) + " failed: " + "; ".join(fails)}')
 sys.exit(1 if fails else 0)

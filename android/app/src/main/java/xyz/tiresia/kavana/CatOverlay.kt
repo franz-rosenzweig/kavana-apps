@@ -167,6 +167,11 @@ object CatOverlay {
         val tonal = if (dark) 0xFF23332F.toInt() else 0xFFDCEBE7.toInt()
         val onTonal = if (dark) 0xFFA6F2E5.toInt() else 0xFF1F5E57.toInt()
         val nav = w.currentWindowMetrics.windowInsets.getInsets(WindowInsets.Type.navigationBars()).bottom
+        // A phone under 400 points wide (the S24+ is 384) gets tighter buttons, so "Let me in" and
+        // "Not really" aren't cut short.
+        val narrow = ctx.resources.configuration.screenWidthDp < 400
+        val btnText = if (narrow && buttons.size > 2) 14f else 15f
+        val btnPad = when { buttons.size > 2 -> if (narrow) 10 else 12; narrow -> 14; else -> 18 }
 
         val root = FrameLayout(ctx).apply { clipChildren = false; clipToPadding = false; setPadding(dp(12), dp(10), dp(8), 0) }
 
@@ -193,9 +198,9 @@ object CatOverlay {
             val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
             buttons.forEachIndexed { i, b ->
                 row.addView(TextView(ctx).apply {
-                    text = b.label; setTextColor(if (b.primary) onTint else onTonal); setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                    text = b.label; setTextColor(if (b.primary) onTint else onTonal); setTextSize(TypedValue.COMPLEX_UNIT_SP, btnText)
                     typeface = Typeface.create(Typeface.DEFAULT, 600, false); gravity = Gravity.CENTER; maxLines = 1
-                    setPadding(dp(if (buttons.size > 2) 12 else 18), dp(10), dp(if (buttons.size > 2) 12 else 18), dp(10))
+                    setPadding(dp(btnPad), dp(10), dp(btnPad), dp(10))
                     background = GradientDrawable().apply { cornerRadius = dp(22).toFloat(); setColor(if (b.primary) tint else tonal) }
                     setOnClickListener { hide(which); b.onClick() }
                 }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { if (i > 0) marginStart = dp(8) })
@@ -205,7 +210,7 @@ object CatOverlay {
 
         // The bubble sits left of the cat, which peeks up from the very bottom of the screen.
         root.addView(card, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
-            marginEnd = dp(112); bottomMargin = nav + dp(18)
+            marginEnd = dp(if (narrow) 100 else 112); bottomMargin = nav + dp(18)
         })
         val cat = ImageView(ctx).apply {
             setImageBitmap(Art.bitmap(ctx, picture)); adjustViewBounds = true; scaleType = ImageView.ScaleType.FIT_END
