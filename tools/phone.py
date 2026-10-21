@@ -98,7 +98,8 @@ def tap(text, exact=False, wait=6.0, last=False):
             adb('shell', 'input', 'tap', str(p[0]), str(p[1]))
             return p
         if time.time() > end:
-            raise RuntimeError(f'not on screen: {text!r}; showing {texts()[:30]}')
+            # on a real phone, never print what's on the screen (notifications, codes, names)
+            raise RuntimeError(f'not on screen: {text!r}' + (f'; showing {texts()[:30]}' if LOCAL else ''))
         time.sleep(0.5)
 
 

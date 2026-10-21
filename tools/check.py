@@ -121,6 +121,8 @@ P.adb('shell', 'appops', 'set', P.PKG, 'SYSTEM_ALERT_WINDOW', 'allow')
 night = P.adb('shell', 'cmd', 'uimode', 'night').strip()
 P.adb('shell', 'cmd', 'uimode', 'night', 'no')
 P.adb('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
+if not P.LOCAL:
+    P.adb('shell', 'cmd', 'statusbar', 'collapse')  # a shade left open would cover the app
 
 try:
     print('\npart 1: the cat over other apps')
