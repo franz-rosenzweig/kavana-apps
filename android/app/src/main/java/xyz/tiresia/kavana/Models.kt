@@ -5,7 +5,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
 // What bridge.js hands back (KB.run). The shapes are engine.js's own: E.view, E.history, E.pings,
-// E.treats, E.daily. Fields the app doesn't draw yet (friends, naps) are left out and ignored.
+// E.treats, E.daily, E.missions, E.achievements, E.starter, E.monthly. Fields the app doesn't draw
+// (friends, naps, rankings) are left out and ignored.
 
 val KJson = Json { ignoreUnknownKeys = true; explicitNulls = false; coerceInputValues = true; isLenient = true }
 
@@ -15,8 +16,13 @@ data class Out(
     val result: JsonElement? = null,
     val error: String? = null,
     val meets: List<String> = emptyList(),
+    /** Missions and rewards that just got done, each told once. */
+    val done: List<DoneNote> = emptyList(),
     val state: UiState,
 )
+
+@Serializable
+data class DoneNote(val kind: String, val text: String, val pay: Int = 0, val id: String? = null)
 
 @Serializable
 data class UiState(
@@ -29,9 +35,23 @@ data class UiState(
     val companion: String = "miso",
     val pings: List<Ping> = emptyList(),
     val daily: Daily = Daily(),
+    val canPause: Boolean = true,
+    val missions: Missions = Missions(),
+    val achievements: List<Ach> = emptyList(),
+    val starter: Starter = Starter(),
+    val monthly: List<Monthly> = emptyList(),
+    val shop: Shop = Shop(),
+    val news: List<News> = emptyList(),
+    val tally: Map<String, Int> = emptyMap(),
 ) {
     fun cat(id: String?): CatInfo = cats.firstOrNull { it.id == id } ?: cats.firstOrNull() ?: CatInfo("miso", "Miso", "")
     val catsOn: Boolean get() = view.settings.cat
+    fun owns(id: String) = id in shop.owned
+    fun price(id: String) = shop.prices[id] ?: 0
+    fun forSale(id: String) = id in shop.forSale
+    /** Rewards done and waiting to be collected (the Cats tab's badge). */
+    val toCollect: Int get() = achievements.count { it.done && !it.claimed } + starter.steps.count { it.done && !it.claimed } +
+        (if (starter.all.done && !starter.all.claimed) 1 else 0) + monthly.count { it.done && !it.claimed }
 }
 
 @Serializable
@@ -56,6 +76,12 @@ data class Settings(
     val companion: String = "miso",
     val tags: List<String> = emptyList(),
     val tag: String = "",
+    val mode: String = "timer",
+    val pause: String = "five",
+    val overtime: Boolean = false,
+    val closeCounts: Boolean = true,
+    val lines: List<String> = emptyList(),
+    val theme: String = "classic",
 )
 
 @Serializable
@@ -87,7 +113,17 @@ data class Block(
     val goneBy: String? = null,
     val treats: Int = 0,
     val bonus: Int = 0,
-)
+    val mode: String = "timer",
+    /** Extra time: when the block's own end came (the kitten came home then); it counts on until Stop. */
+    val over: Long? = null,
+    /** Until when Cancel takes the block back. */
+    val cancelUntil: Long = 0,
+    val note: String = "",
+    val pauseEnds: Long? = null,
+    val pauses: Int = 0,
+) {
+    val stopwatch: Boolean get() = mode == "stopwatch"
+}
 
 @Serializable
 data class Brk(val minutes: Int, val start: Long, val end: Long)
@@ -115,10 +151,13 @@ data class Hist(
     val kitten: String = "home",
     val goneWhy: String? = null,
     val treats: Int = 0,
+    val tag: String? = null,
+    val mode: String = "timer",
+    val note: String = "",
 )
 
 @Serializable
-data class Treats(val earned: Int = 0, val spent: Int = 0, val left: Int = 0, val missions: Int = 0)
+data class Treats(val earned: Int = 0, val spent: Int = 0, val left: Int = 0, val missions: Int = 0, val rewards: Int = 0)
 
 @Serializable
 data class Stats(
@@ -138,7 +177,72 @@ data class CatInfo(
     val how: String? = null,
     val adopt: Boolean = false,
     val met: Boolean = false,
+    val limited: String? = null,
+    val price: Int = 0,
+    /** For a cat you meet by focusing: how far along you are, of `need`, in `unit`. */
+    val have: Int = 0,
+    val need: Int = 0,
+    val unit: String? = null,
 )
+
+@Serializable
+data class Mission(val id: String, val text: String, val need: Int, val unit: String? = null, val pay: Int, val have: Int, val done: Boolean)
+
+@Serializable
+data class Missions(
+    val day: List<Mission> = emptyList(), val week: List<Mission> = emptyList(),
+    val dayClosed: Boolean = false, val weekClosed: Boolean = false, val dayEnds: Long = 0, val weekEnds: Long = 0,
+)
+
+@Serializable
+data class Ach(val id: String, val name: String, val text: String, val stat: String = "", val goal: Int, val have: Int, val done: Boolean, val claimed: Boolean, val reward: Int)
+
+@Serializable
+data class Step(val id: String, val text: String = "", val goal: Int = 1, val have: Int = 0, val done: Boolean = false, val claimed: Boolean = false, val reward: Int = 0)
+
+@Serializable
+data class Starter(val steps: List<Step> = emptyList(), val all: Step = Step("starter-all"), val finished: Boolean = false)
+
+@Serializable
+data class Monthly(val id: String, val from: Long, val to: Long, val need: Int, val have: Int, val done: Boolean, val claimed: Boolean, val reward: Int)
+
+@Serializable
+data class Season(val id: String, val name: String, val to: List<Int> = emptyList())
+
+@Serializable
+data class Soon(val id: String, val name: String, val days: Int)
+
+/** A thing for the café (cats.js ITEMS): `at` is [center x, bottom y, width] in % of the room. */
+@Serializable
+data class Thing(
+    val id: String, val name: String, val about: String, val at: List<Double>, val perch: List<Double>? = null,
+    val wall: Boolean = false, val floor: Boolean = false, val limited: String? = null, val on: String? = null, val alt: List<Double>? = null,
+)
+
+@Serializable
+data class Theme(val id: String, val name: String, val about: String)
+
+@Serializable
+data class ShelterCat(val id: String, val name: String, val about: String)
+
+@Serializable
+data class Org(val name: String = "", val url: String = "")
+
+@Serializable
+data class Shop(
+    val owned: List<String> = emptyList(),
+    val prices: Map<String, Int> = emptyMap(),
+    val season: Season? = null,
+    val soon: Soon? = null,
+    val forSale: List<String> = emptyList(),
+    val items: List<Thing> = emptyList(),
+    val themes: List<Theme> = emptyList(),
+    val shelter: List<ShelterCat> = emptyList(),
+    val shelterOrg: Org = Org(),
+)
+
+@Serializable
+data class News(val id: String, val date: String, val title: String, val body: String, val go: String? = null)
 
 @Serializable
 data class Ping(

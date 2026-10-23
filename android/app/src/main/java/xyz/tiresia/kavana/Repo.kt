@@ -61,6 +61,7 @@ class Repo(private val app: Context) {
             if (out.error != null) Log.i(TAG, "${op["op"]}: ${out.error}")
             state.value = out.state
             if (out.meets.isNotEmpty()) meets.update { (it + out.meets).distinct() }
+            for (d in out.done) toasts.tryEmit(if (d.kind == "mission") "Mission done: ${d.text}. 🐟 +${d.pay}" else "Ready to collect in Cats: ${d.text}")
             after(out.state)
             out
         } catch (e: Exception) {
@@ -130,7 +131,8 @@ class Repo(private val app: Context) {
         Notify.cancelAway(app)
         if (t == 0L || now - t <= GRACE) return
         scope.launch {
-            val out = act(op("away", "at" to t + GRACE)) ?: return@launch
+            // The engine starts the grace at the end of a pause, if you left during one.
+            val out = act(op("away", "at" to t, "grace" to GRACE)) ?: return@launch
             val cat = (out.result as? JsonObject)?.get("cat")?.jsonPrimitive?.content ?: return@launch
             toasts.emit("${out.state.cat(cat).name} wandered off while you were away.")
         }

@@ -1,18 +1,23 @@
 #!/bin/bash
 # Copies the web app's engine and pictures into the Android app, from a commit of the kavana repo
 # (default: what's live, /srv/dev/kavana-live). The app runs these files as they are, so after a
-# web change to engine.js, lines.js or cats.js, run this, then tools/test-bridge.js, then rebuild.
+# web change to engine.js, lines.js, cats.js or news.js, run this, then tools/test-bridge.js, then rebuild.
 #
 #   tools/sync-web.sh                 # from the live checkout's commit
 #   tools/sync-web.sh <commit>        # from a commit in /srv/dev/kavana
+#   KAVANA_REPO=~/src/kavana tools/sync-web.sh <commit>   # from another clone (on the Mac)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO=${KAVANA_REPO:-/srv/dev/kavana}
 REV=${1:-$(git -C /srv/dev/kavana-live rev-parse HEAD)}
+REV=$(git -C "$REPO" rev-parse "$REV")
 A=android/app/src/main/assets
-for f in engine.js lines.js cats.js; do git -C "$REPO" show "$REV:web/$f" > "$A/js/$f"; done
-rm -f "$A"/cats/*.webp
-git -C "$REPO" ls-tree --name-only "$REV" web/cats/ | while read -r f; do git -C "$REPO" show "$REV:$f" > "$A/cats/$(basename "$f")"; done
-git -C "$REPO" show "$REV:web/cafe/gone-1.webp" > "$A/cafe/gone-1.webp"
+for f in engine.js lines.js cats.js news.js; do git -C "$REPO" show "$REV:web/$f" > "$A/js/$f"; done
+for d in cats cafe; do
+  rm -f "$A/$d"/*.webp
+  git -C "$REPO" ls-tree --name-only "$REV" "web/$d/" | grep '\.webp$' | while read -r f; do git -C "$REPO" show "$REV:$f" > "$A/$d/$(basename "$f")"; done
+done
+# The living cats' rig (eyes, head, ears, tail of every picture), once the web app has it.
+if git -C "$REPO" cat-file -e "$REV:web/rig.json" 2>/dev/null; then git -C "$REPO" show "$REV:web/rig.json" > "$A/rig.json"; fi
 echo "$REV" > "$A/js/WEB_COMMIT"
 echo "copied web/ at $(git -C "$REPO" log -1 --format='%h %s' "$REV")"

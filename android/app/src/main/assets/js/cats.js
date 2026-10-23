@@ -22,6 +22,7 @@ const BREEDS = {
   brown: { fur: '#a8794e', mark: '#6b4a2e', ear: '#e8b9a0', nose: '#c97a6a', eye: '#c9a13a', pupil: INK, line: INK, marks: 'tabby' },
   gold: { fur: '#e9b25a', mark: '#7a4a22', ear: '#f5c4b3', nose: '#d0705a', eye: '#8fd06a', pupil: INK, line: INK, marks: 'tabby' },
   pumpkin: { fur: '#f28c28', mark: '#c4621a', ear: '#f5c4b3', nose: '#e07a6a', eye: INK, line: INK, marks: 'tabby' },
+  flurry: { fur: '#c9d6e6', mark: '#9fb3cc', ear: '#f2c1cc', nose: '#e59aac', eye: '#5b8fd6', pupil: INK, line: INK, marks: 'none' },
 };
 
 // The cats. The first eight you meet by focusing: `rule` gets the stats from Kavana's history (see
@@ -46,6 +47,7 @@ const CATS = [
   { id: 'ziggy', name: 'Ziggy', ...art('ziggy'), breed: 'gold', about: 'Fast, spotted, always ready to start.', adopt: true },
   // Limited: in the shop only during its event (E.EVENTS in engine.js)
   { id: 'pumpkin', name: 'Pumpkin', ...art('pumpkin'), breed: 'pumpkin', about: 'Lives in a jack-o\'-lantern. Only here for Halloween.', adopt: true, limited: 'halloween' },
+  { id: 'flurry', name: 'Flurry', ...art('flurry'), breed: 'flurry', about: 'Wears her scarf indoors. Only here in winter.', adopt: true, limited: 'winter' },
 ];
 
 // The Cat Café's things (web/cafe/). `at` is where it goes in the room: [center x, bottom y, width],
@@ -70,7 +72,33 @@ const ITEMS = [
   { id: 'jackolantern', name: 'Jack-o\'-Lanterns', about: 'Two grins that glow.', at: [57, 75, 12], limited: 'halloween' },
   { id: 'candles', name: 'Candles', about: 'A spooky glow. Paws off.', at: [33, 72, 7], limited: 'halloween' },
   { id: 'cauldron', name: 'Cauldron', about: 'Bubbling, green, smells like tuna.', at: [42, 80, 12], limited: 'halloween' },
+  // Winter (the snow globe sits on the window sill, or on the floor without a window)
+  { id: 'fireplace', name: 'Fireplace', about: 'Toasty. Every cat wants the spot in front.', at: [36, 64, 15], limited: 'winter', perch: [36, 67] },
+  { id: 'snowman', name: 'Snowman', about: 'Built by paws. Has ears, obviously.', at: [59, 77, 10], limited: 'winter' },
+  { id: 'snowglobe', name: 'Snow Globe', about: 'Shake it and a tiny cat gets snowed on.', at: [19, 49.5, 6], on: 'window', alt: [8, 80, 7], limited: 'winter' },
+  { id: 'sled', name: 'Sled', about: 'A blanket, a sled, a nap.', at: [30, 99, 14], limited: 'winter' },
 ].map((x) => ({ ...x, art: `cafe/${x.id}-1.webp` }));
+
+// Shelter cats: the cat version of Forest's real trees. Sponsoring one (with treats) stands for a real
+// shelter cat; they come one after the other, and live in your café from then on. The link goes to a
+// real shelter's donation page: no money goes through Kavana.
+const SHELTER_ORG = { name: 'Best Friends Animal Society', url: 'https://bestfriends.org/donate' };
+const SHELTER = [
+  { id: 'shelter1', name: 'Ginger Snap', about: 'A senior with grey whiskers. Calm, gentle, patient.' },
+  { id: 'shelter2', name: 'Scrappy', about: 'A notched ear and a lopsided grin. All heart.' },
+  { id: 'shelter3', name: 'Penny', about: 'Shy at first, then your shadow. Loves her bandana.' },
+  { id: 'shelter4', name: 'Domino', about: 'One floppy ear, one big round face, zero worries.' },
+].map((x) => ({ ...x, portrait: `cats/${x.id}-1.webp` }));
+
+// Café themes (Forest's land styles): the wall and floor. The colors are in style.css (.room.theme-<id>).
+const THEMES = [
+  { id: 'classic', name: 'Classic', about: 'Cream walls, honey floor.' },
+  { id: 'mint', name: 'Mint', about: 'Fresh green walls, light oak.' },
+  { id: 'sakura', name: 'Sakura', about: 'Pink walls and petals.' },
+  { id: 'library', name: 'Library', about: 'Deep green and dark wood.' },
+  { id: 'garden', name: 'Garden', about: 'Sky blue and a grass floor.' },
+  { id: 'night', name: 'Night Café', about: 'Starry walls, lamplit floor.' },
+];
 
 let n = 0;
 const uid = () => `c${Date.now().toString(36)}${(n++).toString(36)}`;
@@ -203,6 +231,6 @@ function Cat(breed, pose = 'sit', opts = {}) {
   return `<svg class="catart pose-${pose}${ghost}" viewBox="${p.vb}" aria-hidden="true" overflow="visible">${p.body}</svg>`;
 }
 
-const api = { Cat, CATS, BREEDS, ITEMS, byId: (id) => CATS.find((c) => c.id === id) || CATS[0], item: (id) => ITEMS.find((x) => x.id === id) };
+const api = { Cat, CATS, BREEDS, ITEMS, SHELTER, SHELTER_ORG, THEMES, byId: (id) => CATS.find((c) => c.id === id) || CATS[0], item: (id) => ITEMS.find((x) => x.id === id) };
 if (typeof module !== 'undefined') module.exports = api; else root.KavanaCats = api;
 })(this);
