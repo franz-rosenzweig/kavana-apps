@@ -21,6 +21,10 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.annotation.SuppressLint
+import android.graphics.Canvas
+import android.os.SystemClock
+import android.view.MotionEvent
 
 /**
  * The cat over other apps: it peeks up from the bottom of the screen with a speech bubble.
@@ -37,6 +41,9 @@ object CatOverlay {
     private var wm: WindowManager? = null
 
     fun allowed(ctx: Context) = Settings.canDrawOverlays(ctx)
+
+    /** "cats/miso-1.webp" -> "miso". */
+    private fun catOf(picture: String) = picture.substringAfterLast('/').substringBefore("-")
 
     private class Btn(val label: String, val primary: Boolean, val onClick: () -> Unit)
 
@@ -147,12 +154,14 @@ object CatOverlay {
             try { w.addView(v, lp) } catch (e: Exception) { Log.w(Repo.TAG, "cat", e); onTimeout(); return@post }
             root = v
             kind = which
-            // A little wiggle once it's up; if it stalls too, the cat is still in plain sight.
+            // Once it's up, the cat reacts: a hop for Boo!, a curious tilt for a question. It lives
+            // (breathes, blinks) as long as frames come; if they stall, it's still in plain sight.
             main.postDelayed({
-                cat.animate().rotation(-5f).setDuration(140).withEndAction {
-                    cat.animate().rotation(4f).setDuration(160).withEndAction { cat.animate().rotation(0f).setDuration(140).start() }.start()
-                }.start()
-            }, 350)
+                (cat as? LivingCatView)?.cat?.run {
+                    flick(0); flick(1)
+                    if (which == "leave" || which == "test") hop() else tilt(Motion.HEAD_TILT, 1.6f)
+                }
+            }, 380)
             timer = Runnable { hide(which); onTimeout() }.also { main.postDelayed(it, hideAfter) }
         }
     }
@@ -215,11 +224,42 @@ object CatOverlay {
         root.addView(card, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
             marginEnd = dp(if (narrow) 100 else 112); bottomMargin = nav + dp(18)
         })
-        val cat = ImageView(ctx).apply {
+        val cat: View = if (picture == Art.GONE) ImageView(ctx).apply {
             setImageBitmap(Art.bitmap(ctx, picture)); adjustViewBounds = true; scaleType = ImageView.ScaleType.FIT_END
-            contentDescription = "A cat"; translationY = dp(30).toFloat(); pivotY = dp(150).toFloat()
+            contentDescription = "Paw prints"; translationY = dp(30).toFloat()
+        } else LivingCatView(ctx, catOf(picture)).apply {
+            contentDescription = "A cat"
+            // The view is the frame around the picture (Motion.FX0..): the picture itself is 136 dp, as before.
+            translationY = dp(30 + 136 * (Motion.FH + Motion.FY0 - 512f) / 512f).toFloat(); translationX = dp(136 * -Motion.FX0 / 512f).toFloat()
         }
-        root.addView(cat, FrameLayout.LayoutParams(dp(136), dp(150), Gravity.BOTTOM or Gravity.END))
+        val side = if (cat is LivingCatView) dp(136 * Motion.FW / 512f) else dp(136)
+        root.addView(cat, FrameLayout.LayoutParams(side, if (cat is LivingCatView) side else dp(150), Gravity.BOTTOM or Gravity.END))
         return root to cat
+    }
+}
+
+/** A living cat in a plain View, for the window over other apps (Compose isn't there). Tap it to make it hop. */
+@SuppressLint("ViewConstructor", "ClickableViewAccessibility")
+class LivingCatView(ctx: Context, id: String) : View(ctx) {
+    val cat = LivingCat(ctx, id, "portrait", grid = 30, shadow = false)
+    private var last = 0L
+
+    init {
+        setOnTouchListener { _, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> cat.lookAtCanvas(e.x, e.y)
+                MotionEvent.ACTION_UP -> { cat.look = null; cat.poke() }
+                MotionEvent.ACTION_CANCEL -> cat.look = null
+            }
+            true
+        }
+    }
+
+    override fun onDraw(c: Canvas) {
+        val now = SystemClock.uptimeMillis()
+        cat.update(if (last == 0L) 0.016f else (now - last) / 1000f)
+        last = now
+        cat.draw(c, width.toFloat(), height.toFloat())
+        if (isAttachedToWindow) postInvalidateOnAnimation()
     }
 }
