@@ -128,14 +128,15 @@ fun Choice(emoji: String, label: String, modifier: Modifier = Modifier, strong: 
     }
 }
 
-/** The round buttons under the timer (Stop, Pause, Resume, End), like the iPhone's Clock. */
+/** The round buttons under the timer (Stop, Pause, Resume, End), like the iPhone's Clock. `sub`: a small line under it (Cancel's seconds). */
 @Composable
-fun RoundButton(label: String, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Box(
+fun RoundButton(label: String, color: Color, modifier: Modifier = Modifier, sub: String? = null, onClick: () -> Unit) {
+    Column(
         modifier.size(84.dp).clip(CircleShape).background(color.copy(alpha = .2f)).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
     ) {
-        Text(label, color = color, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        Text(label, color = color, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, maxLines = 1)
+        if (sub != null) Text(sub, color = color, fontSize = 12.sp, maxLines = 1)
     }
 }
 

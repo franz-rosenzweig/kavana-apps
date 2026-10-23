@@ -61,104 +61,6 @@ fun LaterTab(s: UiState, onStart: (LaterItem) -> Unit) {
     }
 }
 
-// ---------- Café: what came home, and your history ----------
-
-private fun dayLabel(t: Long): String {
-    val d = Instant.ofEpochMilli(t).atZone(ZoneId.systemDefault()).toLocalDate()
-    val today = LocalDate.now()
-    return when (d) {
-        today -> "Today"
-        today.minusDays(1) -> "Yesterday"
-        else -> d.format(DateTimeFormatter.ofPattern(if (d.year == today.year) "EEEE, MMMM d" else "MMMM d, yyyy"))
-    }
-}
-
-private val OUTCOMES = mapOf("done" to "Done 🎉", "partly" to "Partly 🌗", "notreally" to "Not really 🌧️")
-
-@Composable
-fun CafeTab(s: UiState) {
-    val repo = KavanaApp.repo
-    var clearing by remember { mutableStateOf(false) }
-    val st = s.stats
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 16.dp, bottom = 28.dp)) {
-        LargeTitle("Café") { TreatsChip(s.treats.left) }
-        val home = s.history.count { it.kitten == "home" }
-        if (s.catsOn && s.history.isNotEmpty()) Lede(if (home == 1) "1 cat came home to your café." else "$home cats came home to your café.")
-        Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatTile(fmtMin(st.today), "today", Modifier.weight(1f))
-            StatTile(fmtMin(st.week), "last 7 days", Modifier.weight(1f))
-        }
-        Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatTile("${st.streak}", if (st.streak == 1) "day in a row" else "days in a row", Modifier.weight(1f))
-            StatTile(if (st.answered > 0) "${Math.round(100.0 * (st.answered - st.drifted) / st.answered)}%" else "–", "check-ins on track", Modifier.weight(1f))
-        }
-        if (s.history.isEmpty()) Empty(Art.nap(s.companion), "No blocks yet. Your first one shows up here.")
-        s.history.groupBy { dayLabel(it.start) }.forEach { (day, list) ->
-            Group(day) {
-                list.forEachIndexed { i, b ->
-                    if (i > 0) GroupDivider()
-                    val c = s.cat(b.cat)
-                    Item(
-                        b.intention,
-                        sub = listOfNotNull(
-                            fmtMin(b.actual), b.outcome?.let { OUTCOMES[it] }, if (b.stopped) "Stopped early" else null,
-                            if (b.drifts > 0) "Drifted ${times(b.drifts)}" else null,
-                        ).joinToString(" · "),
-                        leading = if (s.catsOn) ({ CatArt(if (b.kitten == "home") Art.portrait(c.id) else Art.GONE, 44.dp) }) else null,
-                    ) {
-                        if (b.treats > 0) Text("+${b.treats} 🐟", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
-        if (s.history.isNotEmpty()) TextButton(onClick = { clearing = true }, modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
-            Text("Clear My History", color = MaterialTheme.colorScheme.error)
-        }
-    }
-    if (clearing) AlertDialog(
-        onDismissRequest = { clearing = false },
-        title = { Text("Clear My History?") },
-        text = { Text("Every finished block goes, on this phone. Your treats stay.") },
-        confirmButton = { TextButton(onClick = { clearing = false; repo.launch(op("clearHistory")) }) { Text("Clear", color = MaterialTheme.colorScheme.error) } },
-        dismissButton = { TextButton(onClick = { clearing = false }) { Text("Cancel") } },
-    )
-}
-
-// ---------- Cats ----------
-
-@Composable
-fun CatsTab(s: UiState) {
-    val repo = KavanaApp.repo
-    val shown = s.cats.filter { !it.adopt || it.met }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 16.dp, bottom = 28.dp)) {
-        LargeTitle("Cats") { TreatsChip(s.treats.left) }
-        Lede("Meet them by focusing. Tap one you've met to bring it to your next block.")
-        shown.chunked(2).forEach { pair ->
-            Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                pair.forEach { c ->
-                    val coming = c.id == s.companion
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = if (coming) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLowest,
-                        modifier = Modifier.weight(1f).then(if (c.met && !coming) Modifier.clickable {
-                            repo.launch(settings("companion" to c.id)); repo.toasts.tryEmit("${c.name} comes to your next block.")
-                        } else Modifier),
-                    ) {
-                        Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            CatArt(Art.portrait(c.id), 112.dp, locked = !c.met)
-                            Text(c.name, style = MaterialTheme.typography.titleMedium)
-                            Text(if (c.met) c.about else c.how ?: "", style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant, minLines = 2, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                            if (coming) Text("Coming next", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 4.dp))
-                        }
-                    }
-                }
-                if (pair.size == 1) Spacer(Modifier.weight(1f))
-            }
-        }
-    }
-}
-
 // ---------- Settings ----------
 
 private val GOALS = listOf(0 to "Off", 30 to "30 min", 60 to "1 hour", 90 to "1½ hours", 120 to "2 hours", 180 to "3 hours")
@@ -175,11 +77,12 @@ fun SettingsTab(s: UiState, act: MainActivity, onTab: (Tab) -> Unit) {
     val notifyOn = remember(resumes) { act.notificationsOn() }
     val overlayOn = remember(resumes) { act.overlayOn() }
     var awake by remember { mutableStateOf(repo.prefs.getBoolean("awake", true)) }
+    var sheet by remember { mutableStateOf<String?>(null) }
     fun daily(d: DailySet) = repo.launch(settings("daily" to mapOf("on" to d.on, "time" to d.time, "days" to d.days), "tz" to TimeZone.getDefault().id))
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 16.dp, bottom = 28.dp)) {
         LargeTitle("Settings")
-        Group("Focus", foot = "Your kitten grows while you focus. Stop early, or leave Kavana for more than a few seconds, and it wanders off. Locking your phone is fine.") {
+        Group("Focus", foot = "Your kitten grows while you focus. Stop early, or leave Kavana for more than a few seconds, and it wanders off. Locking your phone is fine. A pause lasts 5 minutes at most. \"Count extra time\" keeps a block going past its end until you tap Done.") {
             Pick("Daily goal", Icons.Rounded.Flag, MaterialTheme.colorScheme.primary, GOALS, set.goal) { repo.launch(settings("goal" to it)) }
             GroupDivider()
             Pick("Check in every", Icons.Rounded.Notifications, k.orange, INTERVALS, set.interval) { repo.launch(settings("interval" to it)) }
@@ -190,6 +93,22 @@ fun SettingsTab(s: UiState, act: MainActivity, onTab: (Tab) -> Unit) {
                 Item("Next kitten", Icons.Rounded.Favorite, k.pink, onClick = { onTab(Tab.Cats) }) {
                     Text(s.cat(s.companion).name, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+            }
+            GroupDivider()
+            Item("Tags", Icons.Rounded.Sell, k.blue, onClick = { sheet = "tags" }) { Text("${set.tags.size}", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            GroupDivider()
+            Pick("Pausing", Icons.Rounded.Pause, k.orange, listOf(1 to "Up to 5 min", 0 to "Off"), if (set.pause == "off") 0 else 1) { repo.launch(settings("pause" to if (it == 0) "off" else "five")) }
+            GroupDivider()
+            Item("Count extra time", Icons.Rounded.Timer, k.green) { Switch(set.overtime, { repo.launch(settings("overtime" to it)) }) }
+            GroupDivider()
+            Item("Swiping Kavana away counts as leaving", Icons.Rounded.SwipeUp, k.red) { Switch(set.closeCounts, { repo.launch(settings("closeCounts" to it)) }) }
+            GroupDivider()
+            Item("Your own lines", Icons.Rounded.FormatQuote, k.indigo, sub = "Nudges in your own words, every other one", onClick = { sheet = "lines" }) {
+                Text(if (set.lines.isEmpty()) "None" else "${set.lines.size}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            GroupDivider()
+            Item("Café theme", Icons.Rounded.Palette, k.mint, onClick = { onTab(Tab.Cafe) }) {
+                Text(s.shop.themes.firstOrNull { it.id == set.theme }?.name ?: "Classic", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         if (set.cat) Group("The cat over other apps", foot = "When you leave Kavana in the middle of a block, or a check-in comes while you're in another app, the cat pops up over it and says Boo!") {
@@ -239,6 +158,41 @@ fun SettingsTab(s: UiState, act: MainActivity, onTab: (Tab) -> Unit) {
             Item("Kavana is open source", Icons.Rounded.Code, k.gray, onClick = { act.openUrl("https://github.com/franz-rosenzweig/kavana") })
             GroupDivider()
             Item("Version", chevron = false) { Text(BuildConfig.VERSION_NAME, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+    }
+    when (sheet) {
+        "tags" -> ListSheet("Tags", set.tags, 20, 12, "New tag", "Tags show on your blocks in the Café, in their own colours.", { sheet = null }) { repo.launch(settings("tags" to it)) }
+        "lines" -> ListSheet("Your Own Lines", set.lines, 120, 20, "Breathe. Then the next sentence.", "With \"Nudge me\", every other nudge is one of yours.", { sheet = null }) { repo.launch(settings("lines" to it)) }
+    }
+}
+
+/** A short list you edit: remove with the minus, add at the bottom (Tags, Your own lines). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ListSheet(title: String, items: List<String>, maxLen: Int, maxItems: Int, hint: String, foot: String, onDismiss: () -> Unit, onChange: (List<String>) -> Unit) {
+    var text by remember { mutableStateOf("") }
+    fun add() { val t = text.trim(); if (t.isNotEmpty() && t !in items && items.size < maxItems) onChange(items + t); text = "" }
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp).imePadding()) {
+            Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.CenterHorizontally))
+            Group(foot = foot) {
+                items.forEachIndexed { i, t ->
+                    if (i > 0) GroupDivider()
+                    Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { onChange(items - t) }) { Icon(Icons.Rounded.RemoveCircle, "Remove $t", tint = MaterialTheme.colorScheme.error) }
+                        Text(t, modifier = Modifier.weight(1f).padding(vertical = 12.dp))
+                    }
+                }
+                if (items.size < maxItems) {
+                    if (items.isNotEmpty()) GroupDivider()
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp)) {
+                        Icon(Icons.Rounded.AddCircle, null, tint = MaterialTheme.colorScheme.primary)
+                        TextField(text, { text = it.take(maxLen) }, placeholder = { Text(hint) }, singleLine = true, colors = plainField(),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { add() }), modifier = Modifier.weight(1f))
+                        if (text.isNotBlank()) TextButton(onClick = { add() }) { Text("Add") }
+                    }
+                }
+            }
         }
     }
 }

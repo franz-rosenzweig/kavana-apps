@@ -7,6 +7,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Chair
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Pets
 import androidx.compose.material.icons.rounded.TrackChanges
@@ -37,14 +39,23 @@ fun Welcome(act: MainActivity, s: UiState, onDone: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             if (page == 0) {
-                CatArt(Art.portrait(s.companion), 120.dp, Modifier.padding(top = 8.dp))
+                LiveCat(s.companion, "portrait", 120.dp, Modifier.padding(top = 8.dp), interactive = true)
                 Text("Welcome to Kavana", style = MaterialTheme.typography.headlineLarge, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp, bottom = 14.dp))
                 Point(Icons.Rounded.TrackChanges, MaterialTheme.colorScheme.primary, "One thing at a time", "Say what you're working on and pick how long.")
                 Point(Icons.Rounded.Notifications, k.orange, "Gentle check-ins", "\"Still on it?\" every so often, even when the app is closed.")
                 Point(Icons.Rounded.Pets, k.pink, "A kitten grows while you focus", "Stay to the end and it comes home to your Cat Café.")
                 Point(Icons.Rounded.Lock, k.blue, "Stays on your phone", "No account. Nothing is sent anywhere.")
+            } else if (page == 1) {
+                // A glimpse of where this goes (Forest's "watch it grow"): the café filling up.
+                val things = s.shop.items.filter { it.limited == null }
+                val cats = seatCats(s.cats.filter { !it.adopt }.map { "welcome-${it.id}" to it.id }, things, emptyList(), 7)
+                Text("Your café fills up", style = MaterialTheme.typography.headlineLarge, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp, bottom = 14.dp))
+                Room("classic", things, { true }, cats, dropIn = true)
+                Point(Icons.Rounded.Pets, k.pink, "Every block brings a cat home", "Stay to the end and your kitten comes home to the café.")
+                Point(Icons.Rounded.Favorite, k.orange, "${s.cats.size} cats to meet", "Some you meet by focusing, some you adopt with treats.")
+                Point(Icons.Rounded.Chair, k.indigo, "Treats for the café", "A treat a minute: a box, a cat tree, a window to watch birds.")
             } else {
-                CatArt(Art.portrait(s.companion), 150.dp, Modifier.padding(top = 16.dp))
+                LiveCat(s.companion, "portrait", 150.dp, Modifier.padding(top = 16.dp), interactive = true, onCat = { it.hop() })
                 Text("Let the cat find you", style = MaterialTheme.typography.headlineLarge, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp))
                 Text(
                     "When you wander off to another app in the middle of a block, the cat pops up over it and says \"Boo! It's time to focus.\" Check-ins can show up the same way, with Yes and Drifted right there.",
@@ -61,7 +72,8 @@ fun Welcome(act: MainActivity, s: UiState, onDone: () -> Unit) {
         }
         Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp).padding(top = 8.dp, bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             when {
-                page == 0 -> Button(onClick = { page = 1; if (!act.notificationsOn()) act.askNotifications() }, modifier = Modifier.fillMaxWidth().height(54.dp)) { Text("Continue") }
+                page == 0 -> Button(onClick = { page = 1 }, modifier = Modifier.fillMaxWidth().height(54.dp)) { Text("Continue") }
+                page == 1 -> Button(onClick = { page = 2; if (!act.notificationsOn()) act.askNotifications() }, modifier = Modifier.fillMaxWidth().height(54.dp)) { Text("Continue") }
                 on -> Button(onClick = onDone, modifier = Modifier.fillMaxWidth().height(54.dp)) { Text("Start Focusing") }
                 else -> {
                     Button(onClick = { act.askOverlay() }, modifier = Modifier.fillMaxWidth().height(54.dp)) { Text("Allow") }
