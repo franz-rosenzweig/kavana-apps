@@ -66,6 +66,7 @@ fun Root(act: MainActivity) {
     var catsPane by rememberSaveable { mutableStateOf("cats") }
     var breathing by rememberSaveable { mutableStateOf(false) }
     var news by remember { mutableStateOf(false) }
+    var newsSeen by remember { mutableStateOf(repo.prefs.getString("newsSeen", null)) }
     var sounds by remember { mutableStateOf(false) }
     // Sounds play while a block runs (not paused) or during a mindful minute, and stop otherwise.
     val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -88,6 +89,8 @@ fun Root(act: MainActivity) {
     }
 
     val soundSheet = @Composable { if (sounds) SoundSheet(s, onShop = { breathing = false; tab = Tab.Cats; catsPane = "shop" }) { sounds = false } }
+    androidx.activity.compose.BackHandler(enabled = breathing) { breathing = false }
+    DisposableEffect(Unit) { onDispose { if (!act.isChangingConfigurations && repo.state.value?.view?.active?.let { it.paused == null } != true) Sound.stop() } }
     if (breathing && s.view.active == null) {
         BreatheScreen(s, onSound = { sounds = true }, onStart = { breathing = false; tab = Tab.Focus }, onLeave = { breathing = false })
         soundSheet()
@@ -112,7 +115,8 @@ fun Root(act: MainActivity) {
     ) { pad ->
         Box(Modifier.fillMaxSize().padding(pad).consumeWindowInsets(pad)) {
             when (tab) {
-                Tab.Focus -> FocusTab(s, now, form, act, onBreathe = { breathing = true }, onNews = { news = true }, onSound = { sounds = true })
+                Tab.Focus -> FocusTab(s, now, form, act, newsUnread = s.news.firstOrNull()?.id.let { it != null && it != newsSeen },
+                    onBreathe = { breathing = true }, onNews = { news = true }, onSound = { sounds = true })
                 Tab.Later -> LaterTab(s) { item -> form.intention = item.text; form.fromLater = item.id; tab = Tab.Focus }
                 Tab.Cafe -> CafeTab(s)
                 Tab.Cats -> CatsTab(s, act, catsPane) { catsPane = it }
@@ -126,7 +130,7 @@ fun Root(act: MainActivity) {
         when (go) { "shop", "missions" -> { tab = Tab.Cats; catsPane = go }; "cafe" -> tab = Tab.Cafe; else -> tab = Tab.Focus }
     }) {
         news = false
-        s.news.firstOrNull()?.let { repo.prefs.edit().putString("newsSeen", it.id).apply() }
+        s.news.firstOrNull()?.let { repo.prefs.edit().putString("newsSeen", it.id).apply(); newsSeen = it.id }
     }
 }
 

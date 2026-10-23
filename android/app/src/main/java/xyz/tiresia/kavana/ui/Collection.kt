@@ -308,7 +308,7 @@ private fun ShopPane(s: UiState, act: MainActivity, onCat: (String) -> Unit, onB
         val things = s.shop.items.filter { it.limited == ev.id }
         Grid(cats.map { it.id to it.name } + things.map { it.id to it.name }, 3) { (id, name) ->
             val isCat = cats.any { it.id == id }
-            ShopCard(s, id, name, if (isCat) "cat" else "thing", onClick = { if (isCat) onCat(id) else onBuy(Offer(id, name, "thing")) })
+            ShopCard(s, id, name, if (isCat) "cat" else "thing", onClick = { if (isCat) onCat(id) else if (!s.owns(id)) onBuy(Offer(id, name, "thing")) })
         }
         Foot("Only for a week. What you get, you keep.")
     } else if (soon != null) {
@@ -323,7 +323,7 @@ private fun ShopPane(s: UiState, act: MainActivity, onCat: (String) -> Unit, onB
     }
     Head("For your café")
     val regular = s.shop.items.filter { it.limited == null || (s.owns(it.id) && !s.forSale(it.id)) }.sortedBy { s.price(it.id) }
-    Grid(regular, 3) { x -> ShopCard(s, x.id, x.name, "thing") { onBuy(Offer(x.id, x.name, "thing")) } }
+    Grid(regular, 3) { x -> ShopCard(s, x.id, x.name, "thing") { if (!s.owns(x.id)) onBuy(Offer(x.id, x.name, "thing")) } }
     Head("Cats to adopt")
     Grid(s.cats.filter { it.adopt && (it.limited == null || (it.met && !s.forSale(it.id))) }.sortedBy { it.price }, 3) { c ->
         ShopCard(s, c.id, c.name, "cat") { onCat(c.id) }

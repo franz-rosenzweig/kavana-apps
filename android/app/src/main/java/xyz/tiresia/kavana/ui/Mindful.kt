@@ -54,10 +54,11 @@ fun BreatheScreen(s: UiState, onSound: () -> Unit, onStart: () -> Unit, onLeave:
             cat?.guide = when (n % 4) { 0 -> -0.5f + e; 1 -> 0.5f; 2 -> 0.5f - e; else -> -0.5f }
         }
     }
-    DisposableEffect(Unit) { onDispose { cat?.guide = null } }
+    DisposableEffect(Unit) {
+        SoundMix.breathing = true
+        onDispose { cat?.guide = null; SoundMix.breathing = false; if (KavanaApp.repo.state.value?.view?.active?.paused != null || KavanaApp.repo.state.value?.view?.active == null) Sound.stop() }
+    }
     val glow = MaterialTheme.colorScheme.primary
-    val e = phase * phase * (3 - 2 * phase)
-    val g = if (done) 0f else when (step % 4) { 0 -> -0.5f + e; 1 -> 0.5f; 2 -> 0.5f - e; else -> -0.5f }
     Column(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding().verticalScroll(rememberScrollState()).padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -67,7 +68,9 @@ fun BreatheScreen(s: UiState, onSound: () -> Unit, onStart: () -> Unit, onLeave:
         Spacer(Modifier.height(24.dp))
         Box(
             Modifier.size(260.dp).drawBehind {
-                // a soft glow that swells with each breath in
+                // a soft glow that swells with each breath in (read here, so only the drawing follows the frames)
+                val e = phase * phase * (3 - 2 * phase)
+                val g = if (done) 0f else when (step % 4) { 0 -> -0.5f + e; 1 -> 0.5f; 2 -> 0.5f - e; else -> -0.5f }
                 val r = size.minDimension / 2 * (0.62f + 0.3f * (g + 0.5f))
                 drawCircle(Brush.radialGradient(listOf(glow.copy(alpha = .28f), glow.copy(alpha = 0f)), Offset(size.width / 2, size.height / 2), r), r)
             },

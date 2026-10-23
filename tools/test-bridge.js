@@ -247,4 +247,19 @@ ok('the first kitten home: the starter step and First Kitten are told once', () 
 r = run({ op: 'outcome', id: r.state.view.awaiting.id, outcome: 'done' }, tt + 26 * MIN);
 ok('and not again', () => assert.equal(r.done.filter((d) => d.kind === 'reward').length, 0));
 
+// A look back beyond the newest 400 blocks: the Café asks for a period.
+r = run({ op: 'period', from: tt, to: tt + 86400000 }, tt + 27 * MIN);
+ok('a period of history on request', () => assert.deepEqual(r.result.map((b) => b.intention), ['One']));
+
+// Leaving during a pause counts from when the pause ends (the app records the leave either way).
+r = run({ op: 'start', intention: 'Paused away', minutes: 25 }, tt + 30 * MIN);
+r = run({ op: 'pause' }, tt + 35 * MIN);
+r = run({ op: 'away', at: tt + 36 * MIN, grace: 15000 }, tt + 38 * MIN);
+ok('back during the pause: the kitten is still there', () => { assert.equal(r.result, null); assert.equal(r.state.view.active.kitten, 'growing'); });
+r = run({ op: 'away', at: tt + 36 * MIN, grace: 15000 }, tt + 45 * MIN);
+ok('still away after the pause ended: it wandered off, 15 s after the pause', () => {
+  assert.equal(r.result.cat, 'miso');
+  assert.equal(r.state.view.active.kitten, 'gone');
+});
+
 console.log(`\n${pass} passed`);

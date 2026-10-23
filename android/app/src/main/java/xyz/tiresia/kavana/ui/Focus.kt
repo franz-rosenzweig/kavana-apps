@@ -58,13 +58,13 @@ import java.time.format.DateTimeFormatter
 import java.util.Date
 
 @Composable
-fun FocusTab(s: UiState, now: Long, form: StartForm, act: MainActivity, onBreathe: () -> Unit, onNews: () -> Unit, onSound: () -> Unit) {
+fun FocusTab(s: UiState, now: Long, form: StartForm, act: MainActivity, newsUnread: Boolean, onBreathe: () -> Unit, onNews: () -> Unit, onSound: () -> Unit) {
     val a = s.view.active
     val brk = s.view.onBreak
     when {
         a != null -> RunScreen(s, a, now, onSound)
         brk != null -> BreakScreen(brk, now)
-        else -> HomeScreen(s, form, act, onBreathe, onNews)
+        else -> HomeScreen(s, form, act, newsUnread, onBreathe, onNews)
     }
 }
 
@@ -76,7 +76,7 @@ private val tabular = TextStyle(fontFeatureSettings = "tnum")
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun HomeScreen(s: UiState, form: StartForm, act: MainActivity, onBreathe: () -> Unit, onNews: () -> Unit) {
+fun HomeScreen(s: UiState, form: StartForm, act: MainActivity, newsUnread: Boolean, onBreathe: () -> Unit, onNews: () -> Unit) {
     val repo = KavanaApp.repo
     val resumes by act.resumes
     val notifyOn = remember(resumes) { act.notificationsOn() }
@@ -106,9 +106,8 @@ fun HomeScreen(s: UiState, form: StartForm, act: MainActivity, onBreathe: () -> 
         LargeTitle("Focus") {
             IconButton(onClick = onBreathe) { Icon(Icons.Rounded.SelfImprovement, "A mindful minute", tint = MaterialTheme.colorScheme.primary) }
             if (s.news.isNotEmpty()) {
-                val unread = s.news.first().id != repo.prefs.getString("newsSeen", null)
                 IconButton(onClick = onNews) {
-                    if (unread) BadgedBox(badge = { Badge() }) { Icon(Icons.Rounded.Campaign, "News") } else Icon(Icons.Rounded.Campaign, "News")
+                    if (newsUnread) BadgedBox(badge = { Badge() }) { Icon(Icons.Rounded.Campaign, "News") } else Icon(Icons.Rounded.Campaign, "News")
                 }
             }
         }

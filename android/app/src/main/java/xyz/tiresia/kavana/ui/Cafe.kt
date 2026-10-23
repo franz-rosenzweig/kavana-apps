@@ -238,7 +238,16 @@ fun CafeTab(s: UiState) {
     var clearing by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Hist?>(null) }
     val (from, to) = periodOf(span, LocalDate.ofEpochDay(at))
-    val list = s.history.filter { it.start >= from.ms() && it.start < to.ms() }
+    val (bf, bt) = periodOf(span, shift(span, from, -1))
+    // The state has the newest 400 blocks. A period (or the one before it) older than those is asked for.
+    val capped = s.history.size >= 400 && bf.ms() < s.history.last().start
+    var older by remember { mutableStateOf<List<Hist>?>(null) }
+    LaunchedEffect(capped, bf, to, s.history.size) {
+        older = if (!capped) null else repo.act(op("period", "from" to bf.ms(), "to" to to.ms()))?.result
+            ?.let { runCatching { KJson.decodeFromJsonElement(kotlinx.serialization.builtins.ListSerializer(Hist.serializer()), it) }.getOrNull() }
+    }
+    val source = if (capped) older.orEmpty() else s.history
+    val list = source.filter { it.start >= from.ms() && it.start < to.ms() }
     val ownedThings = s.shop.items.filter { s.owns(it.id) }
     val residents = s.shop.shelter.filter { s.owns(it.id) }.map { it.id }
     val home = list.filter { it.kitten == "home" }.sortedBy { it.start }
@@ -284,8 +293,7 @@ fun CafeTab(s: UiState) {
         val focused = list.sumOf { it.actual }
         val gone = list.size - home.size
         val earned = list.sumOf { it.treats }
-        val (bf, bt) = periodOf(span, shift(span, from, -1))
-        val was = s.history.filter { it.start >= bf.ms() && it.start < bt.ms() }.sumOf { it.actual }
+        val was = source.filter { it.start >= bf.ms() && it.start < bt.ms() }.sumOf { it.actual }
         val tiles = buildList {
             add(home.size.toString() to if (home.size == 1) "cat came home" else "cats came home")
             add(fmtMin(focused) to "focused")

@@ -81,6 +81,9 @@ object CatOverlay {
             "end" -> {
                 val id = p.block ?: return Notify.ping(ctx, p, st)
                 val c = st.cat(catId)
+                // Extra time: the block counts on, so no Done yet; just the news, and the way back.
+                if (a?.id == id) return show(ctx, "end", Art.portrait(catId), title, p.body,
+                    listOf(Btn("Open Kavana", true) { openApp(ctx) }), 30_000) {}
                 val says = when {
                     w == null || !st.catsOn -> null
                     w.kitten == "home" -> "${c.name} came home to your café. 🐟 +${w.treats}"

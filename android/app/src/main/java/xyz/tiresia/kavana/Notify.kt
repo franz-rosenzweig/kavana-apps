@@ -79,7 +79,8 @@ object Notify {
                 b.addAction(action(ctx, 21, "Yes", ActionReceiver.ANSWER, "block" to id, "n" to (p.n ?: 0), "answer" to "yes"))
                 b.addAction(action(ctx, 22, "Drifted", ActionReceiver.ANSWER, "block" to id, "n" to (p.n ?: 0), "answer" to "drifted"))
             }
-            "end" -> if (id != null) {
+            // In extra time the block is still running: Done etc. come when you stop it, in Kavana.
+            "end" -> if (id != null && st?.view?.active?.id != id) {
                 b.addAction(action(ctx, 23, "Done", ActionReceiver.OUTCOME, "block" to id, "outcome" to "done"))
                 b.addAction(action(ctx, 24, "Partly", ActionReceiver.OUTCOME, "block" to id, "outcome" to "partly"))
                 b.addAction(action(ctx, 25, "Not really", ActionReceiver.OUTCOME, "block" to id, "outcome" to "notreally"))
@@ -108,6 +109,7 @@ object Notify {
                 val spent = a.total - (a.end - (a.paused ?: now))
                 b.setContentText(when {
                     a.paused != null -> "Paused. It starts again by itself at ${time(a.pauseEnds ?: a.paused)}."
+                    st.catsOn && a.kitten == "gone" -> "${c.name} wandered off. Your block keeps going."
                     a.over != null -> if (st.catsOn) "${c.name} came home. Extra time counts until you tap Done." else "Extra time counts until you tap Done."
                     a.stopwatch && !st.catsOn -> "Stopwatch, started at ${time(a.start)}"
                     a.stopwatch -> if (spent < 10 * 60_000L) "Stay 10 minutes and ${c.name} can come home." else "${c.name} can come home now. Tap Done when you're done."

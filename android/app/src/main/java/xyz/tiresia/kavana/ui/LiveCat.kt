@@ -16,6 +16,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -58,22 +61,26 @@ fun LiveCat(
     val ctx = LocalContext.current
     val cat = remember { LivingCat(ctx, id, pose, seed, grid, shadow, ValueAnimator.areAnimatorsEnabled()) }
     LaunchedEffect(cat) { onCat(cat) }
-    LaunchedEffect(id, pose) { if (cat.id != id || cat.pose != pose) { if (morph) cat.morph(id, pose) else cat.set(id, pose) } }
+    // morph() itself does nothing when the picture is already this one; changing back mid-morph still works.
+    LaunchedEffect(id, pose) { if (morph) cat.morph(id, pose) else if (cat.id != id || cat.pose != pose) cat.set(id, pose) }
     var frame by remember { mutableLongStateOf(0L) }
     // Scrolled out of sight (a long Cats list, the café): it rests until it's back, so a screen full of
     // cats costs only the ones you can see.
     var seen by remember { mutableStateOf(true) }
     LaunchedEffect(cat) {
         var last = 0L
-        while (true) withFrameNanos { now ->
-            if (seen) {
+        while (true) {
+            if (!seen) { snapshotFlow { seen }.first { it }; last = 0L } // no frames at all while out of sight
+            withFrameNanos { now ->
                 cat.update(if (last == 0L) 0.016f else (now - last) / 1e9f)
                 frame = now
+                last = now
             }
-            last = now
         }
     }
     val vibrator = remember { ctx.getSystemService(Vibrator::class.java) }
+    // Gone while held (a sheet dragged away, the block ended): the purr stops with it.
+    DisposableEffect(cat) { onDispose { if (cat.purring) runCatching { vibrator?.cancel() }; cat.purring = false } }
     var m = modifier.size(size).onGloballyPositioned { seen = it.boundsInWindow().height > 0f }.drawBehind {
         frame // redraw every frame
         val w = this.size.width * Motion.FW / 512f
@@ -97,22 +104,29 @@ fun LiveCat(
                 val down = awaitFirstDown()
                 look(down.position.x, down.position.y)
                 var purr = false
-                while (true) {
-                    val wait = if (purr) Long.MAX_VALUE else 420L - (SystemClock.uptimeMillis() - down.uptimeMillis)
-                    val ev = if (wait <= 0) null else withTimeoutOrNull(wait) { awaitPointerEvent() }
-                    if (ev == null) {
-                        // Held: it purrs, and so does the phone, softly.
-                        purr = true; cat.purring = true
-                        runCatching { vibrator?.vibrate(VibrationEffect.createWaveform(LongArray(40) { if (it % 2 == 0) 22L else 18L }, IntArray(40) { if (it % 2 == 0) 0 else 40 }, 0)) }
-                        continue
+                var tap = true
+                try {
+                    while (true) {
+                        val wait = if (purr) Long.MAX_VALUE else 420L - (SystemClock.uptimeMillis() - down.uptimeMillis)
+                        val ev = if (wait <= 0) null else withTimeoutOrNull(wait) { awaitPointerEvent() }
+                        if (ev == null) {
+                            // Held: it purrs, and so does the phone, softly.
+                            purr = true; cat.purring = true
+                            runCatching { vibrator?.vibrate(VibrationEffect.createWaveform(LongArray(40) { if (it % 2 == 0) 22L else 18L }, IntArray(40) { if (it % 2 == 0) 0 else 40 }, 0)) }
+                            continue
+                        }
+                        val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                        if (!ch.pressed) break
+                        // Moved before it purred: a scroll (the Cats list, the café), not a tap or a hold.
+                        if (!purr && (ch.position - down.position).getDistance() > viewConfiguration.touchSlop) { tap = false; break }
+                        look(ch.position.x, ch.position.y)
                     }
-                    val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
-                    if (!ch.pressed) break
-                    look(ch.position.x, ch.position.y)
+                    if (!purr && tap) cat.poke()
+                } finally {
+                    if (purr) runCatching { vibrator?.cancel() }
+                    cat.purring = false
+                    cat.look = null
                 }
-                if (purr) runCatching { vibrator?.cancel() } else cat.poke()
-                cat.purring = false
-                cat.look = null
             }
         }
     Box(m)

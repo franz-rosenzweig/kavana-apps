@@ -17,11 +17,12 @@ import java.time.ZonedDateTime
 object Alarms {
     private const val SAVED = "pings"
 
-    fun pings(ctx: Context, list: List<Ping>) {
+    /** `wake`: another time to tick at (a pause that ends by itself), with no ping of its own. */
+    fun pings(ctx: Context, list: List<Ping>, wake: Long? = null) {
         KavanaApp.repo.prefs.edit().putString(SAVED, KJson.encodeToString(ListSerializer(Ping.serializer()), list)).apply()
         val am = ctx.getSystemService(AlarmManager::class.java)
         val pi = PendingIntent.getBroadcast(ctx, 1, Intent(ctx, PingReceiver::class.java), FLAGS)
-        val next = list.minOfOrNull { it.at }
+        val next = listOfNotNull(list.minOfOrNull { it.at }, wake).minOrNull()
         if (next == null) am.cancel(pi) else exact(am, next, pi)
     }
 

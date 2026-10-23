@@ -20,6 +20,9 @@ import xyz.tiresia.kavana.*
 // volume, like Forest's ambient sounds. The mix is remembered on this phone (web/app.js soundMix).
 
 object SoundMix {
+    /** A mindful minute is on (its sounds play with no block running). */
+    @Volatile var breathing = false
+
     private fun load(): List<Pair<String, Float>> = KavanaApp.repo.prefs.getString("mix", "").orEmpty().split(',')
         .mapNotNull { x -> x.split(':').takeIf { it.size == 2 }?.let { (id, v) -> v.toFloatOrNull()?.let { id to it.coerceIn(0.05f, 1f) } } }
         .filter { Sound.byId(it.first) != null }.take(2)

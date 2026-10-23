@@ -81,8 +81,11 @@ function checkDone(now) {
   const first = !missionsSeen;
   if (first) missionsSeen = new Set();
   for (const [k, m] of done) if (!missionsSeen.has(k)) { missionsSeen.add(k); if (!first) out.push({ kind: 'mission', text: m.text, pay: m.pay }); }
+  const st = E.starter(doc), mo = E.monthly(doc, now);
   const ready = [...E.achievements(doc).filter((a) => a.done && !a.claimed).map((a) => [a.id, a.name]),
-    ...E.starter(doc).steps.filter((x) => x.done && !x.claimed).map((x) => [x.id, x.text])];
+    ...st.steps.filter((x) => x.done && !x.claimed).map((x) => [x.id, x.text]),
+    ...(st.all.done && !st.all.claimed ? [[st.all.id, 'Starter Challenge']] : []),
+    ...(mo.done && !mo.claimed ? [[mo.id, 'This month\'s Focus Challenge']] : [])];
   const firstR = !rewardsSeen;
   if (firstR) rewardsSeen = new Set();
   for (const [id, name] of ready) if (!rewardsSeen.has(id)) { rewardsSeen.add(id); if (!firstR) out.push({ kind: 'reward', id, text: name }); }
@@ -111,6 +114,8 @@ const OPS = {
   count: (o, t) => E.count(doc, o.key, t),
   buy: (o, t) => E.buy(doc, o.id, t),
   claim: (o, t) => ({ treats: E.claim(doc, o.id, t) }),
+  // The state carries the newest 400 blocks; a longer look back (the Café's months and years) asks for its span.
+  period: (o) => E.history(doc).filter((b) => b.start >= o.from && b.start < o.to),
 };
 
 // The shop's shelves and the café's things (cats.js), with prices and what's yours.

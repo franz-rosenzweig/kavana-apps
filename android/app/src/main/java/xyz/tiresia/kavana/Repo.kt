@@ -22,6 +22,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.json.JSONObject
 import java.io.File
+import xyz.tiresia.kavana.ui.SoundMix
 
 /**
  * The doc (one JSON file in the app's own storage, the same shape the web keeps in the browser),
@@ -96,7 +97,11 @@ class Repo(private val app: Context) {
 
     private fun after(st: UiState) {
         val before = Alarms.saved(app)
-        Alarms.pings(app, st.pings)
+        // A paused block has no pings; wake up when its pause ends by itself, so the end isn't missed.
+        Alarms.pings(app, st.pings, st.view.active?.pauseEnds)
+        // Sounds are for a running block (or a mindful minute): the app stops them, open or not.
+        val a = st.view.active
+        if ((a == null || a.paused != null) && !SoundMix.breathing) Sound.stop()
         Alarms.daily(app, st.view.settings.daily)
         FocusService.sync(app, st)
         // Pings whose time came are shown by whatever noticed it: the alarm, the open screen's own
@@ -117,9 +122,11 @@ class Repo(private val app: Context) {
     fun left(now: Long) {
         val st = state.value ?: return
         val a = st.view.active ?: return
-        if (!st.catsOn || a.paused != null || a.kitten != "growing") return
+        if (!st.catsOn || a.kitten != "growing") return
         if (prefs.getLong("left", 0) != 0L) return
         prefs.edit().putLong("left", now).apply()
+        // Leaving during a pause counts too, from when the pause ends (E.away); nothing to say yet.
+        if (a.paused != null) return
         if (CatOverlay.allowed(app)) CatOverlay.leave(app, st, a) else Notify.away(app, st.cat(a.cat).name)
     }
 
