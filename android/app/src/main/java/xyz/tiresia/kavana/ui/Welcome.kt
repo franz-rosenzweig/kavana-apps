@@ -33,7 +33,9 @@ fun Welcome(act: MainActivity, s: UiState, onDone: () -> Unit) {
     val k = LocalK.current
     val on = remember(resumes) { act.overlayOn() }
     // The words scroll if they must; the buttons stay at the bottom, where a thumb finds them.
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding()) {
+    // Outside the tabs' Scaffold: the Surface gives the text its colour (dark mode drew the titles dark on dark).
+    Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().systemBarsPadding()) {
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 28.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -81,6 +83,7 @@ fun Welcome(act: MainActivity, s: UiState, onDone: () -> Unit) {
                 }
             }
         }
+    }
     }
 }
 

@@ -54,13 +54,23 @@ fun BreatheScreen(s: UiState, onSound: () -> Unit, onStart: () -> Unit, onLeave:
             cat?.guide = when (n % 4) { 0 -> -0.5f + e; 1 -> 0.5f; 2 -> 0.5f - e; else -> -0.5f }
         }
     }
+    // Leaving Kavana ends the mindful minute: its frames stop in the background, and its sound
+    // would play on with nothing to stop it.
+    val life = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(life) {
+        val o = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) onLeave() }
+        life.lifecycle.addObserver(o)
+        onDispose { life.lifecycle.removeObserver(o) }
+    }
     DisposableEffect(Unit) {
         SoundMix.breathing = true
         onDispose { cat?.guide = null; SoundMix.breathing = false; if (KavanaApp.repo.state.value?.view?.active?.paused != null || KavanaApp.repo.state.value?.view?.active == null) Sound.stop() }
     }
     val glow = MaterialTheme.colorScheme.primary
+    // Outside the tabs' Scaffold: the Surface gives the text its colour in dark mode.
+    Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
     Column(
-        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding().verticalScroll(rememberScrollState()).padding(24.dp),
+        Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState()).padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Eyebrow("A mindful minute", color = MaterialTheme.colorScheme.primary)
@@ -93,6 +103,7 @@ fun BreatheScreen(s: UiState, onSound: () -> Unit, onStart: () -> Unit, onLeave:
             TextButton(onClick = { run++ }) { Text("Again") }
             TextButton(onClick = onLeave) { Text("Home") }
         }
+    }
     }
 }
 

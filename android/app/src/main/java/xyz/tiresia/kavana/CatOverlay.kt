@@ -230,7 +230,7 @@ object CatOverlay {
         val cat: View = if (picture == Art.GONE) ImageView(ctx).apply {
             setImageBitmap(Art.bitmap(ctx, picture)); adjustViewBounds = true; scaleType = ImageView.ScaleType.FIT_END
             contentDescription = "Paw prints"; translationY = dp(30).toFloat()
-        } else LivingCatView(ctx, catOf(picture)).apply {
+        } else LivingCatView(ctx, catOf(picture).also { Art.bitmap(ctx, picture) }).apply { // loaded now: if frames stall in the background, the first one still has the cat
             contentDescription = "A cat"
             // The view is the frame around the picture (Motion.FX0..): the picture itself is 136 dp, as before.
             translationY = dp(30 + 136 * (Motion.FH + Motion.FY0 - 512f) / 512f).toFloat(); translationX = dp(136 * -Motion.FX0 / 512f).toFloat()

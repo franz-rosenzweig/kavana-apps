@@ -116,15 +116,18 @@ fun Room(theme: String, things: List<Thing>, owned: (String) -> Boolean, cats: L
     val p = roomPalette(theme, isSystemInDarkTheme())
     BoxWithConstraints(modifier.fillMaxWidth().aspectRatio(1.5f).clip(RoundedCornerShape(20.dp)).roomBackground(p)) {
         val W = maxWidth; val H = maxHeight
-        things.forEachIndexed { i, x ->
+        // Each thing and each cat keeps its own place in the composition (key), and nothing returns
+        // early from the loop: a picture still loading just isn't drawn yet.
+        things.forEachIndexed { i, x -> key(x.id) {
             // the snow globe needs a window sill; without a window it sits on the floor
             val at = if (x.on != null && !owned(x.on) && x.alt != null) x.alt else x.at
             val z = if (x.floor) 1f else if (x.wall && at === x.at) 2f else 10f + at[1].toFloat()
             val w = W * (at[2] / 100).toFloat()
-            val anim = remember(x.id, dropIn) { Animatable(if (dropIn && x.id !in already) 0f else 1f) }
-            LaunchedEffect(x.id, dropIn) { if (anim.value < 1f) { delay(70L * i); anim.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = 300f)) } }
-            Image(
-                bitmapOf(Art.thing(x.id)) ?: return@forEachIndexed, x.name, contentScale = ContentScale.Fit,
+            val anim = remember(dropIn) { Animatable(if (dropIn && x.id !in already) 0f else 1f) }
+            LaunchedEffect(dropIn) { if (anim.value < 1f) { delay(70L * i); anim.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = 300f)) } }
+            val img = art(Art.thing(x.id))
+            if (img != null) Image(
+                img, x.name, contentScale = ContentScale.Fit,
                 modifier = Modifier.zIndex(z).absoluteOffset(W * ((at[0] - at[2] / 2) / 100).toFloat(), H * (at[1] / 100).toFloat() - w)
                     .size(w).graphicsLayer {
                         transformOrigin = TransformOrigin(0.5f, 1f)
@@ -132,8 +135,8 @@ fun Room(theme: String, things: List<Thing>, owned: (String) -> Boolean, cats: L
                         alpha = anim.value.coerceIn(0f, 1f); translationY = (1 - anim.value) * -0.3f * size.height
                     },
             )
-        }
-        cats.forEachIndexed { i, rc ->
+        } }
+        cats.forEachIndexed { i, rc -> key(rc.key) {
             val w = W * (rc.w / 100).toFloat()
             Box(Modifier.zIndex(rc.z).absoluteOffset(W * ((rc.x - rc.w / 2) / 100).toFloat(), H * (rc.y / 100).toFloat() - w)
                 .graphicsLayer { if (rc.flip) scaleX = -1f }) {
@@ -141,13 +144,10 @@ fun Room(theme: String, things: List<Thing>, owned: (String) -> Boolean, cats: L
                 if (i < 16) LiveCat(rc.id, rc.pose, w, interactive = true, grid = 18, seed = rc.key.hashCode(), label = "A cat in your café")
                 else CatArt(Art.portrait(rc.id), w)
             }
-        }
+        } }
         overlay()
     }
 }
-
-@Composable
-private fun bitmapOf(path: String): androidx.compose.ui.graphics.ImageBitmap? = art(path)
 
 private fun hashOf(s: String) = s.fold(7L) { h, ch -> (h * 31 + ch.code) and 0xffffffffL }
 
