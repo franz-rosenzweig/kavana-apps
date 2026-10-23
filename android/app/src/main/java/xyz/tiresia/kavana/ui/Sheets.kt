@@ -64,7 +64,7 @@ fun Sheets(s: UiState, act: MainActivity) {
 private fun CheckinSheet(s: UiState, a: Block?, why: Pair<String, Int>?, onAnswer: (String) -> Unit, onWhy: (String?) -> Unit, onHide: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onHide, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            if (s.catsOn && a != null) CatArt(Art.portrait(a.cat), 96.dp)
+            if (s.catsOn && a != null) LiveCat(a.cat, "portrait", 96.dp, interactive = true, onCat = { it.tilt(Motion.HEAD_TILT, 1.6f) })
             if (why == null) {
                 Eyebrow("Check-in")
                 Text("Still on: ${a?.intention ?: ""}?", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
@@ -90,28 +90,39 @@ private fun OutcomeSheet(s: UiState, w: Block, act: MainActivity) {
     val repo = KavanaApp.repo
     val c = s.cat(w.cat)
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = { it != SheetValue.Hidden })
-    fun out(o: String?) = repo.launch(op("outcome", "id" to w.id, "outcome" to o)) { Notify.cancel(act, Notify.ID_PING) }
+    var note by remember(w.id) { mutableStateOf(w.note) }
+    fun out(o: String?) {
+        // A note (like Forest's session notes) goes on the block first, then the answer.
+        if (note.trim() != w.note) repo.launch(op("edit", "id" to w.id, "patch" to mapOf("note" to note)))
+        repo.launch(op("outcome", "id" to w.id, "outcome" to o)) { Notify.cancel(act, Notify.ID_PING) }
+    }
     ModalBottomSheet(onDismissRequest = {}, sheetState = state) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Eyebrow(if (w.stopped) "Stopped early" else "Time's up")
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp).imePadding(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Eyebrow(when { w.stopwatch -> if (w.stopped) "Stopwatch, under 10 minutes" else "Stopwatch"; w.over != null -> "Extra time"; w.stopped -> "Stopped early"; else -> "Time's up" })
             Text("How did it go?", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 4.dp))
             Text(w.intention, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             if (s.catsOn) {
-                CatArt(if (w.kitten == "home") Art.portrait(c.id) else Art.GONE, 132.dp, Modifier.padding(top = 10.dp))
+                if (w.kitten == "home") LiveCat(c.id, "portrait", 132.dp, Modifier.padding(top = 10.dp), interactive = true, onCat = { it.hop(2); it.happy(1.2f); it.heart() })
+                else CatArt(Art.GONE, 132.dp, Modifier.padding(top = 10.dp))
                 Text(
                     when {
                         w.kitten == "home" -> "${c.name} came home to your café. 🐟 +${w.treats}"
                         w.goneWhy == "away" -> "${c.name} wandered off while you were away."
+                        w.goneWhy == "short" -> "${c.name} needs 10 minutes to come home."
                         else -> "${c.name} wandered off. Next time, stay to the end."
                     }, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge,
                 )
             }
+            OutlinedTextField(
+                note, { note = it.take(500) }, placeholder = { Text("Add a note") }, minLines = 1, maxLines = 4,
+                modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
+            )
             Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Choice("🎉", "Done", Modifier.weight(1f), strong = true) { out("done") }
                 Choice("🌗", "Partly", Modifier.weight(1f)) { out("partly") }
                 Choice("🌧️", "Not really", Modifier.weight(1f)) { out("notreally") }
             }
-            if (!w.stopped) {
+            if (!w.stopped && !w.stopwatch && w.over == null) {
                 val more = if (w.minutes <= 10) listOf(10, 20) else listOf(5, 10) // after "Just start", offer a real block
                 Row(Modifier.padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("In the flow?", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -137,7 +148,7 @@ private fun MeetSheet(s: UiState, c: CatInfo, onDone: () -> Unit) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Eyebrow("New friend")
             Text("You met ${c.name}!", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 4.dp))
-            CatArt(Art.portrait(c.id), 180.dp, Modifier.padding(vertical = 8.dp))
+            LiveCat(c.id, "portrait", 180.dp, Modifier.padding(vertical = 8.dp), interactive = true, onCat = { it.hop(1); it.happy(1f); it.sparkle() })
             Text(c.about, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Button(onClick = { repo.launch(settings("companion" to c.id)); onDone() }, modifier = Modifier.fillMaxWidth().padding(top = 18.dp).height(52.dp)) {
                 Text("Make ${c.name} My Companion")
@@ -164,7 +175,7 @@ fun InviteSheet(s: UiState, onDone: () -> Unit) {
                         modifier = Modifier.weight(1f).clickable { repo.launch(settings("companion" to c.id)); onDone() },
                     ) {
                         Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            CatArt(Art.portrait(c.id), 72.dp)
+                            LiveCat(c.id, "portrait", 72.dp, shadow = false)
                             Text(c.name, style = MaterialTheme.typography.titleSmall, maxLines = 1)
                         }
                     }

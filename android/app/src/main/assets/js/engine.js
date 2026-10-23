@@ -32,14 +32,26 @@ E.SHOP = {
   luna: 200, cocoa: 250, olive: 300, dumpling: 350, maple: 400, ziggy: 450,
   // Halloween (see E.EVENTS)
   candles: 40, jackolantern: 60, batgarland: 80, cauldron: 120, pumpkin: 300,
+  // Winter
+  snowglobe: 40, sled: 60, snowman: 80, fireplace: 150, flurry: 300,
+  // Café themes (wallpaper and floor; "classic" is free)
+  'theme-mint': 100, 'theme-sakura': 150, 'theme-library': 150, 'theme-garden': 200, 'theme-night': 250,
+  // Sounds (purring, brown noise, rain and white noise are free)
+  'sound-cafe': 60, 'sound-fire': 60, 'sound-waves': 80, 'sound-birds': 80, 'sound-night': 80, 'sound-wind': 60,
+  // Shelter cats: the cat version of Forest's real trees. Each one stands for a real shelter cat;
+  // they come one after the other.
+  shelter1: 1000, shelter2: 1000, shelter3: 1000, shelter4: 1000,
 };
+E.SHELTER = ['shelter1', 'shelter2', 'shelter3', 'shelter4'];
 // Limited things: in the shop only from `from` to `to` ([month, day], both days in, local time), every
 // year. What you got, you keep.
 E.EVENTS = [
   { id: 'halloween', name: 'Halloween', from: [10, 25], to: [11, 1], items: ['pumpkin', 'jackolantern', 'candles', 'batgarland', 'cauldron'] },
+  { id: 'winter', name: 'Winter', from: [12, 15], to: [1, 5], items: ['flurry', 'snowglobe', 'sled', 'snowman', 'fireplace'] },
 ];
 const md = (t) => { const d = new Date(t); return (d.getMonth() + 1) * 100 + d.getDate(); };
-E.season = (now) => E.EVENTS.find((e) => md(now) >= e.from[0] * 100 + e.from[1] && md(now) <= e.to[0] * 100 + e.to[1]) || null;
+const inSeason = (e, t) => { const a = e.from[0] * 100 + e.from[1], z = e.to[0] * 100 + e.to[1], x = md(t); return a <= z ? x >= a && x <= z : x >= a || x <= z; }; // Winter runs over New Year
+E.season = (now) => E.EVENTS.find((e) => inSeason(e, now)) || null;
 // The next event, if it starts within `days` days (for a "coming soon" in the shop).
 E.soon = (now, days = 7) => {
   for (let i = 1; i <= days; i++) {
@@ -52,6 +64,11 @@ E.soon = (now, days = 7) => {
 E.limited = (id) => E.EVENTS.find((e) => e.items.includes(id)) || null;
 E.forSale = (id, now) => { const e = E.limited(id); return !e || E.season(now) === e; };
 const CAT_ID = /^[a-z]{2,12}$/;
+E.MODES = ['timer', 'stopwatch'];
+E.STOPWATCH_MAX = 180; // minutes; a stopwatch block ends by itself after three hours
+E.STOPWATCH_MIN = 10;  // a stopwatch block needs this many minutes for its kitten to come home
+E.PAUSE_MAX = 5;       // minutes a pause lasts at most, like Forest
+E.config.CANCEL = 10000; // ms after Start in which Cancel takes a block back, no harm done (real time)
 const NAP_ID = /^[a-z0-9]{6,20}$/;
 
 E.empty = () => ({
@@ -62,9 +79,12 @@ E.empty = () => ({
   settings: {
     interval: 15, style: 'ask', goal: 0, daily: { on: false, time: '09:00', days: [0, 1, 2, 3, 4, 5, 6] },
     tz: '', share: 'off', friendPings: true, name: '', cat: true, companion: 'miso', catsSeen: null,
-    tags: E.TAGS.slice(), tag: '', u: 0,
+    tags: E.TAGS.slice(), tag: '', mode: 'timer',
+    pause: 'five', overtime: false, closeCounts: true, lines: [], theme: 'classic',
+    rank: { on: false, name: '', global: false }, u: 0,
   },
   owned: [], // what you bought in the shop: { id, at, u }
+  claimed: [], // rewards collected: achievements, monthly challenges, starter steps: { id, at, u }
   tally: {}, // small counters for things history doesn't keep (breaks, breathing, treats from cleared history)
   cleared: 0,
   u: 0,
@@ -87,6 +107,9 @@ E.normalize = (d) => {
   doc.settings.daily = { ...E.empty().settings.daily, ...(doc.settings.daily || {}) };
   if (!Array.isArray(doc.settings.tags)) doc.settings.tags = E.TAGS.slice();
   doc.owned = Array.isArray(d.owned) ? d.owned.filter((x) => x && E.SHOP[x.id] && x.at) : [];
+  doc.claimed = Array.isArray(d.claimed) ? d.claimed.filter((x) => x && typeof x.id === 'string' && x.at && rewardOf(x.id)) : [];
+  if (!Array.isArray(doc.settings.lines)) doc.settings.lines = [];
+  doc.settings.rank = { ...E.empty().settings.rank, ...(doc.settings.rank && typeof doc.settings.rank === 'object' ? doc.settings.rank : {}) };
   doc.cleared = d.cleared || 0;
   doc.tally = {};
   for (const [k, v] of Object.entries(d.tally && typeof d.tally === 'object' ? d.tally : {})) if (/^[a-z]{1,16}$/.test(k) && Number.isInteger(v) && v >= 0) doc.tally[k] = v;
@@ -96,6 +119,9 @@ E.normalize = (d) => {
 
 // ---------- reading the doc ----------
 const isOpen = (b) => !b.ended;
+// A block cancelled in its first seconds stays in the doc as a tombstone (so other devices learn
+// about it), and counts for nothing.
+const live = (doc) => doc.blocks.filter((b) => !b.cancelled);
 E.running = (doc) => doc.blocks.find(isOpen) || null;
 E.awaiting = (doc) => doc.blocks.find((b) => b.ended && !b.closed) || null;
 const drifts = (b) => b.checkins.filter((c) => c.answer === 'drifted').length;
@@ -156,7 +182,7 @@ function missionsFor(from, week) {
   if (week) { const w = ofKind('w'); return [w[h % w.length]]; }
   return ['a', 'b', 'c'].map((k, i) => { const ids = ofKind(k); return ids[(h >>> (i * 5)) % ids.length]; });
 }
-const homeBlocks = (doc) => doc.blocks.filter((b) => kitten(b) === 'home');
+const homeBlocks = (doc) => live(doc).filter((b) => kitten(b) === 'home');
 function progress(ids, list) {
   return ids.map((id) => {
     const m = MISSIONS[id];
@@ -164,8 +190,9 @@ function progress(ids, list) {
     return { id, text: m.text, need: m.need, unit: m.unit || null, pay: m.pay, have: Math.min(have, m.need), done: have >= m.need };
   });
 }
-// What missions have paid, over all the blocks.
-function missionPay(doc) {
+// What missions have paid (and how many were done), over all the blocks.
+function missionPay(doc) { return missionTotals(doc).pay; }
+function missionTotals(doc) {
   const days = new Map(), weeks = new Map();
   for (const b of homeBlocks(doc)) {
     for (const [map, from] of [[days, dayOf(b.start)], [weeks, weekOf(b.start)]]) {
@@ -174,11 +201,11 @@ function missionPay(doc) {
       map.get(from).push(b);
     }
   }
-  let n = 0;
+  let pay = 0, done = 0;
   for (const [map, week] of [[days, false], [weeks, true]]) {
-    for (const [from, list] of map) for (const p of progress(missionsFor(from, week), list)) if (p.done) n += p.pay;
+    for (const [from, list] of map) for (const p of progress(missionsFor(from, week), list)) if (p.done) { pay += p.pay; done += 1; }
   }
-  return n;
+  return { pay, done };
 }
 // Today's and this week's missions, and how far along they are.
 E.missions = (doc, now) => {
@@ -194,19 +221,147 @@ E.missions = (doc, now) => {
   };
 };
 
-// Treats: earned (by minutes, napping together and missions), spent, and what's left to spend.
-const blockPay = (doc) => doc.blocks.reduce((n, b) => n + treatsOf(b) + napBonus(b), 0);
+// ---------- achievements, the monthly challenge and the starter challenge ----------
+// Like Forest's. Progress is worked out from the doc; a reward is collected once (doc.claimed, synced
+// like the shop) and stays, even after Clear My History.
+E.ADOPT = ['luna', 'cocoa', 'olive', 'dumpling', 'maple', 'ziggy', 'pumpkin', 'flurry'];
+const isCafeThing = (id) => !E.ADOPT.includes(id) && !E.SHELTER.includes(id) && !/^(theme|sound)-/.test(id);
+function statsOf(doc) {
+  const home = homeBlocks(doc);
+  const days = [...new Set(home.map((b) => dayOf(b.start)))].sort((a, b) => a - b);
+  let best = 0, run = 0;
+  days.forEach((t, i) => { run = i && Math.round((t - days[i - 1]) / 86400000) === 1 ? run + 1 : 1; best = Math.max(best, run); });
+  const seen = doc.settings.catsSeen || [];
+  return {
+    home: home.length,
+    minutes: home.reduce((n, b) => n + homeMin(b), 0),
+    streak: best,
+    long: home.filter((b) => homeMin(b) >= 120).length,
+    early: home.filter((b) => hourOf(b.start) >= 4 && hourOf(b.start) < 7).length,
+    night: home.filter((b) => hourOf(b.start) >= 22 || hourOf(b.start) < 4).length,
+    naps: home.filter((b) => b.nap && b.napN).length,
+    stopwatch: home.filter((b) => b.mode === 'stopwatch' && homeMin(b) >= 30).length,
+    tags: new Set(home.map((b) => b.tag).filter(Boolean)).size,
+    missions: missionTotals(doc).done,
+    met: seen.filter((id) => !E.SHOP[id]).length,
+    adopted: doc.owned.filter((x) => E.ADOPT.includes(x.id)).length,
+    things: doc.owned.filter((x) => isCafeThing(x.id)).length,
+    shelter: doc.owned.filter((x) => E.SHELTER.includes(x.id)).length,
+    friends: doc.tally.friends || 0,
+    breaks: doc.tally.breaks || 0,
+    breathes: doc.tally.breathes || 0,
+    tagged: live(doc).some((b) => b.ended && b.tag) ? 1 : 0,
+  };
+}
+E.stats = statsOf;
+// [id, name, what it takes, stat, goal, treats]
+const ACH = [
+  ['first', 'First Kitten', 'Bring a kitten home', 'home', 1, 10],
+  ['sitter', 'Cat Sitter', 'Bring 10 kittens home', 'home', 10, 25],
+  ['owner', 'Café Owner', 'Bring 50 kittens home', 'home', 50, 75],
+  ['whisperer', 'Cat Whisperer', 'Bring 200 kittens home', 'home', 200, 200],
+  ['hour', 'One Good Hour', 'Focus for 1 hour in all', 'minutes', 60, 10],
+  ['ten', 'Ten Hours In', 'Focus for 10 hours in all', 'minutes', 600, 40],
+  ['deep', 'Deep Worker', 'Focus for 50 hours in all', 'minutes', 3000, 120],
+  ['week', 'A Whole Week', 'Focus for 7 days (168 hours) in all', 'minutes', 10080, 300],
+  ['streak3', '3 Days in a Row', 'Bring kittens home 3 days in a row', 'streak', 3, 15],
+  ['streak7', '7 Days in a Row', 'Bring kittens home 7 days in a row', 'streak', 7, 50],
+  ['streak30', '30 Days in a Row', 'Bring kittens home 30 days in a row', 'streak', 30, 200],
+  ['streak100', '100 Days in a Row', 'Bring kittens home 100 days in a row', 'streak', 100, 500],
+  ['haul', 'The Long Haul', 'Bring a kitten home from a 2-hour block', 'long', 1, 40],
+  ['open', 'Open-Ended', 'Bring a kitten home from a 30-minute stopwatch block', 'stopwatch', 1, 20],
+  ['bird', 'Early Bird', 'Start 5 blocks before 7 am', 'early', 5, 30],
+  ['owl', 'Night Owl', 'Start 5 blocks after 10 pm', 'night', 5, 30],
+  ['nap', 'Napping Together', 'Nap with a friend once', 'naps', 1, 20],
+  ['club', 'Nap Club', 'Nap with friends 10 times', 'naps', 10, 75],
+  ['friend', 'A Friend', 'Add a friend', 'friends', 1, 10],
+  ['crew', 'Cat Crew', 'Have 5 friends', 'friends', 5, 40],
+  ['mission', 'On a Mission', 'Finish 10 missions', 'missions', 10, 30],
+  ['missions', 'Mission Master', 'Finish 50 missions', 'missions', 50, 100],
+  ['hats', 'Many Hats', 'Bring kittens home on 3 different tags', 'tags', 3, 15],
+  ['all8', 'Met Them All', 'Meet all 8 cats', 'met', 8, 100],
+  ['adopter', 'Adopter', 'Adopt 3 cats', 'adopted', 3, 60],
+  ['designer', 'Interior Designer', 'Put 10 things in your café', 'things', 10, 60],
+  ['kind', 'Kind Heart', 'Sponsor a shelter cat', 'shelter', 1, 50],
+];
+E.ACHIEVEMENTS = ACH.map(([id, name, text, stat, goal, reward]) => ({ id, name, text, stat, goal, reward }));
+// [step, what to do, stat, goal]; 20 treats a step, and 100 more when they're all done.
+const STARTER = [
+  ['first', 'Bring your first kitten home', 'home', 1],
+  ['tag', 'Tag a block', 'tagged', 1],
+  ['break', 'Take a break after a block', 'breaks', 1],
+  ['buy', 'Buy something for your café', 'things', 1],
+  ['breathe', 'Breathe for a minute', 'breathes', 1],
+  ['mission', 'Finish a mission', 'missions', 1],
+  ['five', 'Bring 5 kittens home', 'home', 5],
+];
+E.STARTER_PAY = 20; E.STARTER_ALL = 100;
+E.MONTH_NEED = 20; E.MONTH_PAY = 300; // the monthly challenge: kittens home on 20 days of the month
+const monthId = (t) => { const d = new Date(t); return `month-${d.getFullYear()}-${d.getMonth() + 1}`; };
+function rewardOf(id) {
+  const a = E.ACHIEVEMENTS.find((x) => x.id === id);
+  if (a) return a.reward;
+  if (/^month-\d{4}-\d{1,2}$/.test(id)) return E.MONTH_PAY;
+  if (id === 'starter-all') return E.STARTER_ALL;
+  if (/^starter-/.test(id) && STARTER.some((x) => `starter-${x[0]}` === id)) return E.STARTER_PAY;
+  return 0;
+}
+const claimed = (doc, id) => doc.claimed.some((x) => x.id === id);
+E.achievements = (doc) => {
+  const st = statsOf(doc);
+  return E.ACHIEVEMENTS.map((a) => ({ ...a, have: Math.min(st[a.stat], a.goal), done: st[a.stat] >= a.goal, claimed: claimed(doc, a.id) }));
+};
+E.starter = (doc) => {
+  const st = statsOf(doc);
+  const steps = STARTER.map(([id, text, stat, goal]) => ({ id: `starter-${id}`, text, goal, have: Math.min(st[stat], goal), done: st[stat] >= goal, claimed: claimed(doc, `starter-${id}`), reward: E.STARTER_PAY }));
+  const all = steps.every((x) => x.done);
+  return { steps, all: { id: 'starter-all', done: all, claimed: claimed(doc, 'starter-all'), reward: E.STARTER_ALL }, finished: all && claimed(doc, 'starter-all') };
+};
+// This month's challenge (or the month `at` is in).
+E.monthly = (doc, at) => {
+  const d = new Date(at);
+  const from = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+  const to = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
+  const days = new Set(homeBlocks(doc).filter((b) => b.start >= from && b.start < to).map((b) => dayOf(b.start))).size;
+  const id = monthId(at);
+  return { id, from, to, need: E.MONTH_NEED, have: Math.min(days, E.MONTH_NEED), done: days >= E.MONTH_NEED, claimed: claimed(doc, id), reward: E.MONTH_PAY };
+};
+// Collect a reward that's done and not collected yet.
+E.claim = (doc, id, now) => {
+  if (claimed(doc, id) || !rewardOf(id)) bad('claim');
+  const a = E.achievements(doc).find((x) => x.id === id);
+  const st = E.starter(doc);
+  const step = st.steps.find((x) => x.id === id);
+  const m = /^month-(\d{4})-(\d{1,2})$/.exec(id);
+  const ok = a ? a.done : step ? step.done : id === 'starter-all' ? st.all.done : m ? E.monthly(doc, new Date(Number(m[1]), Number(m[2]) - 1, 15).getTime()).done : false;
+  if (!ok) bad('claim');
+  doc.claimed.push({ id, at: now, u: now });
+  doc.u = now;
+  return rewardOf(id);
+};
+// Counters the page learns about (how many friends you have): they only go up.
+E.setTally = (doc, key, n, now) => {
+  if (!/^[a-z]{1,16}$/.test(key) || !Number.isInteger(n) || n < 0) return;
+  if ((doc.tally[key] || 0) >= n) return;
+  doc.tally[key] = n; doc.u = now;
+};
+
+// Treats: earned (by minutes, napping together, missions and rewards), spent, and what's left to spend.
+const blockPay = (doc) => live(doc).reduce((n, b) => n + treatsOf(b) + napBonus(b), 0);
 const earnedOf = (doc) => blockPay(doc) + missionPay(doc);
+const claimPay = (doc) => doc.claimed.reduce((n, x) => n + rewardOf(x.id), 0);
 E.treats = (doc) => {
   const missions = missionPay(doc);
-  const earned = (doc.tally.banked || 0) + blockPay(doc) + missions;
+  const rewards = claimPay(doc);
+  const earned = (doc.tally.banked || 0) + blockPay(doc) + missions + rewards;
   const spent = doc.owned.reduce((n, x) => n + (E.SHOP[x.id] || 0), 0);
-  return { earned, spent, left: Math.max(0, earned - spent), missions };
+  return { earned, spent, left: Math.max(0, earned - spent), missions, rewards };
 };
 E.owns = (doc, id) => doc.owned.some((x) => x.id === id);
 
 function lineFor(b, n) {
   const seed = [...b.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+  if (b.own && b.own.length && (seed + n) % 2 === 0) return b.own[(seed + n) % b.own.length]; // your own lines, every other nudge
   return LINES[(seed + n * 5) % LINES.length];
 }
 
@@ -237,12 +392,10 @@ E.tick = (doc, now) => {
       continue;
     }
     if (b.paused) {
-      if (now - b.paused > 120 * M()) {
-        stopped(b, b.paused, 'stop');
-        b.ended = b.paused; b.paused = null; b.stopped = true; b.plan = [];
-        touch(doc, b, now); changed = true;
-      }
-      continue;
+      // A pause lasts 5 minutes at most, like Forest's; then the block goes on by itself.
+      if (now - b.paused < E.PAUSE_MAX * M()) continue;
+      resumeAt(b, b.paused + E.PAUSE_MAX * M());
+      touch(doc, b, now); changed = true;
     }
     while (b.plan.length && b.plan[0].at <= now) {
       const p = b.plan.shift();
@@ -250,8 +403,17 @@ E.tick = (doc, now) => {
       touch(doc, b, now); changed = true;
     }
     if (now >= b.end) {
-      b.ended = b.end; b.plan = [];
-      if (b.cat && !b.gone) { b.home = b.home || b.end; b.treats = minutesOn(b, b.end); } // the kitten comes home
+      if (b.overtime && !b.over) {
+        // "Count extra time": the kitten comes home at the end, and the block keeps counting until
+        // you stop it (two hours more at most).
+        b.over = b.end; b.plan = [];
+        if (b.cat && !b.gone) { b.home = b.home || b.end; b.treats = minutesOn(b, b.end); }
+        b.end = b.over + 120 * M();
+      } else if (b.mode === 'stopwatch') finish(b, b.end);
+      else {
+        b.ended = b.end; b.plan = [];
+        if (b.cat && !b.gone) { b.home = b.home || b.end; b.treats = minutesOn(b, b.end); } // the kitten comes home
+      }
       touch(doc, b, now); changed = true;
     }
   }
@@ -272,6 +434,8 @@ function blockView(b) {
     parked: b.parked.map((x) => x.text), with: b.with || null,
     cat: b.cat || 'miso', tag: b.tag || null, kitten: kitten(b), goneWhy: b.goneWhy || null, goneBy: b.goneBy || null, treats: treatsOf(b),
     nap: b.nap || null, napN: b.napN || 0, bonus: napBonus(b),
+    mode: b.mode || 'timer', over: b.over || null, cancelUntil: b.start + E.config.CANCEL, note: b.note || '',
+    pauseEnds: b.paused ? b.paused + E.PAUSE_MAX * M() : null, pauses: b.pauses || 0,
   };
 }
 
@@ -302,7 +466,7 @@ E.view = (doc, now) => {
   };
 };
 
-E.history = (doc) => doc.blocks.filter((b) => b.ended).sort((a, b) => b.start - a.start).map((b) => ({
+E.history = (doc) => live(doc).filter((b) => b.ended).sort((a, b) => b.start - a.start).map((b) => ({
   id: b.id, start: b.start, intention: b.intention, minutes: b.minutes,
   actual: Math.max(1, Math.round(activeMs(b, b.ended) / M())), stopped: Boolean(b.stopped),
   outcome: b.outcome || null, drifts: drifts(b), checkins: b.checkins.length, style: b.style || 'ask',
@@ -311,6 +475,7 @@ E.history = (doc) => doc.blocks.filter((b) => b.ended).sort((a, b) => b.start - 
   parked: b.parked.map((x) => x.text),
   cat: b.cat || 'miso', tag: b.tag || null, kitten: kitten(b), goneWhy: b.goneWhy || null, goneBy: b.goneBy || null,
   treats: treatsOf(b) + napBonus(b), nap: b.nap || null, napN: b.napN || 0,
+  mode: b.mode || 'timer', note: b.note || '',
 }));
 
 // ---------- changing the doc (each takes `now`, throws on bad input) ----------
@@ -327,9 +492,11 @@ function closeAll(doc, now) {
 E.start = (doc, o, now) => {
   const intention = clean(o.intention, 140);
   if (!intention) bad('intention');
-  let minutes = Math.round(Number(o.minutes));
+  const joining = o.withEnd && o.withEnd > now + M();
+  const mode = !joining && o.mode === 'stopwatch' ? 'stopwatch' : 'timer';
+  let minutes = mode === 'stopwatch' ? E.STOPWATCH_MAX : Math.round(Number(o.minutes));
   // Joining a friend: end at the same moment they do.
-  const end = o.withEnd && o.withEnd > now + M() ? o.withEnd : now + minutes * M();
+  const end = joining ? o.withEnd : now + minutes * M();
   minutes = Math.max(1, Math.round((end - now) / M()));
   if (!(minutes >= 1 && minutes <= 240)) bad('minutes');
   const style = E.STYLES.includes(o.style) ? o.style : doc.settings.style;
@@ -343,10 +510,15 @@ E.start = (doc, o, now) => {
     interval: doc.settings.interval, start: now, end, checkins: [], plan: [], parked: [], pausedTotal: 0,
     with: clean(o.withName, 40) || undefined, cat, tag: tag || undefined, nap, u: now,
   };
+  if (mode === 'stopwatch') b.mode = mode;
+  if (mode === 'timer' && doc.settings.overtime && !nap) b.overtime = true;
+  if (doc.settings.lines.length) b.own = doc.settings.lines.slice(0, 20);
   b.plan = planFrom(b, now);
+  // Cancelled blocks are kept a month, so other devices hear about them, then dropped.
+  doc.blocks = doc.blocks.filter((x) => !x.cancelled || now - x.cancelled < 30 * 86400000);
   doc.blocks.push(b);
   if (doc.blocks.length > 2000) { const before = earnedOf(doc); doc.blocks.splice(0, doc.blocks.length - 2000); bank(doc, before); }
-  doc.settings = { ...doc.settings, style, companion: cat || doc.settings.companion, tag, u: now }; // what you used last is the default next time
+  doc.settings = { ...doc.settings, style, companion: cat || doc.settings.companion, tag, mode: joining ? doc.settings.mode : mode, u: now }; // what you used last is the default next time
   if (o.fromLater) E.doneLater(doc, o.fromLater, now);
   doc.u = now;
   return b;
@@ -354,18 +526,60 @@ E.start = (doc, o, now) => {
 
 E.stop = (doc, now) => {
   const b = E.running(doc);
-  if (b) { stopped(b, b.paused || now, 'stop'); b.ended = b.paused || now; b.paused = null; b.stopped = true; b.plan = []; touch(doc, b, now); }
+  if (!b) return;
+  const at = b.paused || now;
+  if (b.mode === 'stopwatch') finish(b, at); // a stopwatch block ends when you stop it
+  else if (b.over) { stopped(b, at, 'stop'); b.ended = at; b.paused = null; b.plan = []; } // extra time: done when you say so
+  else { stopped(b, at, 'stop'); b.ended = at; b.paused = null; b.stopped = true; b.plan = []; }
+  touch(doc, b, now);
+};
+
+// A stopwatch block ends: the kitten comes home if it lasted 10 minutes or more.
+function finish(b, at) {
+  const enough = activeMs(b, at) >= E.STOPWATCH_MIN * M();
+  if (b.cat && !b.gone) {
+    if (enough) { b.home = b.home || at; b.treats = minutesOn(b, at); } else { b.gone = at; b.goneWhy = 'short'; }
+  }
+  b.minutes = minutesOn(b, at);
+  b.ended = at; b.paused = null; b.plan = [];
+  b.stopped = !enough;
+}
+
+// Changed your mind in the first 10 seconds: the block is taken back, nothing counts.
+E.cancel = (doc, now) => {
+  const b = E.running(doc);
+  if (!b || b.nap || now - b.start > E.config.CANCEL) bad('cancel');
+  b.cancelled = now; b.ended = now; b.closed = true; b.paused = null; b.plan = [];
+  touch(doc, b, now);
+  return b;
+};
+
+// Change a block afterwards (or while it runs): what it was, its tag, a note.
+E.edit = (doc, id, patch, now) => {
+  const b = doc.blocks.find((x) => x.id === id && !x.cancelled);
+  if (!b) bad('edit');
+  if ('intention' in patch) { const t = clean(patch.intention, 140); if (!t) bad('intention'); b.intention = t; }
+  if ('tag' in patch) b.tag = clean(patch.tag, 20) || undefined;
+  if ('note' in patch) b.note = String(patch.note || '').replace(/\r/g, '').trim().slice(0, 500) || undefined;
+  touch(doc, b, now);
 };
 
 // You left Kavana in the middle of a block (the page knows from its visibility): the kitten wanders
 // off at `at`. The block itself goes on. The page may only find out later, after the block has ended
 // (and the kitten came home): then it's undone.
-E.away = (doc, at, now) => {
+// With `grace`, `at` is when you left, and the kitten waits that long before it goes. Leaving during a
+// pause counts from when the pause ended.
+E.away = (doc, at, now, grace = 0) => {
   let b = null;
-  for (let i = doc.blocks.length - 1; i >= 0 && !b; i--) { const x = doc.blocks[i]; if (x.start <= at && (!x.ended || x.ended > at)) b = x; }
-  if (!b || !b.cat || b.gone || (b.home && b.home <= at) || (b.paused && b.paused <= at)) return null;
+  for (let i = doc.blocks.length - 1; i >= 0 && !b; i--) { const x = doc.blocks[i]; if (!x.cancelled && x.start <= at && (!x.ended || x.ended > at)) b = x; }
+  if (!b) return null;
+  let when = at;
+  if (b.lastPause && b.lastPause <= at && b.lastResume && at < b.lastResume) when = b.lastResume;
+  when += grace;
+  if (when > now || (b.ended && b.ended <= when)) return null;
+  if (!b.cat || b.gone || (b.home && b.home <= when) || (b.paused && b.paused <= when)) return null;
   delete b.home; b.treats = 0;
-  b.gone = at; b.goneWhy = 'away';
+  b.gone = when; b.goneWhy = 'away';
   touch(doc, b, now);
   return b;
 };
@@ -407,19 +621,27 @@ function bank(doc, before) {
   if (n > 0) doc.tally.banked = (doc.tally.banked || 0) + n;
 }
 
+// Pausing, unless it's turned off in Settings (and never while napping together). A pause lasts
+// 5 minutes at most (E.tick ends it).
+E.canPause = (doc) => doc.settings.pause !== 'off';
 E.pause = (doc, now) => {
   const b = E.running(doc);
-  if (b && !b.paused && !b.nap) { b.paused = now; touch(doc, b, now); } // no pausing while napping together
+  if (!b || b.paused || b.nap || !E.canPause(doc)) return;
+  b.paused = now; b.lastPause = now; b.pauses = (b.pauses || 0) + 1;
+  touch(doc, b, now);
 };
 
-E.resume = (doc, now) => {
-  const b = E.running(doc);
-  if (!b || !b.paused) return;
-  const d = now - b.paused; // the end and every ping move back by the pause
+function resumeAt(b, at) {
+  const d = at - b.paused; // the end and every ping move back by the pause
   b.end += d;
   for (const p of b.plan) p.at += d;
   b.pausedTotal = (b.pausedTotal || 0) + d;
-  b.paused = null;
+  b.paused = null; b.lastResume = at;
+}
+E.resume = (doc, now) => {
+  const b = E.running(doc);
+  if (!b || !b.paused) return;
+  resumeAt(b, Math.min(now, b.paused + E.PAUSE_MAX * M()));
   touch(doc, b, now);
 };
 
@@ -537,6 +759,24 @@ E.setSettings = (doc, patch, now) => {
     if (s.tag && !s.tags.includes(s.tag)) s.tag = '';
   }
   if ('tag' in patch) s.tag = clean(patch.tag, 20);
+  if ('mode' in patch) { if (!E.MODES.includes(patch.mode)) bad('mode'); s.mode = patch.mode; }
+  if ('pause' in patch) { if (!['five', 'off'].includes(patch.pause)) bad('pause'); s.pause = patch.pause; }
+  if ('overtime' in patch) s.overtime = Boolean(patch.overtime);
+  if ('closeCounts' in patch) s.closeCounts = Boolean(patch.closeCounts);
+  if ('lines' in patch) {
+    if (!Array.isArray(patch.lines)) bad('lines');
+    s.lines = [...new Set(patch.lines.map((t) => clean(t, 120)).filter(Boolean))].slice(0, 20);
+  }
+  if ('theme' in patch) {
+    if (patch.theme !== 'classic' && !(E.SHOP[`theme-${patch.theme}`] && E.owns(doc, `theme-${patch.theme}`))) bad('theme');
+    s.theme = patch.theme;
+  }
+  if ('rank' in patch) {
+    const r = patch.rank || {};
+    const name = clean(r.name, 20).replace(/[^\p{L}\p{N} ._'-]/gu, '');
+    if (r.global && !name) bad('rank');
+    s.rank = { on: Boolean(r.on), name, global: Boolean(r.on && r.global) };
+  }
   s.u = now;
   doc.settings = s;
   doc.u = now;
@@ -559,7 +799,12 @@ E.pings = (doc, now) => {
           actions: [{ action: 'yes', title: 'Yes' }, { action: 'drifted', title: 'Drifted' }],
         });
     }
-    out.push({ at: b.end, kind: 'end', tag: `kavana-${b.id}`, block: b.id, title: cat ? "🐱 Boo! Time's up. How did it go?" : 'How did it go?', body: `${b.intention}. Tap to log it.` });
+    const name = cat && b.cat ? b.cat.charAt(0).toUpperCase() + b.cat.slice(1) : 'Your kitten';
+    if (b.overtime && !b.over) {
+      out.push({ at: b.end, kind: 'end', tag: `kavana-${b.id}`, block: b.id, title: cat ? `🐱 Time's up, and ${name} came home` : "Time's up", body: `${b.intention}. Kavana keeps counting until you stop.` });
+    } else if (b.mode === 'stopwatch') {
+      out.push({ at: b.end, kind: 'end', tag: `kavana-${b.id}`, block: b.id, title: cat ? `🐱 Three hours! ${name} came home` : 'Three hours. How did it go?', body: `${b.intention}. Tap to log it.` });
+    } else out.push({ at: b.end, kind: 'end', tag: `kavana-${b.id}`, block: b.id, title: cat ? "🐱 Boo! Time's up. How did it go?" : 'How did it go?', body: `${b.intention}. Tap to log it.` });
   }
   if (doc.brk && doc.brk.end > now) {
     out.push({ at: doc.brk.end, kind: 'break-over', tag: 'kavana-break', title: cat ? "🐱 Boo! Break's over" : "Break's over", body: "It's time to focus. Ready for the next block?" });
@@ -592,12 +837,26 @@ E.presence = (doc, now) => {
     out.paused = b.paused || null;
     out.id = b.id;
     out.nap = b.cat ? b.nap || b.id : null; // the group to join (cat mode off: just focus together)
+    if (b.mode === 'stopwatch') { out.mode = 'stopwatch'; out.start = b.start; out.nap = null; } // nobody can end with an open-ended block
     if (share === 'all') out.intention = b.intention;
   } else if (doc.brk && doc.brk.end > now) {
     out.status = 'break';
     out.end = doc.brk.end;
   }
   return out;
+};
+
+// ---------- rankings ----------
+// A ranking round is a week, Monday 00:00 to Monday 00:00 UTC, the same for everyone. What counts is
+// the minutes of blocks whose kitten came home, by when they started.
+E.round = (now) => {
+  const d = new Date(now);
+  const from = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return { from, to: from + 7 * 86400000 };
+};
+E.ranked = (doc, from, to) => {
+  const bs = homeBlocks(doc).filter((b) => b.start >= from && b.start < to);
+  return { minutes: bs.reduce((n, b) => n + homeMin(b), 0), kittens: bs.length };
 };
 
 // ---------- merging two copies of the same doc (sync) ----------
@@ -618,6 +877,7 @@ E.merge = (a, b) => {
   const block = (x, y) => {
     const w = newer(x, y);
     const l = w === x ? y : x;
+    if (l && l.cancelled && !w.cancelled) return l; // a cancel sticks
     if (!l || !l.gone || w.gone || (w.home && w.home <= l.gone)) return w;
     const out = { ...w, gone: l.gone, goneWhy: l.goneWhy, treats: 0 };
     if (l.goneBy) out.goneBy = l.goneBy;
@@ -632,6 +892,7 @@ E.merge = (a, b) => {
   for (const x of open.slice(0, -1)) { stopped(x, x.paused || x.start, 'stop'); x.ended = x.paused || x.start; x.stopped = true; x.plan = []; x.closed = true; }
   out.later = byId(a.later, b.later).sort((x, y) => y.at - x.at);
   out.owned = byId(a.owned, b.owned).sort((x, y) => x.at - y.at);
+  out.claimed = byId(a.claimed, b.claimed).sort((x, y) => x.at - y.at);
   out.settings = (b.settings.u || 0) > (a.settings.u || 0) ? b.settings : a.settings;
   if ((b.brkU || 0) > (a.brkU || 0)) { out.brk = b.brk; out.brkU = b.brkU; } else { out.brk = a.brk; out.brkU = a.brkU; }
   for (const k of new Set([...Object.keys(a.tally), ...Object.keys(b.tally)])) out.tally[k] = Math.max(a.tally[k] || 0, b.tally[k] || 0);

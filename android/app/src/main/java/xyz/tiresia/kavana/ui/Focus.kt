@@ -4,6 +4,13 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,7 +20,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.SelfImprovement
+import androidx.compose.material.icons.rounded.Campaign
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -48,13 +58,13 @@ import java.time.format.DateTimeFormatter
 import java.util.Date
 
 @Composable
-fun FocusTab(s: UiState, now: Long, form: StartForm, act: MainActivity) {
+fun FocusTab(s: UiState, now: Long, form: StartForm, act: MainActivity, newsUnread: Boolean, onBreathe: () -> Unit, onNews: () -> Unit, onSound: () -> Unit) {
     val a = s.view.active
     val brk = s.view.onBreak
     when {
-        a != null -> RunScreen(s, a, now)
+        a != null -> RunScreen(s, a, now, onSound)
         brk != null -> BreakScreen(brk, now)
-        else -> HomeScreen(s, form, act)
+        else -> HomeScreen(s, form, act, newsUnread, onBreathe, onNews)
     }
 }
 
@@ -66,7 +76,7 @@ private val tabular = TextStyle(fontFeatureSettings = "tnum")
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun HomeScreen(s: UiState, form: StartForm, act: MainActivity) {
+fun HomeScreen(s: UiState, form: StartForm, act: MainActivity, newsUnread: Boolean, onBreathe: () -> Unit, onNews: () -> Unit) {
     val repo = KavanaApp.repo
     val resumes by act.resumes
     val notifyOn = remember(resumes) { act.notificationsOn() }
@@ -76,21 +86,31 @@ fun HomeScreen(s: UiState, form: StartForm, act: MainActivity) {
     val focus = remember { FocusRequester() }
     val set = s.view.settings
 
+    val mode = form.mode ?: set.mode
+    val tag = form.tag ?: set.tag.takeIf { it in set.tags } ?: ""
+
     fun start() {
-        val minutes = if (form.minutes == 0) form.custom.toIntOrNull() ?: 0 else form.minutes
+        val minutes = if (mode == "stopwatch") 180 else if (form.minutes == 0) form.custom.toIntOrNull() ?: 0 else form.minutes
         if (form.intention.isBlank()) { runCatching { focus.requestFocus() }; repo.toasts.tryEmit("Say what you're working on first."); return }
         if (minutes !in 1..240) { repo.toasts.tryEmit("Pick between 1 and 240 minutes."); return }
         if (!act.notificationsOn() && !repo.prefs.getBoolean("askedNotify", false)) act.askNotifications()
         repo.launch(op("start",
-            "intention" to form.intention, "step" to form.step, "minutes" to minutes, "style" to style,
-            "fromLater" to form.fromLater, "cat" to (if (s.catsOn) s.companion else null),
+            "intention" to form.intention, "step" to form.step, "minutes" to minutes, "style" to style, "mode" to mode,
+            "tag" to tag, "fromLater" to form.fromLater, "cat" to (if (s.catsOn) s.companion else null),
         )) { out -> if (out != null && out.error == null) { form.intention = ""; form.step = ""; form.fromLater = null } }
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 28.dp)) {
         Text(LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMMM d")), style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 2.dp, top = 16.dp))
-        LargeTitle("Focus")
+        LargeTitle("Focus") {
+            IconButton(onClick = onBreathe) { Icon(Icons.Rounded.SelfImprovement, "A mindful minute", tint = MaterialTheme.colorScheme.primary) }
+            if (s.news.isNotEmpty()) {
+                IconButton(onClick = onNews) {
+                    if (newsUnread) BadgedBox(badge = { Badge() }) { Icon(Icons.Rounded.Campaign, "News") } else Icon(Icons.Rounded.Campaign, "News")
+                }
+            }
+        }
 
         if (!notifyOn) Banner("Reminders are off on this phone.") { TextButton(onClick = { act.askNotifications() }) { Text("Turn On") } }
         val offer = s.view.breakOffer
@@ -127,17 +147,20 @@ fun HomeScreen(s: UiState, form: StartForm, act: MainActivity) {
         if (s.catsOn) {
             val c = s.cat(s.companion)
             Group("Who's coming") {
-                Item(c.name, sub = "grows up while you focus", onClick = { inviting = true }, leading = { CatArt(Art.portrait(c.id), 44.dp) }) {
+                Item(c.name, sub = "grows up while you focus", onClick = { inviting = true }, leading = { LiveCat(c.id, "portrait", 52.dp, shadow = false) }) {
                     Text("Change", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
 
-        Group("How long") {
-            Box(Modifier.padding(12.dp)) {
-                Seg(listOf(5 to "5 min", 25 to "25 min", 50 to "50 min", 0 to "Custom"), form.minutes) { form.minutes = it }
+        Group("How long", foot = if (mode == "stopwatch") "Counts up, for up to 3 hours. Tap Done when you are; after 10 minutes your kitten comes home." else null) {
+            Box(Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp)) {
+                Seg(listOf("timer" to "Timer", "stopwatch" to "Stopwatch"), mode) { form.mode = it }
             }
-            if (form.minutes == 0) {
+            if (mode == "timer") Box(Modifier.padding(12.dp)) {
+                Seg(listOf(5 to "5 min", 25 to "25 min", 50 to "50 min", 0 to "Custom"), form.minutes) { form.minutes = it }
+            } else Spacer(Modifier.height(12.dp))
+            if (mode == "timer" && form.minutes == 0) {
                 GroupDivider()
                 Item("Minutes") {
                     OutlinedTextField(
@@ -145,6 +168,15 @@ fun HomeScreen(s: UiState, form: StartForm, act: MainActivity) {
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.width(96.dp),
                         textStyle = MaterialTheme.typography.bodyLarge.copy(textAlign = TextAlign.End),
                     )
+                }
+            }
+        }
+
+        if (set.tags.isNotEmpty()) Group("Tag") {
+            FlowRow(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                set.tags.forEach { t ->
+                    FilterChip(selected = t == tag, onClick = { form.tag = if (t == tag) "" else t }, label = { Text(t) },
+                        leadingIcon = { Box(Modifier.size(10.dp).background(tagColor(t, set.tags), CircleShape)) })
                 }
             }
         }
@@ -211,13 +243,33 @@ fun StatTile(big: String, small: String, modifier: Modifier = Modifier) {
 
 // ---------- a block that's running ----------
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun RunScreen(s: UiState, a: Block, now: Long) {
+fun RunScreen(s: UiState, a: Block, now: Long, onSound: () -> Unit) {
     val repo = KavanaApp.repo
     val k = LocalK.current
     val paused = a.paused != null
-    val left = a.end - (a.paused ?: now)
-    val frac = (left.toFloat() / a.total.coerceAtLeast(1)).coerceIn(0f, 1f)
+    val at = a.paused ?: now
+    val left = a.end - at
+    val spent = a.total - left // time on the block, pauses left out
+    val over = a.over != null
+    // The ring: what's left of a timer; a stopwatch fills it once an hour. `grow`: how grown the kitten is.
+    val frac: Float
+    val grow: Float
+    val clock: String
+    when {
+        a.stopwatch -> {
+            clock = fmtClock(spent)
+            frac = 1f - (spent % 3_600_000L) / 3_600_000f
+            grow = when {
+                spent < 600_000L -> 0.25f * spent / 600_000f
+                spent < 2_400_000L -> 0.25f + 0.5f * (spent - 600_000L) / 1_800_000f
+                else -> minOf(1f, 0.75f + 0.25f * (spent - 2_400_000L) / 1_200_000f)
+            }
+        }
+        over -> { clock = "+" + fmtClock(maxOf(0L, spent - a.minutes * 60_000L)); frac = 0f; grow = 1f }
+        else -> { clock = fmtClock(left); frac = (left.toFloat() / a.total.coerceAtLeast(1)).coerceIn(0f, 1f); grow = 1f - frac }
+    }
     val c = s.cat(a.cat)
     var parking by remember { mutableStateOf(false) }
     var stopping by remember { mutableStateOf(false) }
@@ -227,12 +279,19 @@ fun RunScreen(s: UiState, a: Block, now: Long) {
         view.keepScreenOn = awake && !paused
         onDispose { view.keepScreenOn = false }
     }
+    // The first 10 seconds: Cancel takes it back, no harm done.
+    val grace = ((a.cancelUntil - now + 999) / 1000).toInt()
+    fun stop() {
+        if (grace > 0) repo.launch(op("cancel")) { out -> if (out?.error == null) repo.toasts.tryEmit("Cancelled. Nothing counted.") else repo.toasts.tryEmit("Too late to cancel. Use Stop.") }
+        else stopping = true
+    }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Eyebrow(if (paused) "Paused" else "Focusing", color = if (paused) k.orange else MaterialTheme.colorScheme.primary)
+        Eyebrow(when { paused -> "Paused"; over -> "Extra time"; a.stopwatch -> "Stopwatch"; else -> "Focusing" },
+            color = if (paused) k.orange else MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(4.dp))
         Text(a.intention, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
         if (a.step != null) Text(
@@ -240,20 +299,23 @@ fun RunScreen(s: UiState, a: Block, now: Long) {
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 4.dp),
         )
+        if (a.tag != null) TagChip(a.tag, s.view.settings.tags, Modifier.padding(top = 6.dp))
         Spacer(Modifier.height(18.dp))
         // The ring takes about a third of the screen's height, so Stop and Pause stay in view on a short phone.
         val ring = (LocalConfiguration.current.screenHeightDp * 0.3f).dp.coerceIn(200.dp, 264.dp)
         Dial(frac, paused, ring) {
-            if (s.catsOn) Kitten(a, 1f - frac, paused, ring * 0.76f)
-            else Text(fmtClock(left), style = MaterialTheme.typography.displayMedium.merge(tabular))
+            if (s.catsOn) Kitten(a, grow, paused, ring * 0.76f)
+            else Text(clock, style = MaterialTheme.typography.displayMedium.merge(tabular))
         }
-        if (s.catsOn) Text(fmtClock(left), style = MaterialTheme.typography.displayMedium.merge(tabular), modifier = Modifier.padding(top = 10.dp))
-        Text(if (paused) "Paused" else "Ends at ${clockTime(a.end)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (s.catsOn) Text(kittenSays(a, c, paused, 1f - frac), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center,
+        if (s.catsOn) Text(clock, style = MaterialTheme.typography.displayMedium.merge(tabular), modifier = Modifier.padding(top = 10.dp))
+        Text(when { paused -> "Paused"; a.stopwatch -> "Started at ${clockTime(a.start)}"; over -> "Ended at ${clockTime(a.over!!)}"; else -> "Ends at ${clockTime(a.end)}" },
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (s.catsOn) Text(kittenSays(a, c, paused, grow, spent), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center,
             color = if (a.kitten == "gone") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 12.dp))
         val meta = buildList {
             when {
-                paused -> add("The clock and the check-ins wait for you")
+                paused -> add("Starts again by itself in ${fmtClock((a.pauseEnds ?: now) - now)}")
+                over -> add("Kavana counts until you tap Done")
                 a.interval == 0 -> add("Check-in at the end")
                 a.style == "nudge" -> add("Nudges about every ${a.interval} min")
                 a.next != null && a.next > now -> add("Next check-in in ${minLeft(a.next - now)} min")
@@ -264,24 +326,35 @@ fun RunScreen(s: UiState, a: Block, now: Long) {
         if (a.line != null && !paused && a.style == "nudge") Text(a.line, fontStyle = FontStyle.Italic, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 10.dp))
 
         Row(Modifier.padding(top = 22.dp), horizontalArrangement = Arrangement.spacedBy(40.dp)) {
-            RoundButton("Stop", k.gray) { stopping = true }
-            RoundButton(if (paused) "Resume" else "Pause", if (paused) k.green else k.orange) { repo.launch(op(if (paused) "resume" else "pause")) }
+            RoundButton(when { grace > 0 -> "Cancel"; a.stopwatch || over -> "Done"; else -> "Stop" }, if (grace <= 0 && (a.stopwatch || over)) k.green else k.gray,
+                sub = if (grace > 0) "$grace s" else null) { stop() }
+            if (s.canPause || paused) RoundButton(if (paused) "Resume" else "Pause", if (paused) k.green else k.orange) { repo.launch(op(if (paused) "resume" else "pause")) }
         }
-        Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        FlowRow(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)) {
             AssistChip(onClick = { parking = true }, label = { Text(if (a.parked.isEmpty()) "Park a thought" else "Parked (${a.parked.size})") },
                 leadingIcon = { Icon(Icons.Rounded.EditNote, null, Modifier.size(18.dp)) })
+            if (!paused) FilterChip(selected = SoundMix.playable(s).isNotEmpty(), onClick = onSound, label = { Text(SoundMix.label(s)) },
+                leadingIcon = { Icon(Icons.Rounded.GraphicEq, null, Modifier.size(18.dp)) })
             if (!paused) FilterChip(selected = awake, onClick = { awake = !awake; repo.prefs.edit().putBoolean("awake", awake).apply() },
                 label = { Text(if (awake) "Screen stays on" else "Screen on") }, leadingIcon = { Icon(Icons.Rounded.LightMode, null, Modifier.size(18.dp)) })
         }
     }
 
-    if (stopping) AlertDialog(
-        onDismissRequest = { stopping = false },
-        title = { Text("Stop This Block?") },
-        text = { Text((if (s.catsOn && a.kitten == "growing") "${c.name} will wander off. " else "") + "You can still say how it went.") },
-        confirmButton = { TextButton(onClick = { stopping = false; repo.launch(op("stop")) }) { Text("Stop", color = MaterialTheme.colorScheme.error) } },
-        dismissButton = { TextButton(onClick = { stopping = false }) { Text("Cancel") } },
-    )
+    if (stopping) {
+        val enough = spent >= 10 * 60_000L
+        val (title, text, yes, danger) = when {
+            a.stopwatch -> listOf("Done?", if (!s.catsOn) "You can still say how it went." else if (enough) "${c.name} comes home with you." else "${c.name} needs 10 minutes to come home. Stop now and it wanders off.", "Done", if (!enough && s.catsOn) "y" else "")
+            over -> listOf("Done?", "Your extra time counts too.", "Done", "")
+            else -> listOf("Stop This Block?", (if (s.catsOn && a.kitten == "growing") "${c.name} will wander off. " else "") + "You can still say how it went.", "Stop", "y")
+        }
+        AlertDialog(
+            onDismissRequest = { stopping = false },
+            title = { Text(title) },
+            text = { Text(text) },
+            confirmButton = { TextButton(onClick = { stopping = false; repo.launch(op("stop")) }) { Text(yes, color = if (danger.isNotEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary) } },
+            dismissButton = { TextButton(onClick = { stopping = false }) { Text("Cancel") } },
+        )
+    }
     if (parking) ParkSheet { parking = false }
 }
 
@@ -301,15 +374,27 @@ fun Dial(frac: Float, paused: Boolean, size: Dp = 264.dp, content: @Composable B
     )
 }
 
-/** The kitten in the ring: napping when it arrives, a kitten in the middle, grown in the last quarter. */
+/**
+ * The kitten in the ring, alive: napping when it arrives, a kitten in the middle, grown in the last
+ * quarter, a little bigger every second. Each stage pops into the next. Home: it hops for joy. Gone: paw prints.
+ * Tap it, hold it (it purrs).
+ */
 @Composable
 fun Kitten(a: Block, p: Float, paused: Boolean, size: Dp) {
     val stage = if (a.kitten != "growing") a.kitten else if (p < .25f) "nap" else if (p < .75f) "kitten" else "grown"
-    val path = when (stage) { "gone" -> Art.GONE; "nap" -> Art.nap(a.cat); "kitten" -> Art.kitten(a.cat); else -> Art.portrait(a.cat) }
-    val grow by animateFloatAsState(growSize(stage, p), tween(800), label = "grow")
-    Crossfade(path, label = "kitten") { pic ->
-        CatArt(pic, size, Modifier.graphicsLayer { scaleX = grow; scaleY = grow }, alpha = if (paused) .55f else 1f)
+    val grow by animateFloatAsState(growSize(stage, p), spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessLow), label = "grow")
+    if (stage == "gone") { CatArt(Art.GONE, size, Modifier.graphicsLayer { scaleX = grow; scaleY = grow }); return }
+    var cat by remember { mutableStateOf<LivingCat?>(null) }
+    var last by remember { mutableStateOf(stage) }
+    LaunchedEffect(stage) {
+        if (stage == "home" && last != "home") cat?.let { it.hop(2); it.happy(1.3f); it.heart() }
+        last = stage
     }
+    LiveCat(
+        a.cat, when (stage) { "nap" -> "nap"; "kitten" -> "kitten"; else -> "portrait" }, size,
+        Modifier.graphicsLayer { scaleX = grow; scaleY = grow; transformOrigin = TransformOrigin(0.5f, 0.96f) },
+        interactive = true, alpha = if (paused) .55f else 1f, label = "Your kitten. Tap it, or hold it to make it purr.", onCat = { cat = it },
+    )
 }
 
 // web/app.js growSize
@@ -322,16 +407,34 @@ fun growSize(stage: String, p: Float): Float = when (stage) {
 }
 
 // web/app.js drawKitten's lines (napping together isn't in the app yet)
-fun kittenSays(a: Block, c: CatInfo, paused: Boolean, p: Float): String {
+fun kittenSays(a: Block, c: CatInfo, paused: Boolean, p: Float, spent: Long): String {
     val stage = if (a.kitten != "growing") a.kitten else if (p < .25f) "nap" else if (p < .75f) "kitten" else "grown"
     return when {
         stage == "gone" && a.goneWhy == "away" -> "${c.name} wandered off while you were away. Your block keeps going."
         stage == "gone" -> "${c.name} wandered off."
-        stage == "home" -> "${c.name} came home. Keep going for more treats."
-        paused -> "${c.name} waits for you."
+        stage == "home" -> if (a.over != null) "${c.name} came home. Every extra minute is another treat." else "${c.name} came home. Keep going for more treats."
+        paused -> "${c.name} waits for you. A pause lasts 5 minutes at most."
+        a.stopwatch -> if (spent < 600_000L) "Stay 10 minutes and ${c.name} can come home." else "${c.name} can come home now. Tap Done when you're done."
         stage == "grown" -> "Almost there. ${c.name} is nearly grown up."
         stage == "nap" -> "${c.name} just arrived. Stay in Kavana and it grows."
         else -> "${c.name} is growing. Stay with it."
+    }
+}
+
+private val TAG_COLORS = listOf(0xFFFF9500, 0xFF007AFF, 0xFF34C759, 0xFFAF52DE, 0xFFFF2D55, 0xFF00C7BE, 0xFF5856D6, 0xFFFFCC00, 0xFFA2845E, 0xFF30B0C7, 0xFFFF3B30, 0xFF64D2FF).map { Color(it) }
+
+/** A tag's colour (web/app.js tagColor): by its place in your tags, so the web and the phone agree. */
+fun tagColor(t: String, tags: List<String>): Color {
+    val i = tags.indexOf(t)
+    return TAG_COLORS[(if (i >= 0) i else t.sumOf { it.code }) % TAG_COLORS.size]
+}
+
+@Composable
+fun TagChip(t: String, tags: List<String>, modifier: Modifier = Modifier) {
+    Row(modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(horizontal = 10.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(8.dp).background(tagColor(t, tags), CircleShape))
+        Spacer(Modifier.width(6.dp))
+        Text(t, style = MaterialTheme.typography.labelMedium)
     }
 }
 

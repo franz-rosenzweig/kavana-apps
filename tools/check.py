@@ -6,10 +6,11 @@ taking a screenshot at each step.
     python3 tools/check.py mac:<path on the Mac> <out-dir>     # an APK built on the Mac
     KAVANA_ADB=/path/to/adb python3 tools/check.py ...         # an emulator on this machine
 
-Part 1, the cat over other apps (a minute lasts 3 s, 6 s on a phone): the welcome, the start screen, a block with
+Part 1, the cat over other apps (a minute lasts 3 s, 6 s on a phone): the welcome and its café, the start screen,
+a block cancelled in its first seconds, a block with
 the kitten in the ring and the countdown notification, leaving Kavana (the cat over the home
 screen), a check-in answered on the cat while away, the kitten that wandered off, "How did it go?",
-meeting Pepper, every tab, dark mode.
+meeting Pepper, every tab (Cats with its missions and shop), the mindful minute, dark mode.
 Part 2, without the cat (a minute lasts 2 s, 4 s on a phone): "Pepper is waiting" as a notification, then a
 check-in notification answered with its own Yes button.
 
@@ -130,11 +131,21 @@ try:
     check('welcome shows', P.wait_for('Welcome to Kavana'))
     step('welcome')
     P.tap('Continue')
+    check('a glimpse: the café fills up', P.wait_for('Your café fills up'))
+    time.sleep(2)  # the things and the cats drop in
+    step('welcome-cafe')
+    P.tap('Continue')
     check('the cat page says All set (overlay already allowed)', P.wait_for('All set'))
     step('welcome-cat')
     P.tap('Start Focusing')
     check('the start screen', P.wait_for('Start Focus'))
     step('home')
+
+    # Changed your mind: Cancel in the first 10 seconds takes the block back, nothing counts.
+    check('a block to cancel', bool(start_block('Oops')))
+    P.tap('Cancel', exact=True)
+    time.sleep(1.5)
+    check('Cancel took it back', running('Oops') is None and '"cancelled"' in doc())
 
     b = start_block('Test block')
     t0 = time.time()
@@ -183,6 +194,21 @@ try:
         P.tab(name)
         time.sleep(1.2)
         step(name.lower().replace('é', 'e'))
+        if name == 'Cats':  # the other two panes: missions and rewards, the shop
+            P.tap('Missions')
+            time.sleep(1)
+            check('the first kitten home is ready to collect', P.wait_for('First Kitten', 4))
+            step('missions')
+            P.tap('Shop', exact=True)
+            time.sleep(1)
+            step('shop')
+            P.tap('My Cats', exact=True)
+
+    P.tab('Focus')
+    P.tap('A mindful minute')
+    check('the mindful minute', P.wait_for('Breathe in', 5))
+    step('breathe')
+    P.tap('Leave', exact=True)
 
     P.adb('shell', 'cmd', 'uimode', 'night', 'yes')
     time.sleep(2)

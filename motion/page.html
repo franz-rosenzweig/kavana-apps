@@ -1,0 +1,353 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kavana Living Cats</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,600&display=swap">
+<style>
+/* Layout: a short intro, the same cat twice (today / living) to play with, four phone screens in a row
+   (swipe on a phone), then the motion numbers that Android will share. Kavana's own teal and café browns. */
+:root {
+  --bg: #F4F6F5; --card: #FFFFFF; --card2: #EEF1F0; --card3: #E2E6E4;
+  --fg: #161D1C; --muted: #3F4947; --faint: #6F7977; --line: #D5DEDB;
+  --teal: #2C8A7E; --teal-soft: #D3EFEA; --on-teal: #FFFFFF; --teal-ink: #00201C;
+  --treat: #B86400; --treat-soft: #FFE7CC;
+  --bezel: #1B2221; --phone: #F4F6F5;
+  --wall-a: #fdf5e8; --wall-b: #f8ead4; --wall-dot: rgba(196,150,104,.2); --skirt: #ecd2ae; --skirt-top: #e2c196;
+  --floor-a: #e8bd85; --floor-b: #d9a66c; --floor-line: rgba(124,74,34,.13);
+  --home-a: #b9cdea; --home-b: #6f93c6; --home-c: #2b3f63;
+  --shadow: 0 1px 2px rgba(20,40,36,.06), 0 10px 30px rgba(20,40,36,.08);
+  --display: "Fredoka", ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+  --body: "Roboto Flex", Roboto, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0E1312; --card: #1A2120; --card2: #161D1C; --card3: #242B2A;
+  --fg: #DDE4E2; --muted: #BEC9C6; --faint: #889391; --line: #2F3635;
+  --teal: #5FD0C0; --teal-soft: #0F3A35; --on-teal: #04201C; --teal-ink: #A6F2E5;
+  --treat: #FFB870; --treat-soft: #3A2410;
+  --bezel: #000000; --phone: #0E1312;
+  --wall-a: #3a3240; --wall-b: #322b38; --wall-dot: rgba(255,220,170,.08); --skirt: #4a3c36; --skirt-top: #5a483e;
+  --floor-a: #6a4e36; --floor-b: #5a412c; --floor-line: rgba(0,0,0,.18);
+  --home-a: #22314d; --home-b: #34507a; --home-c: #0d1424;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35); color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #0E1312; --card: #1A2120; --card2: #161D1C; --card3: #242B2A;
+  --fg: #DDE4E2; --muted: #BEC9C6; --faint: #889391; --line: #2F3635;
+  --teal: #5FD0C0; --teal-soft: #0F3A35; --on-teal: #04201C; --teal-ink: #A6F2E5;
+  --treat: #FFB870; --treat-soft: #3A2410;
+  --bezel: #000000; --phone: #0E1312;
+  --wall-a: #3a3240; --wall-b: #322b38; --wall-dot: rgba(255,220,170,.08); --skirt: #4a3c36; --skirt-top: #5a483e;
+  --floor-a: #6a4e36; --floor-b: #5a412c; --floor-line: rgba(0,0,0,.18);
+  --home-a: #22314d; --home-b: #34507a; --home-c: #0d1424;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35); color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 400 15px/1.5 var(--body); -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 56px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 40px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 600; text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: clamp(30px, 6vw, 46px); line-height: 1.05; }
+h2 { font-size: 24px; }
+p { margin: 0; }
+.lede { color: var(--muted); max-width: 60ch; margin-top: 10px; font-size: 16px; }
+.eyebrow { font: 600 12px/1 var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--teal); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.chip { font-size: 13px; padding: 5px 11px; border-radius: 999px; background: var(--teal-soft); color: var(--teal-ink); }
+
+/* the cat, twice */
+.duel { background: var(--card); border-radius: 28px; box-shadow: var(--shadow); padding: 20px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.duel-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.pane { display: grid; gap: 8px; justify-items: center; min-width: 0; }
+.pane-label { font: 600 13px var(--body); color: var(--faint); }
+.pane.live .pane-label { color: var(--teal); }
+.stagebox { position: relative; width: min(100%, 300px); aspect-ratio: 1; }
+.catbox { position: absolute; aspect-ratio: 1; }
+.catbox > canvas { position: absolute; left: -9.375%; top: -15.625%; width: 118.75%; height: 118.75%; display: block; touch-action: none; }
+.stagebox .catbox { inset: 6% 6% 6% 6%; }
+.pane.live canvas { cursor: pointer; outline: none; }
+.pane.live canvas:focus-visible { outline: 2px solid var(--teal); outline-offset: -2px; border-radius: 16px; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; }
+.picker { display: flex; gap: 6px; overflow-x: auto; padding: 4px 2px 6px; scrollbar-width: thin; min-width: 0; flex: 1 1 260px; }
+.controls > .seg { flex: none; }
+.picker button { flex: none; width: 46px; height: 46px; border-radius: 14px; border: 0; background: var(--card2); padding: 3px; cursor: pointer; }
+.picker button[aria-pressed="true"] { background: var(--teal-soft); box-shadow: inset 0 0 0 2px var(--teal); }
+.picker img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.seg { display: inline-flex; background: var(--card2); border-radius: 999px; padding: 3px; gap: 2px; }
+.seg button { border: 0; background: none; font: 500 13px var(--body); color: var(--muted); padding: 7px 14px; border-radius: 999px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--card); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.hint { font-size: 13px; color: var(--faint); }
+
+/* phones */
+.screens { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.screens-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 8px; }
+.rail { display: flex; gap: 22px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 6px 4px 18px; margin: 0 -4px; }
+.shot { flex: none; scroll-snap-align: center; display: grid; gap: 10px; justify-items: center; width: 300px; }
+.shot figcaption { text-align: center; display: grid; gap: 2px; }
+.shot figcaption b { font: 600 15px var(--display); }
+.shot figcaption span { font-size: 13px; color: var(--faint); }
+.phone { position: relative; width: 300px; height: 624px; border-radius: 40px; border: 9px solid var(--bezel); background: var(--phone); overflow: hidden; box-shadow: var(--shadow); font-size: 13px; isolation: isolate; }
+.status { height: 26px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; font: 500 11px var(--body); color: var(--fg); position: relative; z-index: 5; }
+.status i { width: 34px; height: 9px; border-radius: 3px; background: currentColor; opacity: .55; }
+.screen { position: absolute; inset: 26px 0 0; overflow-y: auto; scrollbar-width: none; }
+.screen::-webkit-scrollbar { display: none; }
+.big { font: 600 25px/1.1 var(--display); padding: 6px 16px 0; }
+.btn { font: 600 13px var(--body); border: 0; border-radius: 999px; padding: 9px 16px; cursor: pointer; background: var(--teal); color: var(--on-teal); }
+.btn.tonal { background: var(--teal-soft); color: var(--teal-ink); }
+.btn.quiet { background: var(--card3); color: var(--muted); }
+.btn:disabled { opacity: .55; cursor: default; }
+.replay { font: 500 13px var(--body); color: var(--teal); background: none; border: 0; cursor: pointer; padding: 2px 6px; }
+
+/* focus */
+.focus { display: grid; justify-items: center; padding: 10px 18px 16px; text-align: center; gap: 2px; }
+.focus .eb { font: 600 11px var(--body); letter-spacing: .1em; color: var(--teal); }
+.focus h3 { font: 500 19px var(--body); margin-top: 2px; }
+.dial { position: relative; width: 214px; height: 214px; margin-top: 14px; }
+.dial svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+.dial .grow { position: absolute; left: 12%; right: 12%; bottom: 13%; aspect-ratio: 1; transform-origin: 50% 96%; }
+.dial .grow .catbox { inset: 0; }
+.clock { font: 400 42px/1.1 var(--body); font-variant-numeric: tabular-nums; margin-top: 8px; }
+.says { font-size: 14px; min-height: 42px; margin-top: 6px; max-width: 30ch; }
+.scrub { width: 100%; display: grid; gap: 4px; margin-top: 10px; }
+.scrub input { width: 100%; accent-color: var(--teal); }
+.scrub span { font-size: 11px; color: var(--faint); display: flex; justify-content: space-between; }
+.roundbtns { display: flex; gap: 36px; margin-top: 10px; }
+.round { width: 62px; height: 62px; border-radius: 50%; display: grid; place-items: center; font: 500 13px var(--body); }
+.round.stop { background: var(--card3); color: var(--muted); }
+.round.pause { background: #ffe1b8; color: #8a5100; }
+
+/* over another app */
+.home { position: absolute; inset: 0; background: linear-gradient(170deg, var(--home-a), var(--home-b) 55%, var(--home-c)); }
+.home .date { position: absolute; top: 56px; left: 22px; color: rgba(255,255,255,.9); font: 500 15px var(--body); }
+.home .time { position: absolute; top: 74px; left: 20px; color: #fff; font: 400 56px/1 var(--body); letter-spacing: -0.02em; }
+.apps { position: absolute; left: 22px; right: 22px; top: 190px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px 14px; }
+.app { aspect-ratio: 1; border-radius: 30%; display: grid; place-items: center; box-shadow: 0 2px 6px rgba(0,0,0,.15); }
+.app i { width: 46%; height: 46%; display: block; background: rgba(255,255,255,.92); }
+.boo-card { position: absolute; left: 12px; bottom: 26px; width: 168px; background: var(--card); border-radius: 22px; padding: 14px 14px 12px; box-shadow: 0 8px 28px rgba(0,0,0,.25); transform-origin: 100% 100%; z-index: 3; }
+.boo-card b { font: 600 15px var(--body); display: block; }
+.boo-card p { color: var(--muted); font-size: 12.5px; margin: 4px 0 10px; line-height: 1.35; }
+.boo-card .row { display: flex; gap: 6px; flex-wrap: wrap; }
+.boo-card .btn { padding: 7px 11px; font-size: 12px; }
+.boo-cat { position: absolute; right: -22px; bottom: -52px; width: 150px; aspect-ratio: 1; z-index: 2; }
+.boo-cat .catbox { inset: 0; }
+.bubble { position: absolute; right: 22px; bottom: 132px; width: 46px; height: 46px; border-radius: 50%; background: var(--teal); box-shadow: 0 4px 14px rgba(0,0,0,.25); display: grid; place-items: center; z-index: 3; }
+.bubble i { width: 20px; height: 20px; border-radius: 50%; border: 3px solid var(--on-teal); display: block; }
+
+/* cats */
+.top { display: flex; align-items: center; justify-content: space-between; padding: 6px 16px 0; }
+.top .big { padding: 0; }
+.fish { display: inline-flex; align-items: center; gap: 4px; font: 600 13px var(--body); background: var(--treat-soft); color: var(--treat); border-radius: 999px; padding: 4px 10px; font-variant-numeric: tabular-nums; }
+.fish svg { width: 15px; height: 15px; fill: currentColor; }
+.met { padding: 10px 16px 0; display: grid; gap: 6px; }
+.met small { color: var(--faint); font-size: 12px; }
+.bar { height: 6px; border-radius: 6px; background: var(--card3); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--teal); border-radius: 6px; }
+.sec { padding: 16px 16px 6px; font: 600 12px var(--body); color: var(--faint); letter-spacing: .02em; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.sec em { font-style: normal; font-weight: 500; color: var(--treat); }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 12px; }
+.card { background: var(--card); border-radius: 18px; padding: 8px 8px 10px; display: grid; justify-items: center; gap: 2px; text-align: center; border: 0; color: inherit; font: inherit; cursor: pointer; min-width: 0; }
+.card .art { position: relative; width: 86%; aspect-ratio: 1; }
+.card .art .catbox { inset: 4%; }
+.card b { font: 600 14px var(--body); }
+.card small { font-size: 11px; color: var(--faint); line-height: 1.3; }
+.card .bar { width: 80%; margin-top: 4px; height: 4px; }
+.card .price { margin-top: 3px; }
+.card.mine { background: var(--teal-soft); }
+.card.mine small { color: var(--teal-ink); }
+.pad { height: 24px; }
+.sheet-back { position: absolute; inset: 0; background: rgba(0,0,0,.32); opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 8; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--card); border-radius: 26px 26px 0 0; padding: 8px 18px 20px; z-index: 9; transform: translateY(105%); transition: transform .5s cubic-bezier(.2, 1.2, .35, 1); display: grid; justify-items: center; text-align: center; gap: 4px; }
+.phone.open .sheet { transform: none; }
+.phone.open .sheet-back { opacity: 1; pointer-events: auto; }
+.sheet .grab { width: 36px; height: 4px; border-radius: 4px; background: var(--card3); margin-bottom: 4px; }
+.sheet .hero { position: relative; width: 160px; aspect-ratio: 1; }
+.sheet .hero .catbox { inset: 0; }
+.sheet h3 { font-size: 22px; }
+.sheet p { color: var(--muted); font-size: 13px; max-width: 28ch; }
+.stages { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; width: 100%; margin: 8px 0 4px; }
+.stages div { display: grid; justify-items: center; gap: 0; }
+.stages .art { position: relative; width: 74px; aspect-ratio: 1; }
+.stages .art .catbox { inset: 0; }
+.stages span { font-size: 11px; color: var(--faint); }
+.need { width: 100%; display: grid; gap: 6px; background: var(--card2); border-radius: 14px; padding: 10px 12px; text-align: left; }
+.need b { font: 500 13px var(--body); }
+.need small { color: var(--faint); font-size: 12px; }
+
+/* café */
+.room { position: relative; aspect-ratio: 3 / 2; border-radius: 18px; overflow: hidden; margin: 12px 12px 0; container-type: inline-size; box-shadow: inset 0 0 0 .5px var(--line); }
+.room .wall { position: absolute; left: 0; right: 0; top: 0; height: 58%; background: radial-gradient(circle, var(--wall-dot) 1.6px, transparent 1.8px) 0 0 / 5.5cqw 5.5cqw, linear-gradient(var(--wall-a), var(--wall-b)); }
+.room .wall::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 9%; background: var(--skirt); border-top: .6cqw solid var(--skirt-top); }
+.room .floor { position: absolute; left: 0; right: 0; bottom: 0; height: 42%; background: repeating-linear-gradient(90deg, var(--floor-line) 0 .35cqw, transparent .35cqw 12.5cqw), linear-gradient(var(--floor-a), var(--floor-b)); }
+.thing { position: absolute; height: auto; display: block; filter: drop-shadow(0 .6cqw .8cqw rgba(80,50,20,.18)); transition: opacity .3s, transform .5s cubic-bezier(.3, 1.45, .5, 1); }
+.thing.flat { transform: scaleY(.4); transform-origin: 50% 100%; filter: none; }
+.thing.away { opacity: 0; transform: translateY(-30%); }
+.thing.flat.away { transform: scaleY(.4) translateY(-30%); }
+.roomcat { position: absolute; aspect-ratio: 1; transition: opacity .3s, transform .45s cubic-bezier(.3, 1.6, .5, 1); transform-origin: 50% 96%; }
+.roomcat.away { opacity: 0; transform: scale(.4); }
+.roomcat .catbox { inset: 0; }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 12px 0; }
+.tile { background: var(--card); border-radius: 16px; padding: 10px 12px; }
+.tile b { font: 500 20px var(--body); font-variant-numeric: tabular-nums; display: block; }
+.tile small { font-size: 11px; color: var(--faint); }
+.cafe-seg { padding: 10px 12px 0; display: flex; justify-content: center; }
+.shop { padding: 4px 12px 16px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.shop div { background: var(--card); border-radius: 14px; padding: 6px 4px 8px; display: grid; justify-items: center; gap: 2px; font-size: 11px; color: var(--muted); text-align: center; }
+.shop img { width: 70%; aspect-ratio: 1; object-fit: contain; }
+.shop .fish { font-size: 11px; padding: 2px 7px; }
+.shop .fish svg { width: 12px; height: 12px; }
+
+/* numbers */
+.numbers { background: var(--card); border-radius: 28px; box-shadow: var(--shadow); padding: 22px 20px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 14px; }
+th, td { text-align: left; padding: 9px 10px; border-top: 1px solid var(--line); vertical-align: top; }
+th { font: 600 12px var(--body); color: var(--faint); letter-spacing: .04em; text-transform: uppercase; border-top: 0; }
+td:first-child { font-weight: 600; white-space: nowrap; }
+td.num { font-variant-numeric: tabular-nums; color: var(--muted); }
+.next { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.next div { background: var(--card2); border-radius: 18px; padding: 14px 16px; display: grid; gap: 4px; min-width: 0; }
+.next b { font: 600 15px var(--display); }
+.next p { color: var(--muted); font-size: 14px; }
+@media (max-width: 520px) {
+  .duel { padding: 14px; border-radius: 22px; }
+  .controls { justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) { .sheet, .thing, .roomcat { transition-duration: .01s; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Kavana · motion study</div>
+    <h1>Living cats</h1>
+    <p class="lede">The same painted cats, bent live on your phone. They breathe, blink, flick an ear, swish a tail and tilt their head, and they react when you touch them. No new art and no video files.</p>
+    <div class="chips"><span class="chip">Tap: hop</span><span class="chip">Hold: purr</span><span class="chip">Point: looks at you</span></div>
+  </header>
+
+  <section class="duel" aria-label="The same cat, today and living">
+    <div class="duel-row">
+      <div class="pane"><span class="pane-label">In the app today</span><div class="stagebox"><div class="catbox"><canvas id="old" aria-hidden="true"></canvas></div></div></div>
+      <div class="pane live"><span class="pane-label">Living</span><div class="stagebox"><div class="catbox"><canvas id="hero" tabindex="0" aria-label="Living cat. Tap to make it hop, hold to make it purr."></canvas></div></div></div>
+    </div>
+    <div class="controls">
+      <div class="picker" id="picker" aria-label="Pick a cat"></div>
+      <div class="seg" id="pose" role="group" aria-label="Pose">
+        <button type="button" data-pose="portrait" aria-pressed="true">Grown</button>
+        <button type="button" data-pose="kitten" aria-pressed="false">Kitten</button>
+        <button type="button" data-pose="nap" aria-pressed="false">Napping</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="screens">
+    <div class="screens-head">
+      <div><div class="eyebrow">In Kavana</div><h2>Four screens</h2></div>
+      <span class="hint">Example data: two cats met, 25 treats.</span>
+    </div>
+    <div class="rail">
+      <figure class="shot">
+        <div class="phone" data-cat-scope id="ph-focus">
+          <div class="status"><span>13:52</span><i></i></div>
+          <div class="screen"><div class="focus">
+            <span class="eb">FOCUSING</span>
+            <h3>Write the intro</h3>
+            <div class="dial">
+              <svg viewBox="0 0 214 214"><circle cx="107" cy="107" r="99" fill="none" stroke="var(--card3)" stroke-width="13"/><circle id="ring" cx="107" cy="107" r="99" fill="none" stroke="var(--teal)" stroke-width="13" stroke-linecap="round" stroke-dasharray="622" stroke-dashoffset="0"/></svg>
+              <div class="grow" id="grow"><div class="catbox"><canvas id="kitten" tabindex="0" aria-label="The kitten growing in the ring"></canvas></div></div>
+            </div>
+            <div class="clock" id="clock">25:00</div>
+            <div class="says" id="says">Miso just arrived. Stay in Kavana and it grows.</div>
+            <div class="roundbtns"><span class="round stop">Stop</span><span class="round pause">Pause</span></div>
+            <label class="scrub"><input type="range" id="scrub" min="0" max="1000" value="0" aria-label="Minutes into the block"><span><b>0</b><b>25 min</b></span></label>
+          </div></div>
+        </div>
+        <figcaption><b>The ring</b><span>Each stage pops into the next. 25 min in 24 s.</span></figcaption>
+      </figure>
+
+      <figure class="shot">
+        <div class="phone" data-cat-scope id="ph-boo">
+          <div class="home">
+            <div class="date">Wed, Oct 22</div><div class="time">13:52</div>
+            <div class="apps">
+              <div class="app" style="background:#e8604c"><i style="border-radius:4px"></i></div>
+              <div class="app" style="background:#f2b230"><i style="border-radius:50%"></i></div>
+              <div class="app" style="background:#4b8cf0"><i style="clip-path:polygon(0 0,100% 50%,0 100%)"></i></div>
+              <div class="app" style="background:#2fb36a"><i style="border-radius:50% 50% 50% 0"></i></div>
+              <div class="app" style="background:#8a63d2"><i style="border-radius:3px;transform:rotate(45deg) scale(.8)"></i></div>
+              <div class="app" style="background:#ef6aa0"><i style="border-radius:50%;height:30%"></i></div>
+              <div class="app" style="background:#25a3b8"><i style="clip-path:polygon(50% 0,100% 100%,0 100%)"></i></div>
+              <div class="app" style="background:#5c6f82"><i style="border-radius:2px;height:20%"></i></div>
+            </div>
+          </div>
+          <div class="status" style="color:#fff"><span>13:52</span><i></i></div>
+          <div class="bubble" aria-hidden="true"><i></i></div>
+          <div class="boo-card" id="booCard">
+            <b>Boo! It's time to focus.</b>
+            <p>Miso is waiting. Come back, or Miso wanders off.</p>
+            <div class="row"><button class="btn" id="booBack" type="button">Back to work</button><button class="btn tonal" id="booLet" type="button">Let me in</button></div>
+          </div>
+          <div class="boo-cat" id="booCat"><div class="catbox"><canvas id="boo" tabindex="0" aria-label="Miso peeking over another app"></canvas></div></div>
+        </div>
+        <figcaption><b>Over another app</b><span>Springs up, looks around, dives back. <button class="replay" id="booReplay" type="button">Replay</button></span></figcaption>
+      </figure>
+
+      <figure class="shot">
+        <div class="phone" data-cat-scope id="ph-cats">
+          <div class="status"><span>13:52</span><i></i></div>
+          <div class="screen" id="catsScreen">
+            <div class="top"><div class="big">Cats</div><span class="fish" id="fishCats"></span></div>
+            <div class="met"><div class="bar"><i id="metBar"></i></div><small id="metText"></small></div>
+            <div class="sec">Meet them by focusing</div><div class="grid" id="gMeet"></div>
+            <div class="sec">Adopt with treats</div><div class="grid" id="gAdopt"></div>
+            <div class="sec">Halloween <em>Oct 25 – Nov 1</em></div><div class="grid" id="gEvent"></div>
+            <div class="pad"></div>
+          </div>
+          <div class="sheet-back" id="sheetBack"></div>
+          <div class="sheet" id="sheet" role="dialog" aria-label="Cat">
+            <div class="grab"></div>
+            <div class="hero"><div class="catbox"><canvas id="sheetCat" tabindex="0" aria-label="The cat, big"></canvas></div></div>
+            <h3 id="sheetName"></h3>
+            <p id="sheetAbout"></p>
+            <div class="stages">
+              <div><div class="art"><div class="catbox"><canvas id="st0" aria-hidden="true"></canvas></div></div><span>Arrives</span></div>
+              <div><div class="art"><div class="catbox"><canvas id="st1" aria-hidden="true"></canvas></div></div><span>Grows</span></div>
+              <div><div class="art"><div class="catbox"><canvas id="st2" aria-hidden="true"></canvas></div></div><span>Comes home</span></div>
+            </div>
+            <div class="need" id="sheetNeed"></div>
+          </div>
+        </div>
+        <figcaption><b>Cats</b><span>Every cat in color. Not met yet: asleep, with how close you are. Tap one.</span></figcaption>
+      </figure>
+
+      <figure class="shot">
+        <div class="phone" data-cat-scope id="ph-cafe">
+          <div class="status"><span>13:52</span><i></i></div>
+          <div class="screen">
+            <div class="top"><div class="big">Café</div><span class="fish" id="fishCafe"></span></div>
+            <div class="cafe-seg"><div class="seg" id="cafeSeg" role="group" aria-label="Café"><button type="button" data-v="now" aria-pressed="true">Today</button><button type="button" data-v="all" aria-pressed="false">Someday</button></div></div>
+            <div class="room" id="room"><div class="wall"></div><div class="floor"></div></div>
+            <div class="tiles"><div class="tile"><b id="tThings"></b><small>things in the café</small></div><div class="tile"><b id="tCats"></b><small>cats came home</small></div></div>
+            <div class="sec">In the shop</div>
+            <div class="shop" id="shop"></div>
+          </div>
+        </div>
+        <figcaption><b>Café</b><span>Today, and a peek at what it becomes.</span></figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="numbers">
+    <div><div class="eyebrow">Shared with Android</div><h2>The motion, in numbers</h2></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Motion</th><th>What moves</th><th>Numbers</th></tr></thead>
+      <tbody id="numRows"></tbody>
+    </table></div>
+    <div class="next">
+      <div><b>Every picture has a rig</b><p>Eyes, head, neck, ears, tail and ground line for all 45 pictures, found automatically and checked by eye. None of the motions fold the picture over at their biggest swing.</p></div>
+      <div><b>Android</b><p>The same rig and numbers, drawn with Canvas.drawBitmapMesh in Compose: the ring, the cat over other apps, Cats and the Café.</p></div>
+      <div><b>Web</b><p>The module goes to the web app's session as warp.js and rig.json, so both apps move the same way.</p></div>
+    </div>
+  </section>
+</div>
+
+<script>/*WARP*/</script>
+<script>/*PAGE*/</script>

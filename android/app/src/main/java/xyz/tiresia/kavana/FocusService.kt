@@ -48,7 +48,13 @@ class FocusService : Service() {
             job = scope.launch {
                 if (repo.state.value == null) repo.act(op("tick")) // started again after the process was gone
                 launch { repo.state.collect { refresh(it) } }
-                while (true) { delay(30_000); refresh(repo.state.value) } // the progress bar
+                while (true) {
+                    delay(30_000)
+                    // A pause ends by itself after 5 minutes: let the engine notice (the end moves by exactly the pause).
+                    val a = repo.state.value?.view?.active
+                    if (a?.pauseEnds != null && a.pauseEnds <= System.currentTimeMillis()) repo.act(op("tick"))
+                    refresh(repo.state.value) // the progress bar
+                }
             }
         }
         return START_STICKY
@@ -57,6 +63,14 @@ class FocusService : Service() {
     private fun refresh(st: UiState?) {
         if (st != null && st.view.active == null && st.view.onBreak == null) { stopSelf(); return }
         getSystemService(NotificationManager::class.java).notify(Notify.ID_ONGOING, Notify.ongoing(this, st))
+    }
+
+    // Kavana swiped away from the recent apps. With "Swiping Kavana away counts as leaving" off, that's
+    // not leaving: forget it, and take the cat away (the web's closeCounts, for a closed tab).
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        val repo = KavanaApp.repo
+        if (repo.state.value?.view?.settings?.closeCounts == false) { repo.prefs.edit().remove("left").apply(); CatOverlay.hide() }
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
