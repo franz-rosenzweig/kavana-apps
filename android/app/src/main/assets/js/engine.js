@@ -4,7 +4,7 @@
 (function (root) {
 'use strict';
 const E = {};
-E.config = { MIN: 60000 }; // tests shrink the minute
+E.config = { MIN: 60000, KEEP: 2000 }; // tests shrink the minute; a doc keeps its last KEEP blocks (older ones go into doc.past)
 const M = () => E.config.MIN;
 const LINES = typeof module !== 'undefined' ? require('./lines.js') : root.KavanaLines;
 
@@ -86,6 +86,7 @@ E.empty = () => ({
   owned: [], // what you bought in the shop: { id, at, u }
   claimed: [], // rewards collected: achievements, monthly challenges, starter steps: { id, at, u }
   tally: {}, // small counters for things history doesn't keep (breaks, breathing, treats from cleared history)
+  past: emptyPast(), // what the oldest blocks counted for, once they're folded out of the doc
   cleared: 0,
   u: 0,
 });
@@ -94,7 +95,7 @@ E.empty = () => ({
 E.normalize = (d) => {
   const doc = E.empty();
   if (!d || typeof d !== 'object') return doc;
-  doc.blocks = Array.isArray(d.blocks) ? d.blocks.filter((b) => b && typeof b.id === 'string' && b.start && b.end).slice(-2000) : [];
+  doc.blocks = Array.isArray(d.blocks) ? d.blocks.filter((b) => b && typeof b.id === 'string' && b.start && b.end) : [];
   for (const b of doc.blocks) {
     b.checkins = Array.isArray(b.checkins) ? b.checkins : [];
     b.plan = Array.isArray(b.plan) ? b.plan : [];
@@ -113,6 +114,9 @@ E.normalize = (d) => {
   doc.cleared = d.cleared || 0;
   doc.tally = {};
   for (const [k, v] of Object.entries(d.tally && typeof d.tally === 'object' ? d.tally : {})) if (/^[a-z]{1,16}$/.test(k) && Number.isInteger(v) && v >= 0) doc.tally[k] = v;
+  doc.past = pastOf([d.past], doc.cleared);
+  doc.blocks = doc.blocks.filter((b) => b.start >= doc.past.to); // already in the past
+  trim(doc);
   doc.u = d.u || 0;
   return doc;
 };
@@ -149,7 +153,7 @@ function stopped(b, at, why) {
 // one a week (weeks start on Sunday, like the café). Only blocks whose kitten came home count, by the
 // day they started. What they pay is worked out from the blocks, like the treats themselves, so every
 // device agrees and nothing more has to sync. A day or week in which you cleared your history is
-// closed: what it had paid is banked, and it can't pay again.
+// closed: what it had paid is banked, and it can't pay again. So is one that doc.past reaches into.
 const homeMin = (b) => (b.cat ? b.treats || 1 : Math.max(1, Math.round(activeMs(b, b.ended) / M()))); // minutes, also while a block that came home is extended
 const hourOf = (t) => new Date(t).getHours();
 const count = (f) => (bs) => bs.filter(f).length;
@@ -183,6 +187,7 @@ function missionsFor(from, week) {
   return ['a', 'b', 'c'].map((k, i) => { const ids = ofKind(k); return ids[(h >>> (i * 5)) % ids.length]; });
 }
 const homeBlocks = (doc) => live(doc).filter((b) => kitten(b) === 'home');
+const closedTo = (doc) => Math.max(doc.cleared, doc.past.to); // days and weeks that start before this are closed
 function progress(ids, list) {
   return ids.map((id) => {
     const m = MISSIONS[id];
@@ -196,7 +201,7 @@ function missionTotals(doc) {
   const days = new Map(), weeks = new Map();
   for (const b of homeBlocks(doc)) {
     for (const [map, from] of [[days, dayOf(b.start)], [weeks, weekOf(b.start)]]) {
-      if (from < doc.cleared) continue; // closed by a clear
+      if (from < closedTo(doc)) continue; // closed by a clear or the past
       if (!map.has(from)) map.set(from, []);
       map.get(from).push(b);
     }
@@ -216,7 +221,7 @@ E.missions = (doc, now) => {
   return {
     day: progress(missionsFor(d, false), home.filter((b) => dayOf(b.start) === d)),
     week: progress(missionsFor(w, true), home.filter((b) => weekOf(b.start) === w)),
-    dayClosed: d < doc.cleared, weekClosed: w < doc.cleared,
+    dayClosed: d < closedTo(doc), weekClosed: w < closedTo(doc),
     dayEnds: end.getTime(), weekEnds: wEnd.getTime(),
   };
 };
@@ -226,23 +231,34 @@ E.missions = (doc, now) => {
 // like the shop) and stays, even after Clear My History.
 E.ADOPT = ['luna', 'cocoa', 'olive', 'dumpling', 'maple', 'ziggy', 'pumpkin', 'flurry'];
 const isCafeThing = (id) => !E.ADOPT.includes(id) && !E.SHELTER.includes(id) && !/^(theme|sound)-/.test(id);
+// What a kitten that came home counts toward, besides itself and its minutes. doc.past keeps the
+// same counts for the blocks folded into it.
+const FEATS = {
+  long: (b) => homeMin(b) >= 120,
+  early: (b) => hourOf(b.start) >= 4 && hourOf(b.start) < 7,
+  night: (b) => hourOf(b.start) >= 22 || hourOf(b.start) < 4,
+  naps: (b) => Boolean(b.nap && b.napN),
+  stopwatch: (b) => b.mode === 'stopwatch' && homeMin(b) >= 30,
+};
 function statsOf(doc) {
   const home = homeBlocks(doc);
-  const days = [...new Set(home.map((b) => dayOf(b.start)))].sort((a, b) => a - b);
+  const past = E.pastDays(doc);
+  const days = [...new Set([...past.filter((x) => x.home).map((x) => x.day), ...home.map((b) => dayOf(b.start))])].sort((a, b) => a - b);
   let best = 0, run = 0;
   days.forEach((t, i) => { run = i && Math.round((t - days[i - 1]) / 86400000) === 1 ? run + 1 : 1; best = Math.max(best, run); });
   const seen = doc.settings.catsSeen || [];
+  const feat = (k) => doc.past[k] + home.filter(FEATS[k]).length;
   return {
-    home: home.length,
-    minutes: home.reduce((n, b) => n + homeMin(b), 0),
+    home: past.reduce((n, x) => n + x.home, home.length),
+    minutes: past.reduce((n, x) => n + x.min, home.reduce((n, b) => n + homeMin(b), 0)),
     streak: best,
-    long: home.filter((b) => homeMin(b) >= 120).length,
-    early: home.filter((b) => hourOf(b.start) >= 4 && hourOf(b.start) < 7).length,
-    night: home.filter((b) => hourOf(b.start) >= 22 || hourOf(b.start) < 4).length,
-    naps: home.filter((b) => b.nap && b.napN).length,
-    stopwatch: home.filter((b) => b.mode === 'stopwatch' && homeMin(b) >= 30).length,
-    tags: new Set(home.map((b) => b.tag).filter(Boolean)).size,
-    missions: missionTotals(doc).done,
+    long: feat('long'),
+    early: feat('early'),
+    night: feat('night'),
+    naps: feat('naps'),
+    stopwatch: feat('stopwatch'),
+    tags: new Set([...doc.past.tags, ...home.map((b) => b.tag).filter(Boolean)]).size,
+    missions: doc.past.missions + missionTotals(doc).done,
     met: seen.filter((id) => !E.SHOP[id]).length,
     adopted: doc.owned.filter((x) => E.ADOPT.includes(x.id)).length,
     things: doc.owned.filter((x) => isCafeThing(x.id)).length,
@@ -250,7 +266,7 @@ function statsOf(doc) {
     friends: doc.tally.friends || 0,
     breaks: doc.tally.breaks || 0,
     breathes: doc.tally.breathes || 0,
-    tagged: live(doc).some((b) => b.ended && b.tag) ? 1 : 0,
+    tagged: live(doc).some((b) => b.ended && b.tag) || past.some((x) => Object.keys(x.focus).some(Boolean)) ? 1 : 0,
   };
 }
 E.stats = statsOf;
@@ -322,7 +338,8 @@ E.monthly = (doc, at) => {
   const d = new Date(at);
   const from = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
   const to = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
-  const days = new Set(homeBlocks(doc).filter((b) => b.start >= from && b.start < to).map((b) => dayOf(b.start))).size;
+  const past = E.pastDays(doc, from, to).filter((x) => x.home).map((x) => x.day);
+  const days = new Set([...past, ...homeBlocks(doc).filter((b) => b.start >= from && b.start < to).map((b) => dayOf(b.start))]).size;
   const id = monthId(at);
   return { id, from, to, need: E.MONTH_NEED, have: Math.min(days, E.MONTH_NEED), done: days >= E.MONTH_NEED, claimed: claimed(doc, id), reward: E.MONTH_PAY };
 };
@@ -468,7 +485,7 @@ E.view = (doc, now) => {
 
 E.history = (doc) => live(doc).filter((b) => b.ended).sort((a, b) => b.start - a.start).map((b) => ({
   id: b.id, start: b.start, intention: b.intention, minutes: b.minutes,
-  actual: Math.max(1, Math.round(activeMs(b, b.ended) / M())), stopped: Boolean(b.stopped),
+  actual: actualMin(b), stopped: Boolean(b.stopped),
   outcome: b.outcome || null, drifts: drifts(b), checkins: b.checkins.length, style: b.style || 'ask',
   answered: b.checkins.filter((c) => c.answer).length,
   whys: b.checkins.filter((c) => c.answer === 'drifted' && c.why).map((c) => c.why),
@@ -517,7 +534,7 @@ E.start = (doc, o, now) => {
   // Cancelled blocks are kept a month, so other devices hear about them, then dropped.
   doc.blocks = doc.blocks.filter((x) => !x.cancelled || now - x.cancelled < 30 * 86400000);
   doc.blocks.push(b);
-  if (doc.blocks.length > 2000) { const before = earnedOf(doc); doc.blocks.splice(0, doc.blocks.length - 2000); bank(doc, before); }
+  trim(doc);
   doc.settings = { ...doc.settings, style, companion: cat || doc.settings.companion, tag, mode: joining ? doc.settings.mode : mode, u: now }; // what you used last is the default next time
   if (o.fromLater) E.doneLater(doc, o.fromLater, now);
   doc.u = now;
@@ -621,6 +638,98 @@ function bank(doc, before) {
   if (n > 0) doc.tally.banked = (doc.tally.banked || 0) + n;
 }
 
+// ---------- the past ----------
+// A doc keeps its last E.config.KEEP blocks (2000, a year and more). Older ones are folded into
+// doc.past, so nothing they counted for is lost: their treats and the missions they did are banked,
+// each day keeps what the café shows (the minutes, by tag; which cats came home and the minutes they
+// brought; how many wandered off), and the achievements keep their counts.
+// doc.past.to is the high-water mark: every block that started before it is in the past and nowhere
+// else, and the days and weeks it reaches into are closed for missions. The fold always takes the
+// oldest blocks first, so two devices that fold at different times agree on everything before the
+// mark, and the one that went further holds all the other has. That's what lets E.merge keep the
+// further mark, drop the blocks before it, and take the larger number everywhere, and why
+// tally.banked (merged by the larger number too) can't count a block twice.
+const PAST_N = [...Object.keys(FEATS), 'missions'];
+function emptyPast() { return { to: 0, days: {}, long: 0, early: 0, night: 0, naps: 0, stopwatch: 0, missions: 0, tags: [] }; }
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+const two = (n) => String(n).padStart(2, '0');
+const dayKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`; };
+const keyDay = (k, add = 0) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d + add).getTime(); };
+const actualMin = (b) => Math.max(1, Math.round(activeMs(b, b.ended) / M()));
+const num = (v) => (Number.isInteger(v) && v > 0 ? v : 0);
+const sorted = (o) => Object.fromEntries(Object.entries(o).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0)));
+// One past out of any number of copies (or junk): the furthest mark, and per day and per count the
+// larger number, written out the same way every time so equal pasts are equal JSON. A copy whose mark
+// is before a Clear My History is all from before it, and the clear emptied the café, so only its mark
+// counts; days that ended before the clear are dropped too.
+function pastOf(copies, cleared) {
+  const out = emptyPast();
+  const days = new Map(), tags = new Set();
+  for (const p of copies) {
+    if (!p || typeof p !== 'object' || !(Number.isFinite(p.to) && p.to > 0)) continue;
+    out.to = Math.max(out.to, p.to);
+    if (p.to <= cleared) continue;
+    for (const k of PAST_N) out[k] = Math.max(out[k], num(p[k]));
+    for (const x of Array.isArray(p.tags) ? p.tags : []) if (typeof x === 'string' && clean(x, 20)) tags.add(clean(x, 20));
+    for (const [k, x] of Object.entries(p.days && typeof p.days === 'object' ? p.days : {})) {
+      if (!DAY_KEY.test(k) || !x || typeof x !== 'object' || keyDay(k, 1) <= cleared) continue;
+      const day = days.get(k) || { min: 0, focus: {}, cats: {}, gone: 0 };
+      day.min = Math.max(day.min, num(x.min));
+      day.gone = Math.max(day.gone, num(x.gone));
+      for (const [id, v] of Object.entries(x.focus && typeof x.focus === 'object' ? x.focus : {})) if (clean(id, 20) === id && num(v)) day.focus[id] = Math.max(day.focus[id] || 0, v);
+      for (const [id, v] of Object.entries(x.cats && typeof x.cats === 'object' ? x.cats : {})) if (CAT_ID.test(id) && num(v)) day.cats[id] = Math.max(day.cats[id] || 0, v);
+      days.set(k, day);
+    }
+  }
+  for (const k of [...days.keys()].sort()) {
+    const x = days.get(k), day = {};
+    if (x.min) day.min = x.min;
+    if (Object.keys(x.focus).length) day.focus = sorted(x.focus);
+    if (Object.keys(x.cats).length) day.cats = sorted(x.cats);
+    if (x.gone) day.gone = x.gone;
+    if (Object.keys(day).length) out.days[k] = day;
+  }
+  out.tags = [...tags].sort().slice(0, 50);
+  return out;
+}
+// One finished block into the past.
+function fold(past, b) {
+  const k = dayKey(b.start);
+  const day = past.days[k] || (past.days[k] = {});
+  const tag = b.tag || '';
+  day.focus = { ...day.focus, [tag]: ((day.focus || {})[tag] || 0) + actualMin(b) }; // '' is no tag
+  if (kitten(b) === 'home') {
+    const cat = b.cat || 'miso';
+    day.min = (day.min || 0) + homeMin(b);
+    day.cats = { ...day.cats, [cat]: ((day.cats || {})[cat] || 0) + 1 };
+    for (const f of Object.keys(FEATS)) if (FEATS[f](b)) past[f] += 1;
+    if (b.tag && !past.tags.includes(b.tag)) past.tags.push(b.tag);
+  } else day.gone = (day.gone || 0) + 1;
+}
+// More than KEEP blocks: fold the oldest into the past, never one that's still running or waiting for
+// "How did it go?". Every device does the same, from the blocks alone (E.normalize, E.start, E.merge).
+function trim(doc) {
+  if (doc.blocks.length <= E.config.KEEP) return;
+  let to = doc.blocks.map((b) => b.start).sort((x, y) => x - y)[doc.blocks.length - E.config.KEEP];
+  for (const b of doc.blocks) if (!b.closed) to = Math.min(to, b.start);
+  const old = doc.blocks.filter((b) => b.start < to);
+  if (!old.length) return;
+  const before = earnedOf(doc), done = missionTotals(doc).done;
+  doc.past.to = to;
+  doc.blocks = doc.blocks.filter((b) => b.start >= to);
+  bank(doc, before); // their treats, and what the missions of the days and weeks this closes paid
+  doc.past.missions += done - missionTotals(doc).done;
+  for (const b of old) if (!b.cancelled) fold(doc.past, b);
+  doc.past = pastOf([doc.past], doc.cleared);
+}
+// The days in the past from `from` to `to`, oldest first, for the café's views: `min` is the minutes
+// of kittens that came home, `focus` all the minutes by tag ('' is no tag), `cats` who came home and
+// how often, `home` how many in all, and `gone` how many wandered off.
+E.pastDays = (doc, from = -Infinity, to = Infinity) => Object.entries(doc.past.days).map(([k, x]) => ({
+  day: keyDay(k), min: x.min || 0, focus: { ...x.focus }, cats: { ...x.cats },
+  home: Object.values(x.cats || {}).reduce((n, v) => n + v, 0), gone: x.gone || 0,
+})).filter((x) => x.day >= from && x.day < to);
+
 // Pausing, unless it's turned off in Settings (and never while napping together). A pause lasts
 // 5 minutes at most (E.tick ends it).
 E.canPause = (doc) => doc.settings.pause !== 'off';
@@ -715,6 +824,7 @@ E.clearHistory = (doc, now) => {
   const before = earnedOf(doc);
   doc.cleared = now;
   doc.blocks = doc.blocks.filter((b) => !b.ended);
+  doc.past = { ...emptyPast(), to: doc.past.to }; // the past empties too; its treats are banked already
   bank(doc, before);
   doc.u = now;
 };
@@ -800,10 +910,11 @@ E.pings = (doc, now) => {
         });
     }
     const name = cat && b.cat ? b.cat.charAt(0).toUpperCase() + b.cat.slice(1) : 'Your kitten';
+    const home = cat && !b.gone; // a kitten that already wandered off doesn't come home at the end
     if (b.overtime && !b.over) {
-      out.push({ at: b.end, kind: 'end', tag: `kavana-${b.id}`, block: b.id, title: cat ? `🐱 Time's up, and ${name} came home` : "Time's up", body: `${b.intention}. Kavana keeps counting until you stop.` });
+      out.push({ at: b.end, kind: 'end', tag: `kavana-${b.id}`, block: b.id, title: home ? `🐱 Time's up, and ${name} came home` : cat ? "🐱 Time's up" : "Time's up", body: `${b.intention}. Kavana keeps counting until you stop.` });
     } else if (b.mode === 'stopwatch') {
-      out.push({ at: b.end, kind: 'end', tag: `kavana-${b.id}`, block: b.id, title: cat ? `🐱 Three hours! ${name} came home` : 'Three hours. How did it go?', body: `${b.intention}. Tap to log it.` });
+      out.push({ at: b.end, kind: 'end', tag: `kavana-${b.id}`, block: b.id, title: home ? `🐱 Three hours! ${name} came home` : cat ? '🐱 Three hours. How did it go?' : 'Three hours. How did it go?', body: `${b.intention}. Tap to log it.` });
     } else out.push({ at: b.end, kind: 'end', tag: `kavana-${b.id}`, block: b.id, title: cat ? "🐱 Boo! Time's up. How did it go?" : 'How did it go?', body: `${b.intention}. Tap to log it.` });
   }
   if (doc.brk && doc.brk.end > now) {
@@ -861,7 +972,8 @@ E.ranked = (doc, from, to) => {
 
 // ---------- merging two copies of the same doc (sync) ----------
 // Records carry `u` (last change). Per record the newer copy wins, crossed-off Later items
-// win as tombstones, and a "clear history" removes ended blocks that started before it.
+// win as tombstones, and a "clear history" removes ended blocks that started before it. The past
+// with the further mark wins, and blocks before the mark go (see "the past" above).
 E.merge = (a, b) => {
   a = E.normalize(a);
   b = E.normalize(b);
@@ -886,7 +998,8 @@ E.merge = (a, b) => {
   };
   const out = E.empty();
   out.cleared = Math.max(a.cleared, b.cleared);
-  out.blocks = byId(a.blocks, b.blocks, block).filter((x) => !(x.ended && x.start < out.cleared)).sort((x, y) => x.start - y.start);
+  out.past = pastOf([a.past, b.past], out.cleared);
+  out.blocks = byId(a.blocks, b.blocks, block).filter((x) => !(x.ended && x.start < out.cleared) && x.start >= out.past.to).sort((x, y) => x.start - y.start);
   // Started on two devices at once: the newest one runs, the other counts as stopped.
   const open = out.blocks.filter(isOpen);
   for (const x of open.slice(0, -1)) { stopped(x, x.paused || x.start, 'stop'); x.ended = x.paused || x.start; x.stopped = true; x.plan = []; x.closed = true; }
@@ -896,6 +1009,7 @@ E.merge = (a, b) => {
   out.settings = (b.settings.u || 0) > (a.settings.u || 0) ? b.settings : a.settings;
   if ((b.brkU || 0) > (a.brkU || 0)) { out.brk = b.brk; out.brkU = b.brkU; } else { out.brk = a.brk; out.brkU = a.brkU; }
   for (const k of new Set([...Object.keys(a.tally), ...Object.keys(b.tally)])) out.tally[k] = Math.max(a.tally[k] || 0, b.tally[k] || 0);
+  trim(out); // the two copies together can be more than a doc keeps
   out.u = Math.max(a.u, b.u);
   return out;
 };

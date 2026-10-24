@@ -262,4 +262,42 @@ ok('still away after the pause ended: it wandered off, 15 s after the pause', ()
   assert.equal(r.state.view.active.kitten, 'gone');
 });
 
+// Extra time with a kitten that already wandered off: the end ping doesn't say it came home (kavana e7b7e80).
+r = run({ op: 'stop' }, tt + 46 * MIN); r = run({ op: 'outcome', id: r.state.view.awaiting.id, outcome: null }, tt + 46 * MIN);
+r = run({ op: 'settings', patch: { overtime: true } }, tt + 47 * MIN);
+r = run({ op: 'start', intention: 'Long one', minutes: 25 }, tt + 50 * MIN);
+r = run({ op: 'away', at: tt + 52 * MIN, grace: 15000 }, tt + 55 * MIN);
+ok('the end ping after the kitten left says Time\'s up, not came home', () => {
+  const end = r.state.pings.find((p) => p.kind === 'end');
+  assert.equal(r.state.view.active.kitten, 'gone');
+  assert.equal(end.title, "🐱 Time's up");
+});
+
+// Past 2000 blocks the engine folds the oldest into doc.past (kavana 338f6f3). The app hands the engine
+// the whole doc and saves the whole doc; its 400-block window is only what the screens draw.
+const E2 = vm.runInContext('Kavana', ctx);
+const big = E2.empty();
+let at = new Date(2025, 0, 1, 9, 0, 0).getTime();
+for (let i = 0; i < 2010; i++) {
+  E2.start(big, { intention: `B${i}`, minutes: 2, cat: 'miso' }, at);
+  E2.tick(big, at + 2 * MIN + 1000);
+  const w = E2.awaiting(big);
+  E2.outcome(big, w.id, 'done', at + 3 * MIN);
+  at += 6 * 3600000; // four a day
+}
+const earned = E2.treats(big).earned;
+KB(`KB.load(${JSON.stringify(JSON.stringify(big))})`);
+r = run({ op: 'tick' }, at);
+const saved = JSON.parse(KB('KB.dump()'));
+ok('a doc past 2000 blocks: the oldest are folded, not dropped, and their treats stay', () => {
+  assert.equal(saved.blocks.length <= 2000, true);
+  assert.equal(Boolean(saved.past && saved.past.to), true);
+  assert.equal(r.state.treats.earned, earned);
+});
+ok('the screens get the newest 400; a period asks the engine for more', () => {
+  assert.equal(r.state.history.length, 400);
+  const p = run({ op: 'period', from: 0, to: at }, at);
+  assert.equal(p.result.length, saved.blocks.length);
+});
+
 console.log(`\n${pass} passed`);
