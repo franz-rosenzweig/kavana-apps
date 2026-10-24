@@ -20,7 +20,6 @@ the phone's dark mode and the debug app's overlay permission back as they were.
 import json
 import os
 import re
-import subprocess
 import sys
 import time
 
@@ -114,7 +113,7 @@ if P.LOCAL:
 elif APK.startswith('mac:'):  # built on the Mac: install it from there
     print(P.mac('adb install -t ' + APK[4:], timeout=180).strip())
 else:
-    subprocess.run(['scp', '-q', '-o', 'BatchMode=yes', '-i', '~/.ssh/mac-key', APK, 'user@your-mac:/tmp/kavana-debug.apk'], check=True)
+    P.to_mac(APK, '/tmp/kavana-debug.apk')
     print(P.mac('adb install -t /tmp/kavana-debug.apk', timeout=180).strip())
 P.adb('shell', 'pm', 'clear', P.PKG)
 P.adb('shell', 'pm', 'grant', P.PKG, 'android.permission.POST_NOTIFICATIONS')

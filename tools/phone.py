@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Drives the Android phone plugged into the Mac (adb over SSH) for Kavana's device checks.
+Which Mac: KAVANA_MAC=user@host and KAVANA_MAC_KEY=<ssh key>, or ~/.config/kavana-apps/mac.env.
 
     python3 tools/phone.py shot out.png          # a screenshot
     python3 tools/phone.py tap "Start Focus"     # tap the first thing showing that text
@@ -15,11 +16,47 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 
-MAC = ['ssh', '-o', 'BatchMode=yes', '-i', '~/.ssh/mac-key', 'user@your-mac']
 PATH = 'export PATH=$HOME/android-sdk/platform-tools:$PATH; '
 PKG = 'xyz.tiresia.kavana.debug'
 # KAVANA_ADB=/path/to/adb: a device on this machine (the emulator) instead of the phone on the Mac.
 LOCAL = os.environ.get('KAVANA_ADB')
+CONFIG = os.path.expanduser('~/.config/kavana-apps/mac.env')
+
+
+def _setting(name):
+    """KAVANA_MAC (user@host of the Mac the phone is plugged into) and KAVANA_MAC_KEY (an ssh key,
+    optional): from the environment, or from ~/.config/kavana-apps/mac.env (NAME=value lines),
+    which lives outside the repo."""
+    if os.environ.get(name):
+        return os.environ[name]
+    try:
+        with open(CONFIG) as f:
+            for line in f:
+                k, _, v = line.strip().partition('=')
+                if k == name and v:
+                    return os.path.expanduser(v)
+    except OSError:
+        pass
+    return None
+
+
+def ssh_opts():
+    key = _setting('KAVANA_MAC_KEY')
+    return ['-o', 'BatchMode=yes'] + (['-i', key] if key else [])
+
+
+def mac_host():
+    host = _setting('KAVANA_MAC')
+    if not host:
+        sys.exit('Which Mac is the phone plugged into? Set KAVANA_MAC=user@host (and KAVANA_MAC_KEY=<ssh key> '
+                 'if ssh needs one), or put them in ~/.config/kavana-apps/mac.env. For an emulator on this '
+                 'machine, set KAVANA_ADB=/path/to/adb instead.')
+    return host
+
+
+def to_mac(src, dst):
+    """Copies a file to the Mac (dst is a path there)."""
+    subprocess.run(['scp', '-q'] + ssh_opts() + [src, f'{mac_host()}:{dst}'], check=True)
 
 
 def mac(cmd, binary=False, timeout=120):
@@ -27,7 +64,7 @@ def mac(cmd, binary=False, timeout=120):
         cmd = re.sub(r'^adb ', LOCAL + ' -s ' + os.environ.get('KAVANA_SERIAL', 'emulator-5554') + ' ', cmd)
         r = subprocess.run(['bash', '-c', cmd], capture_output=True, timeout=timeout)
     else:
-        r = subprocess.run(MAC + [PATH + cmd], capture_output=True, timeout=timeout)
+        r = subprocess.run(['ssh'] + ssh_opts() + [mac_host(), PATH + cmd], capture_output=True, timeout=timeout)
     if r.returncode != 0 and not binary:
         raise RuntimeError(f'{cmd}: {r.stderr.decode(errors="replace")[-400:]}')
     return r.stdout if binary else r.stdout.decode(errors='replace')
