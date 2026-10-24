@@ -128,7 +128,7 @@ function shop(now) {
     season: ev ? { id: ev.id, name: ev.name, to: ev.to } : null,
     soon: soon ? { id: soon.id, name: soon.name, days: soon.days } : null,
     forSale: Object.keys(E.SHOP).filter((id) => E.forSale(id, now)),
-    items: K.ITEMS.map(({ id, name, about, at, perch, wall, floor, limited, on, alt }) => ({ id, name, about, at, perch: perch || null, wall: Boolean(wall), floor: Boolean(floor), limited: limited || null, on: on || null, alt: alt || null })),
+    items: K.ITEMS.map(({ id, name, about, at, perch, wall, floor, limited, on, alt, views }) => ({ id, name, about, at, perch: perch || null, wall: Boolean(wall), floor: Boolean(floor), limited: limited || null, on: on || null, alt: alt || null, views: views || null })),
     themes: K.THEMES,
     shelter: K.SHELTER.map(({ id, name, about }) => ({ id, name, about })),
     shelterOrg: K.SHELTER_ORG,
@@ -152,7 +152,7 @@ function state(now) {
       const m = MEET[c.id];
       return {
         id: c.id, name: c.name, about: c.about, how: c.how || null, adopt: Boolean(c.adopt), met: metIds.has(c.id),
-        limited: c.limited || null, price: E.SHOP[c.id] || 0,
+        limited: c.limited || null, price: E.SHOP[c.id] || 0, poses: c.poses || null, ghost: c.breed === 'ghost',
         have: m ? Math.min(cs[m[0]], m[1]) : 0, need: m ? m[1] : 0, unit: m ? m[2] : null,
       };
     }),

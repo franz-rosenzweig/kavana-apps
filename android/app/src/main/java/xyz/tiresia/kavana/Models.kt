@@ -183,6 +183,9 @@ data class CatInfo(
     val have: Int = 0,
     val need: Int = 0,
     val unit: String? = null,
+    /** What it can do in the 3D café besides sit and nap: walk, loaf, stretch, wash, back (paintings). */
+    val poses: Map<String, String>? = null,
+    val ghost: Boolean = false,
 )
 
 @Serializable
@@ -217,6 +220,8 @@ data class Soon(val id: String, val name: String, val days: Int)
 data class Thing(
     val id: String, val name: String, val about: String, val at: List<Double>, val perch: List<Double>? = null,
     val wall: Boolean = false, val floor: Boolean = false, val limited: String? = null, val on: String? = null, val alt: List<Double>? = null,
+    /** Its side and back paintings, for the 3D café when the room is turned. */
+    val views: Map<String, String>? = null,
 )
 
 @Serializable

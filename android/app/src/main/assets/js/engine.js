@@ -4,7 +4,9 @@
 (function (root) {
 'use strict';
 const E = {};
-E.config = { MIN: 60000, KEEP: 2000 }; // tests shrink the minute; a doc keeps its last KEEP blocks (older ones go into doc.past)
+// Tests shrink the minute. A doc keeps its last KEEP blocks, and only as many as fit in BYTES of JSON
+// (the server takes 1 MB); older ones go into doc.past.
+E.config = { MIN: 60000, KEEP: 2000, BYTES: 800000 };
 const M = () => E.config.MIN;
 const LINES = typeof module !== 'undefined' ? require('./lines.js') : root.KavanaLines;
 
@@ -91,8 +93,9 @@ E.empty = () => ({
   u: 0,
 });
 
-// A doc from storage or the network: fill in anything missing, drop anything malformed.
-E.normalize = (d) => {
+// A doc from storage or the network: fill in anything missing, drop anything malformed. (E.merge
+// leaves the size to the merged doc, so it's measured once.)
+E.normalize = (d, sized = true) => {
   const doc = E.empty();
   if (!d || typeof d !== 'object') return doc;
   doc.blocks = Array.isArray(d.blocks) ? d.blocks.filter((b) => b && typeof b.id === 'string' && b.start && b.end) : [];
@@ -116,7 +119,7 @@ E.normalize = (d) => {
   for (const [k, v] of Object.entries(d.tally && typeof d.tally === 'object' ? d.tally : {})) if (/^[a-z]{1,16}$/.test(k) && Number.isInteger(v) && v >= 0) doc.tally[k] = v;
   doc.past = pastOf([d.past], doc.cleared);
   doc.blocks = doc.blocks.filter((b) => b.start >= doc.past.to); // already in the past
-  trim(doc);
+  trim(doc, sized);
   doc.u = d.u || 0;
   return doc;
 };
@@ -376,15 +379,17 @@ E.treats = (doc) => {
 };
 E.owns = (doc, id) => doc.owned.some((x) => x.id === id);
 
-function lineFor(b, n) {
+// `own` is your own lines (settings.lines). They used to be copied into every block (b.own), which made
+// a block up to ten times bigger; now they're read when the pings are planned.
+function lineFor(b, n, own) {
   const seed = [...b.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
-  if (b.own && b.own.length && (seed + n) % 2 === 0) return b.own[(seed + n) % b.own.length]; // your own lines, every other nudge
+  if (own && own.length && (seed + n) % 2 === 0) return own[(seed + n) % own.length]; // your own lines, every other nudge
   return LINES[(seed + n * 5) % LINES.length];
 }
 
 // The pings a block will get from `from` to its end. Ask: every interval. Nudge: every 60-140%
 // of the interval, so it doesn't feel like a metronome. None in the last minute (the end ping covers it).
-function planFrom(b, from) {
+function planFrom(b, from, own) {
   const plan = [];
   if (!b.interval) return plan;
   let n = b.checkins.length ? b.checkins[b.checkins.length - 1].n : 0;
@@ -393,7 +398,7 @@ function planFrom(b, from) {
     t += b.interval * M() * (b.style === 'nudge' ? 0.6 + 0.8 * Math.random() : 1);
     if (b.end - t < M()) break;
     n += 1;
-    plan.push(b.style === 'nudge' ? { n, at: Math.round(t), kind: 'nudge', line: lineFor(b, n) } : { n, at: Math.round(t), kind: 'checkin' });
+    plan.push(b.style === 'nudge' ? { n, at: Math.round(t), kind: 'nudge', line: lineFor(b, n, own) } : { n, at: Math.round(t), kind: 'checkin' });
   }
   return plan;
 }
@@ -529,8 +534,7 @@ E.start = (doc, o, now) => {
   };
   if (mode === 'stopwatch') b.mode = mode;
   if (mode === 'timer' && doc.settings.overtime && !nap) b.overtime = true;
-  if (doc.settings.lines.length) b.own = doc.settings.lines.slice(0, 20);
-  b.plan = planFrom(b, now);
+  b.plan = planFrom(b, now, doc.settings.lines);
   // Cancelled blocks are kept a month, so other devices hear about them, then dropped.
   doc.blocks = doc.blocks.filter((x) => !x.cancelled || now - x.cancelled < 30 * 86400000);
   doc.blocks.push(b);
@@ -639,7 +643,9 @@ function bank(doc, before) {
 }
 
 // ---------- the past ----------
-// A doc keeps its last E.config.KEEP blocks (2000, a year and more). Older ones are folded into
+// A doc keeps its last E.config.KEEP blocks (2000, a year and more), and only as many of them as fit
+// in E.config.BYTES of JSON (800 KB, about 1600 everyday blocks), so it can always sync: the server
+// takes 1 MB, and the rest is room for what changes before the next fold. Older ones are folded into
 // doc.past, so nothing they counted for is lost: their treats and the missions they did are banked,
 // each day keeps what the café shows (the minutes, by tag; which cats came home and the minutes they
 // brought; how many wandered off), and the achievements keep their counts.
@@ -706,14 +712,42 @@ function fold(past, b) {
     if (b.tag && !past.tags.includes(b.tag)) past.tags.push(b.tag);
   } else day.gone = (day.gone || 0) + 1;
 }
-// More than KEEP blocks: fold the oldest into the past, never one that's still running or waiting for
-// "How did it go?". Every device does the same, from the blocks alone (E.normalize, E.start, E.merge).
-function trim(doc) {
-  if (doc.blocks.length <= E.config.KEEP) return;
-  let to = doc.blocks.map((b) => b.start).sort((x, y) => x - y)[doc.blocks.length - E.config.KEEP];
+// How big a doc (or anything) is as JSON, in UTF-8 bytes, which is what the server reads. Counted by
+// hand: Android's JavaScript sandbox has no TextEncoder.
+E.size = (x) => {
+  const s = JSON.stringify(x);
+  let n = s.length;
+  for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); if (c > 0x7f) n += c > 0x7ff && (c < 0xd800 || c > 0xdfff) ? 2 : 1; } // a surrogate pair is 2 + 2
+  return n;
+};
+// What a block no longer needs: its own copy of your lines (blocks from before they were read from the
+// settings), and once it's filed, the words its nudges said (they're only shown while it runs).
+function settle(b) {
+  if ('own' in b) delete b.own;
+  if (b.closed) for (const c of b.checkins) if ('line' in c) delete c.line;
+}
+// Too many blocks, or too big a doc: fold the oldest into the past, never one that's still running or
+// waiting for "How did it go?". Every device does the same, from the doc alone (E.normalize, E.start,
+// E.merge). By size it folds the oldest blocks that add up to what's over, then measures again, since
+// the past grows a little with each day it takes in.
+function trim(doc, sized = true) {
+  for (const b of doc.blocks) settle(b);
+  if (doc.blocks.length > E.config.KEEP) foldBefore(doc, doc.blocks.map((b) => b.start).sort((x, y) => x - y)[doc.blocks.length - E.config.KEEP]);
+  if (!sized || E.config.BYTES === Infinity) return; // (no limit: only in the tests)
+  for (let size = E.size(doc); size > E.config.BYTES; size = E.size(doc)) {
+    const old = doc.blocks.slice().sort((x, y) => x.start - y.start);
+    if (!old.length) return;
+    let i = 0, over = size - E.config.BYTES;
+    for (; i < old.length && over > 0; i++) over -= E.size(old[i]) + 1;
+    if (over > 0) return; // it's not the blocks (even without them it wouldn't fit), so folding them won't help
+    while (i < old.length && old[i].start === old[i - 1].start) i++; // the mark is a start, so blocks that started together go together
+    if (!foldBefore(doc, i < old.length ? old[i].start : old[old.length - 1].start + 1)) return; // only open blocks left
+  }
+}
+function foldBefore(doc, to) {
   for (const b of doc.blocks) if (!b.closed) to = Math.min(to, b.start);
   const old = doc.blocks.filter((b) => b.start < to);
-  if (!old.length) return;
+  if (!old.length) return false;
   const before = earnedOf(doc), done = missionTotals(doc).done;
   doc.past.to = to;
   doc.blocks = doc.blocks.filter((b) => b.start >= to);
@@ -721,6 +755,7 @@ function trim(doc) {
   doc.past.missions += done - missionTotals(doc).done;
   for (const b of old) if (!b.cancelled) fold(doc.past, b);
   doc.past = pastOf([doc.past], doc.cleared);
+  return true;
 }
 // The days in the past from `from` to `to`, oldest first, for the café's views: `min` is the minutes
 // of kittens that came home, `focus` all the minutes by tag ('' is no tag), `cats` who came home and
@@ -762,7 +797,7 @@ E.extend = (doc, id, more, now) => {
   b.minutes += Number(more);
   b.ended = null;
   b.stopped = false;
-  b.plan = planFrom(b, now);
+  b.plan = planFrom(b, now, doc.settings.lines);
   touch(doc, b, now);
 };
 
@@ -838,7 +873,7 @@ E.setSettings = (doc, patch, now) => {
     if (b && !b.paused) { // applies to the block that's running too, counted from its last check-in
       const last = b.checkins.length ? b.checkins[b.checkins.length - 1].at : b.start;
       b.interval = s.interval;
-      b.plan = planFrom(b, Math.max(last, now - b.interval * M() + M()));
+      b.plan = planFrom(b, Math.max(last, now - b.interval * M() + M()), s.lines);
       touch(doc, b, now);
     }
   }
@@ -975,8 +1010,8 @@ E.ranked = (doc, from, to) => {
 // win as tombstones, and a "clear history" removes ended blocks that started before it. The past
 // with the further mark wins, and blocks before the mark go (see "the past" above).
 E.merge = (a, b) => {
-  a = E.normalize(a);
-  b = E.normalize(b);
+  a = E.normalize(a, false);
+  b = E.normalize(b, false);
   const newer = (x, y) => (!x ? y : !y ? x : (y.u || 0) > (x.u || 0) ? y : x);
   const byId = (xs, ys, join = newer) => {
     const m = new Map();

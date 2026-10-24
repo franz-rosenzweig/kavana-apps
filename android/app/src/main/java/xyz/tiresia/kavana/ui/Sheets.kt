@@ -30,7 +30,7 @@ private val WHYS = listOf(
 )
 
 @Composable
-fun Sheets(s: UiState, act: MainActivity) {
+fun Sheets(s: UiState, act: MainActivity, wall: Wall, form: StartForm) {
     val repo = KavanaApp.repo
     val a = s.view.active
     var hidden by remember { mutableStateOf<String?>(null) } // a check-in put away with a swipe ("id:n")
@@ -52,7 +52,7 @@ fun Sheets(s: UiState, act: MainActivity) {
             onHide = { hidden = key; why = null },
         )
     }
-    s.view.awaiting?.let { OutcomeSheet(s, it, act) }
+    s.view.awaiting?.let { OutcomeSheet(s, it, act, wall) }
     val meets by repo.meets.collectAsStateWithLifecycle()
     if (s.view.awaiting == null && pending == null && why == null) meets.firstOrNull()?.let { id ->
         MeetSheet(s, s.cat(id)) { repo.meets.update { it.drop(1) } }
@@ -84,58 +84,119 @@ private fun CheckinSheet(s: UiState, a: Block?, why: Pair<String, Int>?, onAnswe
     }
 }
 
+/**
+ * The end of a block. When the kitten came home, the homecoming: today's café comes up behind the card,
+ * the cat drops onto its spot and its treats float up, and after two seconds (or a tap) the card comes up.
+ * Otherwise "How did it go?" as a sheet. Again starts the same block in one tap.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun OutcomeSheet(s: UiState, w: Block, act: MainActivity) {
+private fun OutcomeSheet(s: UiState, w: Block, act: MainActivity, wall: Wall) {
     val repo = KavanaApp.repo
-    val c = s.cat(w.cat)
-    val state = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = { it != SheetValue.Hidden })
     var note by remember(w.id) { mutableStateOf(w.note) }
     fun out(o: String?) {
         // A note (like Forest's session notes) goes on the block first, then the answer.
         if (note.trim() != w.note) repo.launch(op("edit", "id" to w.id, "patch" to mapOf("note" to note)))
         repo.launch(op("outcome", "id" to w.id, "outcome" to o)) { Notify.cancel(act, Notify.ID_PING) }
     }
+    // Again: file this one without an answer and start the same block, with nothing in between.
+    fun again() {
+        out(null)
+        repo.launch(op("start",
+            "intention" to w.intention, "step" to (w.step ?: ""), "minutes" to (if (w.stopwatch) 180 else w.minutes), "style" to w.style,
+            "mode" to (if (w.stopwatch) "stopwatch" else "timer"), "tag" to (w.tag ?: ""), "cat" to (if (s.catsOn) s.companion else null),
+        ))
+    }
+    val h = s.history.firstOrNull { it.id == w.id }
+    if (s.catsOn && w.kitten == "home" && h != null) {
+        Homecoming(s, w, h, wall) { OutcomeBody(s, w, act, note, { note = it }, showCat = false, onOut = ::out, onAgain = ::again) }
+        return
+    }
+    val state = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = { it != SheetValue.Hidden })
     ModalBottomSheet(onDismissRequest = {}, sheetState = state) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp).imePadding(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Eyebrow(when { w.stopwatch -> if (w.stopped) "Stopwatch, under 10 minutes" else "Stopwatch"; w.over != null -> "Extra time"; w.stopped -> "Stopped early"; else -> "Time's up" })
-            Text("How did it go?", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 4.dp))
-            Text(w.intention, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-            if (s.catsOn) {
+        OutcomeBody(s, w, act, note, { note = it }, showCat = true, onOut = ::out, onAgain = ::again)
+    }
+}
+
+@Composable
+private fun Homecoming(s: UiState, w: Block, h: Hist, wall: Wall, body: @Composable () -> Unit) {
+    var arriving by remember(w.id) { mutableStateOf(true) }
+    LaunchedEffect(w.id) { kotlinx.coroutines.delay(2300); arriving = false }
+    val dark = androidx.compose.foundation.isSystemInDarkTheme()
+    val scene = remember(w.id) {
+        val today = java.time.LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        cafeScene(s, s.history.filter { it.start >= today && it.id != w.id }, "day", cafeHash("home$today"), dark, quiet = false)
+    }
+    val arrival = remember(w.id) { CafeArrival(cafeCat(s, h).copy(title = "${s.cat(w.cat).name} came home"), "🐟 +${w.treats + w.bonus}") }
+    androidx.activity.compose.BackHandler { arriving = false }
+    Box(
+        Modifier.fillMaxSize().wall(wall)
+            .clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { arriving = false },
+    ) {
+        Column(Modifier.fillMaxSize().systemBarsPadding()) {
+            CafeView(scene, cafeNames(s), Modifier.fillMaxWidth().weight(1f).padding(top = 14.dp), arrival = arrival, margin = 6f)
+            androidx.compose.animation.AnimatedVisibility(
+                !arriving,
+                enter = androidx.compose.animation.slideInVertically { it } + androidx.compose.animation.fadeIn(),
+            ) {
+                Surface(shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp,
+                    modifier = Modifier.fillMaxWidth().heightIn(max = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.7f).dp)) {
+                    body()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OutcomeBody(s: UiState, w: Block, act: MainActivity, note: String, onNote: (String) -> Unit, showCat: Boolean, onOut: (String?) -> Unit, onAgain: () -> Unit) {
+    val repo = KavanaApp.repo
+    val c = s.cat(w.cat)
+    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(top = if (showCat) 0.dp else 20.dp, bottom = 24.dp).imePadding(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Eyebrow(when { w.stopwatch -> if (w.stopped) "Stopwatch, under 10 minutes" else "Stopwatch"; w.over != null -> "Extra time"; w.stopped -> "Stopped early"; else -> "Time's up" }, color = MaterialTheme.colorScheme.primary)
+        Text("How did it go?", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 4.dp))
+        Text(w.intention, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        if (s.catsOn) {
+            if (showCat) {
                 if (w.kitten == "home") LiveCat(c.id, "portrait", 132.dp, Modifier.padding(top = 10.dp), interactive = true, onCat = { it.hop(2); it.happy(1.2f); it.heart() })
                 else CatArt(Art.GONE, 132.dp, Modifier.padding(top = 10.dp))
-                Text(
-                    when {
-                        w.kitten == "home" -> "${c.name} came home to your café. 🐟 +${w.treats}"
-                        w.goneWhy == "away" -> "${c.name} wandered off while you were away."
-                        w.goneWhy == "short" -> "${c.name} needs 10 minutes to come home."
-                        else -> "${c.name} wandered off. Next time, stay to the end."
-                    }, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge,
-                )
             }
-            OutlinedTextField(
-                note, { note = it.take(500) }, placeholder = { Text("Add a note") }, minLines = 1, maxLines = 4,
-                modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
+            Text(
+                when {
+                    w.kitten == "home" -> "${c.name} came home to your café. 🐟 +${w.treats + w.bonus}"
+                    w.goneWhy == "away" -> "${c.name} wandered off while you were away."
+                    w.goneWhy == "short" -> "${c.name} needs 10 minutes to come home."
+                    else -> "${c.name} wandered off. Next time, stay to the end."
+                }, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge,
+                color = if (w.kitten == "home") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = 6.dp),
             )
-            Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Choice("🎉", "Done", Modifier.weight(1f), strong = true) { out("done") }
-                Choice("🌗", "Partly", Modifier.weight(1f)) { out("partly") }
-                Choice("🌧️", "Not really", Modifier.weight(1f)) { out("notreally") }
+        }
+        Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Choice("🎉", "Done", Modifier.weight(1f), strong = true) { onOut("done") }
+            Choice("🌗", "Partly", Modifier.weight(1f)) { onOut("partly") }
+            Choice("🌧️", "Not really", Modifier.weight(1f)) { onOut("notreally") }
+        }
+        if (!w.stopped && !w.stopwatch && w.over == null) {
+            val more = if (w.minutes <= 10) listOf(10, 20) else listOf(5, 10) // after "Just start", offer a real block
+            Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("In the flow?", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                more.forEach { m -> FilledTonalButton(onClick = { repo.launch(op("extend", "id" to w.id, "more" to m)) }) { Text("+$m min") } }
             }
-            if (!w.stopped && !w.stopwatch && w.over == null) {
-                val more = if (w.minutes <= 10) listOf(10, 20) else listOf(5, 10) // after "Just start", offer a real block
-                Row(Modifier.padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("In the flow?", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    more.forEach { m -> FilledTonalButton(onClick = { repo.launch(op("extend", "id" to w.id, "more" to m)) }) { Text("+$m min") } }
-                }
+        }
+        OutlinedTextField(
+            note, { onNote(it.take(500)) }, placeholder = { Text("Add a note") }, minLines = 1, maxLines = 4,
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        )
+        if (w.parked.isNotEmpty()) {
+            Group("You parked") {
+                w.parked.forEachIndexed { i, t -> if (i > 0) GroupDivider(); Text(t, Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) }
             }
-            if (w.parked.isNotEmpty()) {
-                Group("You parked") {
-                    w.parked.forEachIndexed { i, t -> if (i > 0) GroupDivider(); Text(t, Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) }
-                }
-                TextButton(onClick = { act.copy(w.parked.joinToString("\n")); repo.toasts.tryEmit("Copied.") }) { Text("Copy Them") }
-            }
-            TextButton(onClick = { out(null) }, modifier = Modifier.padding(top = 4.dp)) { Text("Skip") }
+            TextButton(onClick = { act.copy(w.parked.joinToString("\n")); repo.toasts.tryEmit("Copied.") }) { Text("Copy Them") }
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            FilledTonalButton(onClick = { onOut(null) }, modifier = Modifier.weight(1f).height(48.dp)) { Text("Skip") }
+            Button(onClick = onAgain, modifier = Modifier.weight(1f).height(48.dp)) { Text("Again") }
         }
     }
 }

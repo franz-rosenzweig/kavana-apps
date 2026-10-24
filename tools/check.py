@@ -60,15 +60,23 @@ def launch(minute):
 
 
 def start_block(name):
-    P.tab('Focus')
+    if not P.find('What are you working on?'):
+        screen('Focus')
     time.sleep(0.5)
-    P.tap('Write the intro')
+    P.tap('What are you working on?')
     P.type_text(name)
     P.adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')  # the keyboard away
     time.sleep(0.6)
-    P.scroll_to('Start Focus')
-    P.tap('Start Focus')
+    P.tap('Start', exact=True)
     return running(name)
+
+
+def screen(name):
+    """A place in Kavana, through the menu (the drawer at the top left)."""
+    P.tap('Menu', exact=True)
+    time.sleep(1.0)
+    P.tap(name, exact=True)
+    time.sleep(0.8)
 
 
 def notifications():
@@ -137,7 +145,7 @@ try:
     check('the cat page says All set (overlay already allowed)', P.wait_for('All set'))
     step('welcome-cat')
     P.tap('Start Focusing')
-    check('the start screen', P.wait_for('Start Focus'))
+    check('the start screen: the café wall and the window', P.wait_for('What are you working on?'))
     step('home')
 
     # Changed your mind: Cancel in the first 10 seconds takes the block back, nothing counts.
@@ -190,31 +198,29 @@ try:
     time.sleep(1)
 
     for name in ['Café', 'Cats', 'Later', 'Settings']:
-        P.tab(name)
+        screen(name)
         time.sleep(1.2)
         step(name.lower().replace('é', 'e'))
         if name == 'Cats':  # the other two panes: missions and rewards, the shop
             P.tap('Missions')
             time.sleep(1)
-            check('the first kitten home is ready to collect', P.wait_for('First Kitten', 4))
+            check('the achievements list (First Kitten) is there', P.scroll_to('First Kitten', tries=10))
             step('missions')
-            P.tap('Shop', exact=True)
+            screen('Shop')
             time.sleep(1)
             step('shop')
-            P.tap('My Cats', exact=True)
 
-    P.tab('Focus')
-    P.tap('A mindful minute')
+    screen('A mindful minute')
     check('the mindful minute', P.wait_for('Breathe in', 5))
     step('breathe')
     P.tap('Leave', exact=True)
 
     P.adb('shell', 'cmd', 'uimode', 'night', 'yes')
     time.sleep(2)
-    P.tab('Focus')
+    screen('Focus')
     time.sleep(1)
     step('home-dark')
-    P.tab('Café')
+    screen('Café')
     time.sleep(1)
     step('cafe-dark')
     P.adb('shell', 'cmd', 'uimode', 'night', 'no')

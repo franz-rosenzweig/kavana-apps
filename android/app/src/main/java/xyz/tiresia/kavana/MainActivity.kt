@@ -33,6 +33,9 @@ class MainActivity : ComponentActivity() {
         val repo = KavanaApp.repo
         // check.sh: `--el minute 1000` makes a minute last a second in the debug build.
         if (BuildConfig.DEBUG && intent.hasExtra("minute")) repo.prefs.edit().putLong("minuteMs", intent.getLongExtra("minute", 0)).apply()
+        // The sound mix is snapshot state in a global object: create it here, outside any composition, or the
+        // first frame of a cold start can read it from a snapshot that doesn't know it yet (a crash).
+        xyz.tiresia.kavana.ui.SoundMix.mix
         setContent { KavanaTheme { Root(this) } }
         lifecycleScope.launch { repo.act(op("tick")) }
     }

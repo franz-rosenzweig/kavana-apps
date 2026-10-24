@@ -49,6 +49,14 @@ const CATS = [
   { id: 'pumpkin', name: 'Pumpkin', ...art('pumpkin'), breed: 'pumpkin', about: 'Lives in a jack-o\'-lantern. Only here for Halloween.', adopt: true, limited: 'halloween' },
   { id: 'flurry', name: 'Flurry', ...art('flurry'), breed: 'flurry', about: 'Wears her scarf indoors. Only here in winter.', adopt: true, limited: 'winter' },
 ];
+// What the 3D café's cats can do besides sit and nap (web/cats/<id>-<pose>-1.webp): walk side-on (the
+// paintings face right), lie in a loaf, stretch, wash a paw, and sit with their back to you at the window.
+// Only some cats have them so far; the rest sit, nap and hop.
+const MOVES = {
+  miso: ['walk', 'loaf', 'stretch', 'wash', 'back'], mochi: ['walk', 'loaf', 'stretch', 'wash', 'back'],
+  pepper: ['walk', 'loaf', 'stretch', 'wash', 'back'], pickles: ['walk', 'loaf', 'stretch', 'wash', 'back'],
+};
+for (const c of CATS) if (MOVES[c.id]) c.poses = Object.fromEntries(MOVES[c.id].map((p) => [p, `cats/${c.id}-${p}-1.webp`]));
 
 // The Cat Café's things (web/cafe/). `at` is where it goes in the room: [center x, bottom y, width],
 // in % of the room (3:2; the wall is the top 58%). Wall things hang behind everything on the floor.
@@ -78,6 +86,10 @@ const ITEMS = [
   { id: 'snowglobe', name: 'Snow Globe', about: 'Shake it and a tiny cat gets snowed on.', at: [19, 49.5, 6], on: 'window', alt: [8, 80, 7], limited: 'winter' },
   { id: 'sled', name: 'Sled', about: 'A blanket, a sled, a nap.', at: [30, 99, 14], limited: 'winter' },
 ].map((x) => ({ ...x, art: `cafe/${x.id}-1.webp` }));
+// Things painted from more than the front, so they turn when you spin the 3D café
+// (web/cafe/<id>-<view>-<number>.webp; a repainted view gets the next number).
+const TURNS = { cattree: { side: 1, back: 1 }, counter: { side: 1, back: 1 }, bookshelf: { side: 2, back: 1 }, armchair: { side: 2 } };
+for (const x of ITEMS) if (TURNS[x.id]) x.views = Object.fromEntries(Object.entries(TURNS[x.id]).map(([v, n]) => [v, `cafe/${x.id}-${v}-${n}.webp`]));
 
 // Shelter cats: the cat version of Forest's real trees. Sponsoring one (with treats) stands for a real
 // shelter cat; they come one after the other, and live in your café from then on. The link goes to a

@@ -18,8 +18,8 @@ android {
         applicationId = "xyz.tiresia.kavana"
         minSdk = 31
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.2.1"
+        versionCode = 8
+        versionName = "0.3.0"
         resValue("string", "app_name", "Kavana")
     }
 

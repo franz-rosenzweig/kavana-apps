@@ -263,19 +263,25 @@ fun CafeTab(s: UiState) {
 
         // Someday: every regular thing and the cats you meet by focusing, dropping in (a peek at what the café becomes).
         val things = if (someday) s.shop.items.filter { it.limited == null || s.owns(it.id) } else ownedThings
-        val cats = if (someday) seatCats(s.cats.filter { !it.adopt }.map { "someday-${it.id}" to it.id }, things, residents, 7)
-            else seatCats(home.map { it.id to it.cat }, ownedThings, residents, from.ms() / 60000)
-        Room(s.view.settings.theme, things, { s.owns(it) || someday }, if (s.catsOn || someday) cats else emptyList(),
-            Modifier.padding(top = 6.dp), already = ownedThings.map { it.id }.toSet(), dropIn = someday) {
+        // The café in 3D (the web's cafe3d.js): the cats that came home in the period, on the things you own.
+        // Someday: every regular thing and the cats you meet by focusing, dropping in.
+        val dark = androidx.compose.foundation.isSystemInDarkTheme()
+        val size = when (span) { Span.Day -> "day"; Span.Week -> "week"; else -> "month" }
+        val scene = if (someday) cafeScene(s, emptyList(), "month", 7, dark, quiet = false).copy(
+            things = things.map { it.id },
+            cats = s.cats.filter { !it.adopt }.map { c -> CafeCat("someday-${c.id}", c.id, "cats/${c.id}-1.webp", "cats/${c.id}-nap-1.webp", poses = c.poses, ghost = c.ghost, title = c.name, sub = c.about) },
+        ) else cafeScene(s, list, size, cafeHash("${span.name}${from.ms()}"), dark)
+        Box(Modifier.fillMaxWidth().aspectRatio(1.08f).padding(top = 6.dp)) {
+            CafeView(scene, cafeNames(s), Modifier.fillMaxSize())
             val word = if (periodOf(span, LocalDate.now()).first == from) span.word else "then"
             if (!someday && home.isEmpty()) Text(
                 if (list.any { it.kitten == "gone" }) "No cats stayed $word. Next time, stay to the end." else "No cats came home $word.",
                 style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center,
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp).zIndex(500f).clip(RoundedCornerShape(50))
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp).clip(RoundedCornerShape(50))
                     .background(MaterialTheme.colorScheme.surface.copy(alpha = .78f)).padding(horizontal = 14.dp, vertical = 6.dp),
             )
             if (someday) Text("Your café, someday", style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp).zIndex(500f).clip(RoundedCornerShape(50))
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp).clip(RoundedCornerShape(50))
                     .background(MaterialTheme.colorScheme.surface.copy(alpha = .78f)).padding(horizontal = 14.dp, vertical = 6.dp))
         }
         Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
