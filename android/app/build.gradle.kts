@@ -18,8 +18,8 @@ android {
         applicationId = "xyz.tiresia.kavana"
         minSdk = 31
         targetSdk = 36
-        versionCode = 10
-        versionName = "0.4.0"
+        versionCode = 11
+        versionName = "0.4.1"
         resValue("string", "app_name", "Kavana")
         // Where the account and its sync live: the same server as the web app.
         buildConfigField("String", "SERVER", "\"https://stuffs.tiresia.xyz/kavana/\"")
@@ -65,7 +65,7 @@ android {
     }
     buildFeatures { compose = true; buildConfig = true }
     lint { checkReleaseBuilds = false }
-    androidResources { noCompress += listOf("webp", "js") }
+    androidResources { noCompress += listOf("webp", "js", "mp3") } // mp3: Recordings opens them straight from the APK
 }
 
 kotlin { jvmToolchain(17) }

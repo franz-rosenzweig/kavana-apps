@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -35,10 +36,14 @@ import kotlin.random.Random
 data class SoundKind(val id: String, val name: String, val about: String?, val free: Boolean)
 
 /**
- * Kavana's background sounds, made on the phone like the web's sounds.js (nothing to download). Up
- * to two play at once, each with its own volume. Each kind is one loop, made once (SoundLoops) and
- * kept, and played by an AudioTrack that loops it inside the mixer, so there's no seam and no thread
- * feeding it. Purring, rain, brown and white noise are free; the others are in the shop ('sound-<id>').
+ * Kavana's background sounds, like the web's sounds.js. Up to two play at once, each with its own
+ * volume. Most are real recordings that come with the app (Recordings: the web's own files, nothing to
+ * download), each decoded once into a seamless loop and fed to a streaming AudioTrack round and round.
+ * Decoding takes a few seconds the first time, so meanwhile the version made on the phone plays and the
+ * recording takes over with a 2 s equal-power crossfade, as on the web. Brown and white noise, and any
+ * recording that won't decode, are only made on the phone (SoundLoops: one loop, made once and kept,
+ * played by an AudioTrack that loops it inside the mixer, so there's no seam and no thread feeding it).
+ * Purring, rain, brown and white noise are free; the others are in the shop ('sound-<id>').
  */
 object Sound {
     val KINDS: List<SoundKind> = listOf(
@@ -49,7 +54,7 @@ object Sound {
         SoundKind("cafe", "Café", "Murmur and the odd cup.", false),
         SoundKind("fire", "Fireplace", "A low fire that crackles.", false),
         SoundKind("waves", "Waves", "Slow surf on a beach.", false),
-        SoundKind("birds", "Birds", "A quiet morning garden.", false),
+        SoundKind("birds", "Birds", "Dawn in a pine forest.", false),
         SoundKind("night", "Night", "Crickets on a warm night.", false),
         SoundKind("wind", "Wind", "Wind around the house.", false),
     )
@@ -70,6 +75,7 @@ object Sound {
     private const val GLIDE = 0.2f
     private const val FALL = 0.25f
     private const val CUT = 1.2f
+    private const val SWAP = 2f // the crossfade from the made-up version to the recording
     private const val TICK = 16L
     private const val TAG = "Kavana"
 
@@ -113,6 +119,12 @@ object Sound {
     /** One sound playing: its track (null while the loop is being made), and where its gain is and is going. */
     private class Layer(val id: String, vol: Float) {
         var track: AudioTrack? = null
+        /** A recording's feeder, which also lets its track go once `feeding` is off. */
+        var feed: Job? = null
+        @Volatile var feeding = false
+        /** During the crossfade to the recording: the made-up version's track, fading out, and how far it is. */
+        var old: AudioTrack? = null
+        var swap = 1f
         var to = vol * TOP
         var gain = 0f
         var riseLeft = 0f
@@ -145,6 +157,28 @@ object Sound {
     }
 
     private fun start(l: Layer) {
+        val ctx = app
+        if (ctx == null || Recordings.file(ctx, l.id) == null) { made(l); return }
+        Recordings.ready(l.id)?.let { if (recorded(l, it)) return }
+        made(l) // until the recording is decoded
+        scope.launch {
+            val loop = withContext(Dispatchers.Default) { Recordings.load(ctx, l.id) } ?: return@launch // it won't decode: the made one stays
+            if (l in wanted) recorded(l, loop)
+        }
+    }
+
+    // The recording plays: from the start if nothing plays yet, else crossing over from the made-up one.
+    private fun recorded(l: Layer, loop: Loop): Boolean {
+        val t = stream(loop) ?: return false
+        val was = l.track
+        l.track = t
+        feed(l, t, loop)
+        if (was == null) l.riseLeft = RISE else { l.old = was; l.swap = 0f }
+        kick()
+        return true
+    }
+
+    private fun made(l: Layer) {
         val made = cache.getOrPut(l.id) {
             scope.async(Dispatchers.Default) {
                 runCatching { pcm(SoundLoops.render(l.id, RATE)) }.onFailure { Log.w(TAG, "sound ${l.id}", it) }.getOrNull()
@@ -153,9 +187,9 @@ object Sound {
         scope.launch {
             val pcm = made.await()
             if (pcm == null && cache[l.id] === made) cache.remove(l.id) // try again next time
-            if (l !in wanted) return@launch // stopped or replaced while it was being made
+            if (l !in wanted || l.track != null) return@launch // stopped, replaced, or the recording came first
             val t = pcm?.let { track(it) }
-            if (t == null) { wanted.remove(l); changed(); return@launch }
+            if (t == null) { if (l.feed == null) { wanted.remove(l); changed() }; return@launch }
             l.track = t
             l.riseLeft = RISE // the rise starts when the sound does, not when it was asked for
             kick()
@@ -184,6 +218,49 @@ object Sound {
         }
     }
 
+    // A streaming track for a recording, at the file's own rate (the mixer resamples), about half a second of buffer.
+    private fun stream(loop: Loop): AudioTrack? {
+        val mask = if (loop.channels == 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
+        val min = AudioTrack.getMinBufferSize(loop.rate, mask, AudioFormat.ENCODING_PCM_16BIT)
+        val b = AudioTrack.Builder()
+            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+            .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(loop.rate).setChannelMask(mask).build())
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .setBufferSizeInBytes(maxOf(min * 2, loop.rate * loop.channels)) // half a second of 16-bit
+        if (Build.VERSION.SDK_INT >= 34) app?.let { b.setContext(it) }
+        val t = try { b.build() } catch (e: Exception) { Log.w(TAG, "sound track", e); return null }
+        return try { t.setVolume(0f); t.play(); t } catch (e: Exception) { Log.w(TAG, "sound track", e); t.release(); null }
+    }
+
+    // Round and round the loop, never blocking (so it always sees `feeding` go off), then the track goes.
+    private fun feed(l: Layer, t: AudioTrack, loop: Loop) {
+        l.feeding = true
+        l.feed = scope.launch(Dispatchers.IO) {
+            val pcm = loop.pcm
+            val chunk = loop.rate * loop.channels / 10
+            var pos = 0
+            try {
+                while (l.feeding) {
+                    val w = t.write(pcm, pos, min(chunk, pcm.size - pos), AudioTrack.WRITE_NON_BLOCKING)
+                    if (w < 0) break
+                    pos += w
+                    if (pos >= pcm.size) pos = 0
+                    if (w == 0) delay(20)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "sound feed", e)
+            } finally {
+                runCatching { t.stop() }
+                t.release()
+            }
+        }
+    }
+
+    // A track that faded out: a recording's feeder lets its own go; a made one's goes now.
+    private fun letGo(l: Layer, t: AudioTrack) {
+        if (l.feed != null) l.feeding = false else { runCatching { t.stop() }; t.release() }
+    }
+
     private fun kick() {
         if (ticker?.isActive == true) return
         ticker = scope.launch {
@@ -210,7 +287,11 @@ object Sound {
                 l.gain += (l.to - l.gain) * (1f - exp(-dt / GLIDE))
                 if (abs(l.to - l.gain) < 0.001f) l.gain = l.to
             }
-            t.setVolume(l.gain)
+            l.old?.let { o ->
+                l.swap = min(1f, l.swap + dt / SWAP)
+                if (l.swap >= 1f) { runCatching { o.stop() }; o.release(); l.old = null } else moving = true
+            }
+            voice(l, t)
             if (l.riseLeft > 0f || l.gain != l.to) moving = true
         }
         val it = leaving.iterator()
@@ -220,12 +301,25 @@ object Sound {
             if (t == null) { it.remove(); continue }
             l.fallen += dt
             when {
-                l.fallen >= CUT + 0.05f -> { runCatching { t.stop() }; t.release(); it.remove() }
-                l.fallen >= CUT -> t.setVolume(0f) // silent a moment before the cut, so the cut can't click
-                else -> { l.gain *= exp(-dt / FALL); t.setVolume(l.gain) }
+                l.fallen >= CUT + 0.05f -> {
+                    letGo(l, t)
+                    l.old?.let { o -> runCatching { o.stop() }; o.release(); l.old = null }
+                    it.remove()
+                }
+                l.fallen >= CUT -> { l.gain = 0f; voice(l, t) } // silent a moment before the cut, so the cut can't click
+                else -> { l.gain *= exp(-dt / FALL); voice(l, t) }
             }
         }
         return moving || leaving.isNotEmpty()
+    }
+
+    // A layer's gain on its track, shared out by the crossfade while the made-up version hands over.
+    private fun voice(l: Layer, t: AudioTrack) {
+        val o = l.old
+        if (o == null) { t.setVolume(l.gain); return }
+        val x = (l.swap * PI / 2).toFloat()
+        t.setVolume(l.gain * sin(x))
+        o.setVolume(l.gain * cos(x))
     }
 
     // tanh keeps every loop under 0.91, so 16 bits never clip.

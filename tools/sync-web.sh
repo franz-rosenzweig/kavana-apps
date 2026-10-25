@@ -1,7 +1,8 @@
 #!/bin/bash
 # Copies the web app's engine and pictures into the Android app, from a commit of the kavana repo
 # (default: what's live, /srv/dev/kavana-live). The app runs these files as they are, so after a
-# web change to engine.js, lines.js, cats.js or news.js, run this, then tools/test-bridge.js, then rebuild.
+# web change to engine.js, lines.js, cats.js, news.js or the recordings in web/audio, run this, then
+# tools/test-bridge.js, then rebuild.
 #
 #   tools/sync-web.sh                 # from the live checkout's commit
 #   tools/sync-web.sh <commit>        # from a commit in /srv/dev/kavana
@@ -17,6 +18,10 @@ for d in cats cafe; do
   rm -f "$A/$d"/*.webp
   git -C "$REPO" ls-tree --name-only "$REV" "web/$d/" | grep '\.webp$' | while read -r f; do git -C "$REPO" show "$REV:$f" > "$A/$d/$(basename "$f")"; done
 done
+# The recorded background sounds (CC0, docs/sounds.md in the web repo has whose each one is).
+mkdir -p "$A/audio"
+rm -f "$A/audio"/*.mp3
+git -C "$REPO" ls-tree --name-only "$REV" "web/audio/" | grep '\.mp3$' | while read -r f; do git -C "$REPO" show "$REV:$f" > "$A/audio/$(basename "$f")"; done
 # The living cats' rig (eyes, head, ears, tail of every picture), once the web app has it.
 if git -C "$REPO" cat-file -e "$REV:web/rig.json" 2>/dev/null; then git -C "$REPO" show "$REV:web/rig.json" > "$A/rig.json"; fi
 echo "$REV" > "$A/js/WEB_COMMIT"
