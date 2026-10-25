@@ -96,19 +96,32 @@ private val SKY = listOf(
     0.78f to (Color(0xFF8A64AD) to Color(0xFFEE9D86)), 0.9f to (Color(0xFF3D3A78) to Color(0xFF8A6A9E)),
     1f to (Color(0xFF1F2756) to Color(0xFF4A4F8C)),
 )
+// In dark mode it's evening already: a calm deep blue that goes on into the night (web SKY_DARK).
+private val SKY_DARK = listOf(
+    0f to (Color(0xFF22406A) to Color(0xFF35557E)), 0.35f to (Color(0xFF243A66) to Color(0xFF454F7E)),
+    0.6f to (Color(0xFF262F5E) to Color(0xFF4F4679)), 0.8f to (Color(0xFF1D2350) to Color(0xFF3A396B)),
+    1f to (Color(0xFF141A3E) to Color(0xFF2B2E5E)),
+)
 
-fun skyAt(p0: Float): Pair<Color, Color> {
+/**
+ * White words on the sky: once it turns purple, and in dark mode the whole way. The words follow the
+ * sky, never the phone's theme alone (the theme's light text on the day sky can't be read).
+ */
+fun skyDusk(p: Float, dark: Boolean) = dark || p > 0.74f
+
+fun skyAt(p0: Float, dark: Boolean = false): Pair<Color, Color> {
     val p = p0.coerceIn(0f, 1f)
-    for (i in 1 until SKY.size) if (p <= SKY[i].first) {
-        val (a, ac) = SKY[i - 1]; val (b, bc) = SKY[i]
+    val stops = if (dark) SKY_DARK else SKY
+    for (i in 1 until stops.size) if (p <= stops[i].first) {
+        val (a, ac) = stops[i - 1]; val (b, bc) = stops[i]
         val t = (p - a) / (b - a)
         return lerp(ac.first, bc.first, t) to lerp(ac.second, bc.second, t)
     }
-    return SKY.last().second
+    return stops.last().second
 }
 
 /** The sky in the window right now, by the hour (web homeSky()). */
-fun homeSky(): Pair<Color, Color> {
+fun homeSky(dark: Boolean = false): Pair<Color, Color> {
     val c = java.util.Calendar.getInstance()
     val h = c.get(java.util.Calendar.HOUR_OF_DAY) + c.get(java.util.Calendar.MINUTE) / 60f
     return skyAt(when {
@@ -117,7 +130,7 @@ fun homeSky(): Pair<Color, Color> {
         h >= 19 && h < 21 -> 0.75f + (h - 19) / 2 * 0.25f
         h >= 5 && h < 7 -> 0.72f - (h - 5) / 2 * 0.72f
         else -> 1f
-    })
+    }, dark)
 }
 
 /** How far along a running block is, for its sky: a timer by its time, a stopwatch over 3 hours. */
@@ -134,13 +147,14 @@ fun runProgress(a: Block, now: Long): Float {
 
 private val STARS = listOf(.12f to .18f, .28f to .08f, .47f to .22f, .63f to .12f, .81f to .26f, .91f to .09f, .07f to .44f, .37f to .38f, .72f to .41f, .55f to .05f, .18f to .62f, .86f to .58f)
 
-fun Modifier.sky(p: Float, paused: Boolean) = drawBehind { drawSky(p, paused) }
+fun Modifier.sky(p: Float, paused: Boolean, dark: Boolean) = drawBehind { drawSky(p, paused, dark) }
 
-fun DrawScope.drawSky(p: Float, paused: Boolean) {
-    val (a, b) = skyAt(p)
+fun DrawScope.drawSky(p: Float, paused: Boolean, dark: Boolean = false) {
+    val (a, b) = skyAt(p, dark)
     val gray = { c: Color -> if (!paused) c else lerp(c, Color((c.red + c.green + c.blue) / 3, (c.red + c.green + c.blue) / 3, (c.red + c.green + c.blue) / 3), 0.45f) }
     drawRect(Brush.verticalGradient(listOf(gray(a), gray(b))))
-    val stars = ((p - 0.7f) / 0.3f).coerceIn(0f, 1f)
+    // In dark mode a few stars from the start, more as the night goes on.
+    val stars = if (dark) 0.35f + 0.65f * ((p - 0.4f) / 0.6f).coerceIn(0f, 1f) else ((p - 0.7f) / 0.3f).coerceIn(0f, 1f)
     if (stars > 0) STARS.forEachIndexed { i, (x, y) -> drawCircle(Color.White.copy(alpha = stars), (if (i % 3 == 0) 1.6f else 1.1f).dp.toPx(), Offset(x * size.width, y * size.height)) }
 }
 
@@ -317,7 +331,8 @@ private fun Quiet(title: String, text: String, emoji: String, wall: Wall, modifi
 @Composable
 fun HomeWindow(minutes: Int, fixed: Boolean, catId: String?, kitten: Boolean, size: Dp, modifier: Modifier = Modifier, onMinutes: (Int) -> Unit, onCat: () -> Unit) {
     val tint = MaterialTheme.colorScheme.primary
-    val (sky1, sky2) = remember { homeSky() }
+    val dark = androidx.compose.foundation.isSystemInDarkTheme()
+    val (sky1, sky2) = remember(dark) { homeSky(dark) }
     val dens = LocalDensity.current.density
     Box(
         modifier.size(size).semantics { contentDescription = if (fixed) "Stopwatch" else "How long: ${fmtMin(minutes)}. Drag around the window to change it." }

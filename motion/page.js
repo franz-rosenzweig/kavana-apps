@@ -123,14 +123,14 @@ async function backToWork() {
   await wait(560); if (!ok()) return;
   rise.to = 1.25; await wait(2400); if (ok()) booPlay();
 }
-async function letMeIn() {
+async function leaveAnyway() { // in the app it has to be held, and Miso wanders off
   const my = ++seq, ok = () => my === seq;
   card.to = 0; booCat.tilt(-0.2, 1.8); booCat.ear[0].to = -0.16; booCat.ear[1].to = 0.16;
   await wait(900); if (!ok()) return;
   rise.to = 1.25; await wait(2200); if (ok()) booPlay();
 }
 $('#booBack').addEventListener('click', backToWork);
-$('#booLet').addEventListener('click', letMeIn);
+$('#booLet').addEventListener('click', leaveAnyway);
 $('#booReplay').addEventListener('click', booPlay);
 booPlay();
 

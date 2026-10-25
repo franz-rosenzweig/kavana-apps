@@ -147,7 +147,7 @@ fun Root(act: MainActivity) {
     val onSky = tab == Tab.Focus && a != null && !breathing
     val onWall = tab == Tab.Focus && a == null && s.view.onBreak == null && !breathing
     val p = if (a != null) runProgress(a, now) else 0f
-    val darkBackdrop = when { onSky -> p > 0.74f; onWall -> wall.lightInk; else -> dark }
+    val darkBackdrop = when { onSky -> skyDusk(p, dark); onWall -> wall.lightInk; else -> dark }
     SideEffect { WindowCompat.getInsetsController(act.window, act.window.decorView).isAppearanceLightStatusBars = !darkBackdrop }
 
     val soundSheet = @Composable { if (sounds) SoundSheet(s, onShop = { breathing = false; tab = Tab.Cats; catsPane = "shop" }) { sounds = false } }
@@ -182,12 +182,12 @@ fun Root(act: MainActivity) {
     ) {
         val sky = Modifier.drawBehind {
             val d = dive.value
-            if (d >= 1f) drawSky(p, a?.paused != null) else {
+            if (d >= 1f) drawSky(p, a?.paused != null, dark) else {
                 // the sky opens out from where the window was
                 drawWall(wall)
                 val r = 0.16f * min(size.width, size.height) + (1.5f * max(size.width, size.height) - 0.16f * min(size.width, size.height)) * d
                 val path = Path().apply { addOval(androidx.compose.ui.geometry.Rect(Offset(size.width / 2, size.height * 0.44f), r)) }
-                clipPath(path) { drawSky(p, a?.paused != null) }
+                clipPath(path) { drawSky(p, a?.paused != null, dark) }
             }
         }
         Box(Modifier.fillMaxSize().then(when { onSky -> sky; onWall -> Modifier.wall(wall); else -> Modifier.background(MaterialTheme.colorScheme.background) })) {

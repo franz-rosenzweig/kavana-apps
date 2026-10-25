@@ -132,8 +132,8 @@ fun RunScreen(s: UiState, a: Block, now: Long, dive: Float, onSound: () -> Unit)
         else -> { clock = fmtClock(left); frac = (left.toFloat() / a.total.coerceAtLeast(1)).coerceIn(0f, 1f); grow = 1f - frac }
     }
     val c = s.cat(a.cat)
-    // The sky behind it (drawn by Root): once it turns purple, the words go white.
-    val dusk = runProgress(a, now) > 0.74f
+    // The sky behind it (drawn by Root): once it turns purple, or in dark mode the whole way, the words go white.
+    val dusk = skyDusk(runProgress(a, now), androidx.compose.foundation.isSystemInDarkTheme())
     val ink = if (dusk) Color.White else MaterialTheme.colorScheme.onSurface
     val muted = if (dusk) Color.White.copy(alpha = .78f) else MaterialTheme.colorScheme.onSurfaceVariant
     // The dive: the ring comes up out of the window as the sky opens, the rest fades in a little after.

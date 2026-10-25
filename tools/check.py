@@ -9,8 +9,10 @@ taking a screenshot at each step.
 Part 1, the cat over other apps (a minute lasts 3 s, 6 s on a phone): the welcome and its café, the start screen,
 a block with no title cancelled in its first seconds, a block with
 the kitten in the ring and the countdown notification, leaving Kavana (the cat over the home
-screen), a check-in answered on the cat while away, the kitten that wandered off, "How did it go?",
-meeting Pepper, every tab (Cats with its missions and shop), the mindful minute, dark mode.
+screen, counting down), a check-in answered on the cat while away, the kitten that wandered off,
+"How did it go?", meeting Pepper, every tab (Cats with its missions and shop), the mindful minute,
+dark mode (the home screen, the café, a block's night sky), and "Leave anyway" on the cat (a tap
+only says to hold; holding sends the kitten off and the block keeps going).
 Part 2, without the cat and without a title (a minute lasts 2 s, 4 s on a phone): the countdown called
 "Focus", "Miso is waiting" as a notification, a "Still focusing?" check-in notification with Yes and
 Drifted, then (on the emulator) the end answered with its own Done button.
@@ -98,6 +100,15 @@ def leave():
         P.adb('shell', 'am', 'start', '-n', 'xyz.tiresia.kavana/.MainActivity')
 
 
+def seconds_left(seen=None):
+    """The leave cat's countdown, from "Come back within N seconds"."""
+    for t, _, _ in (seen if seen is not None else P.nodes()):
+        m = re.search(r'Come back within (\d+) second', t)
+        if m:
+            return int(m.group(1))
+    return None
+
+
 def doc():
     return P.adb('shell', 'run-as', P.PKG, 'cat', 'files/doc.json')
 
@@ -173,7 +184,8 @@ try:
 
     # Leave Kavana: the cat comes up over the other app.
     leave()
-    check('the cat over the home screen', P.wait_for("Boo! It's time to focus.", 6))
+    check('the cat over the home screen', P.wait_for("Boo! You're focusing.", 6))
+    check('it counts down the seconds to come back, and has no close button', bool(P.find('Come back within')) and not P.find('Close', exact=True))
     step('leave-cat')
     # The first check-in is at minute 15 (45 s): it shows on the cat while still away.
     check('a check-in on the cat', P.wait_for('Still on: Test block', max(5, 15 * SEC + 25 - (time.time() - t0))))  # the alarm can be a few seconds late
@@ -228,6 +240,41 @@ try:
     screen('Café')
     time.sleep(1)
     step('cafe-dark')
+
+    # Dark mode: the block's sky is a calm night, and the words on it are white the whole way.
+    check('a block in dark mode', bool(start_block('Night block')))
+    time.sleep(12)  # past Cancel
+    step('run-dark')
+    # Leave anyway: the cat counts down, a plain tap only says to hold, and holding sends the kitten off.
+    leave()
+    check('the leave cat in dark mode', P.wait_for("Boo! You're focusing.", 6))
+    t_cat = time.time()
+    # Quick: the cat is up for 15 seconds, and every look at the screen waits for the living cat to
+    # settle, so one look finds both the countdown and the button, and a second one checks the tap.
+    seen = P.nodes()
+    first = seconds_left(seen)
+    pos = next(((x, y) for t, x, y in seen if t == 'Leave anyway'), None)
+    if check('the button to hold is there', bool(pos)):  # never a blind tap (at the top it opens the shade)
+        P.adb('shell', 'input', 'tap', str(pos[0]), str(pos[1]))
+        step('leave-cat-dark')
+        seen = P.nodes()
+        check('a tap says Hold to leave', any(t == 'Hold to leave' for t, _, _ in seen))
+        later = seconds_left(seen)
+        check('the countdown goes down', first is not None and later is not None and later < first)
+        print(f'     holding at {time.time() - t_cat:.1f} s into the countdown')
+        P.adb('shell', 'input', 'swipe', str(pos[0]), str(pos[1]), str(pos[0]), str(pos[1]), '2600')  # a hold
+    check('holding it: the kitten wandered off', P.wait_for('wandered off.', 5))
+    step('left-anyway')
+    nb = running('Night block')
+    check('the block keeps going, without the kitten', bool(nb) and nb.get('goneWhy') == 'away')
+    P.adb('shell', 'am', 'start', '-n', ACT)
+    time.sleep(1.5)
+    P.tap('Stop', exact=True)
+    P.wait_for('Stop This Block?', 4)
+    P.tap('Stop', exact=True, last=True)
+    if P.wait_for('How did it go?', 6):
+        P.tap('Skip', exact=True)
+        time.sleep(1.5)
     P.adb('shell', 'cmd', 'uimode', 'night', 'no')
 
     print('\npart 2: without the cat, notifications, and without a title')

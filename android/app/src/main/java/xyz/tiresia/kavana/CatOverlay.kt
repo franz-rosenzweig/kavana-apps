@@ -28,7 +28,9 @@ import android.view.MotionEvent
 
 /**
  * The cat over other apps: it peeks up from the bottom of the screen with a speech bubble.
- * - You leave Kavana in the middle of a block: "Boo! It's time to focus.", Back to work / Let me in.
+ * - You leave Kavana in the middle of a block: "Boo! You're focusing.", with 15 seconds counting down
+ *   to come back before the kitten wanders off, a big "Back to work", and a small "Leave anyway" you
+ *   have to hold, which sends the kitten off right away. No pause and no close: no easy way out.
  * - A check-in comes while you're in another app: "Boo! Still on: …?", Yes / Drifted right there.
  * - A nudge, the end of a block, a break's end.
  * Needs "Display over other apps". One cat at a time; a new one takes the place of the old.
@@ -38,6 +40,7 @@ object CatOverlay {
     private var root: View? = null
     private var kind: String? = null
     private var timer: Runnable? = null
+    private var ticker: Runnable? = null // the leave cat's countdown, once a second
     private var wm: WindowManager? = null
 
     fun allowed(ctx: Context) = Settings.canDrawOverlays(ctx)
@@ -45,18 +48,29 @@ object CatOverlay {
     /** "cats/miso-1.webp" -> "miso". */
     private fun catOf(picture: String) = picture.substringAfterLast('/').substringBefore("-")
 
-    private class Btn(val label: String, val primary: Boolean, val onClick: () -> Unit)
+    /** A button on the cat. `hold`: it has to be held (HOLD_MS) to count, and this small line goes under it. */
+    private class Btn(val label: String, val primary: Boolean, val hold: String? = null, val onClick: () -> Unit)
 
     fun leave(ctx: Context, st: UiState, a: Block) {
         val c = st.cat(a.cat)
-        show(ctx, "leave", Art.portrait(c.id), "Boo! It's time to focus.", "${c.name} is waiting. Come back, or ${c.name} wanders off.",
-            listOf(Btn("Back to work", true) { openApp(ctx) }, Btn("Let me in", false) {}), Repo.GRACE) {
+        fun line(sec: Int) = "Come back within $sec ${if (sec == 1) "second" else "seconds"}, or ${c.name} wanders off."
+        show(ctx, "leave", Art.portrait(c.id), "Boo! You're focusing.", line((Repo.GRACE / 1000).toInt()),
+            listOf(
+                Btn("Back to work", true) { openApp(ctx) },
+                Btn("Leave anyway", false, hold = "${c.name} wanders off") { leftAnyway(ctx, c.name) },
+            ), Repo.GRACE, closable = false, countdown = ::line) {
             // Still away when the grace is over: say so, briefly (the doc learns it when you're back).
-            if (KavanaApp.repo.prefs.getLong("left", 0) != 0L && !MainActivity.visible) {
-                show(ctx, "gone", Art.GONE, "${c.name} wandered off.", "Your block keeps going.", emptyList(), 4_000) {}
-            }
+            if (KavanaApp.repo.prefs.getLong("left", 0) != 0L && !MainActivity.visible) gone(ctx, c.name)
         }
     }
+
+    /** Held "Leave anyway": the kitten wanders off now (as if the grace were over), and the block keeps going. */
+    private fun leftAnyway(ctx: Context, name: String) {
+        KavanaApp.repo.launch(op("away", "at" to System.currentTimeMillis(), "grace" to 0))
+        gone(ctx, name)
+    }
+
+    private fun gone(ctx: Context, name: String) = show(ctx, "gone", Art.GONE, "$name wandered off.", "Your block keeps going.", emptyList(), 4_000) {}
 
     fun ping(ctx: Context, p: Ping, st: UiState) {
         val a = st.view.active
@@ -75,7 +89,7 @@ object CatOverlay {
                             answer(id, n, "drifted")
                             show(ctx, "thanks", Art.portrait(catId), "No worries.", "Back to it.", emptyList(), 2_500) {}
                         },
-                    ), 90_000, later)
+                    ), 90_000, onTimeout = later)
             }
             "nudge" -> show(ctx, "nudge", Art.portrait(catId), p.body, a?.intention?.ifBlank { null }, emptyList(), 9_000) {}
             "end" -> {
@@ -94,10 +108,10 @@ object CatOverlay {
                         Btn("Done", true) { outcome(id, "done") },
                         Btn("Partly", false) { outcome(id, "partly") },
                         Btn("Not really", false) { outcome(id, "notreally") },
-                    ), 60_000, later)
+                    ), 60_000, onTimeout = later)
             }
             "break-over" -> show(ctx, "break", Art.portrait(catId), title, "It's time to focus. Ready for the next block?",
-                listOf(Btn("Open Kavana", true) { openApp(ctx) }), 30_000, later)
+                listOf(Btn("Open Kavana", true) { openApp(ctx) }), 30_000, onTimeout = later)
             else -> Notify.ping(ctx, p, st)
         }
     }
@@ -119,6 +133,8 @@ object CatOverlay {
         if (which != null && kind != which) return@post
         timer?.let { main.removeCallbacks(it) }
         timer = null
+        ticker?.let { main.removeCallbacks(it) }
+        ticker = null
         val v = root ?: return@post
         root = null
         kind = null
@@ -128,18 +144,25 @@ object CatOverlay {
     private fun removeNow() {
         timer?.let { main.removeCallbacks(it) }
         timer = null
+        ticker?.let { main.removeCallbacks(it) }
+        ticker = null
         root?.let { v -> runCatching { wm?.removeView(v) } }
         root = null
         kind = null
     }
 
-    private fun show(ctx: Context, which: String, picture: String, title: String, body: String?, buttons: List<Btn>, hideAfter: Long, onTimeout: () -> Unit) {
+    /**
+     * Puts a cat up. `closable`: it has a × (the leave cat doesn't). `countdown`: the body line for the
+     * seconds left, redrawn every second until `hideAfter` runs out.
+     */
+    private fun show(ctx: Context, which: String, picture: String, title: String, body: String?, buttons: List<Btn>, hideAfter: Long,
+                     closable: Boolean = true, countdown: ((Int) -> String)? = null, onTimeout: () -> Unit) {
         main.post {
             removeNow()
             val app = ctx.applicationContext
             val w = app.getSystemService(WindowManager::class.java)
             wm = w
-            val (v, cat) = build(app, w, picture, title, body, buttons, which)
+            val (v, cat, bodyView) = build(app, w, picture, title, body, buttons, which, closable)
             val lp = WindowManager.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -166,10 +189,23 @@ object CatOverlay {
                 }
             }, 380)
             timer = Runnable { hide(which); onTimeout() }.also { main.postDelayed(it, hideAfter) }
+            if (countdown != null && bodyView != null) {
+                val until = SystemClock.uptimeMillis() + hideAfter
+                ticker = object : Runnable {
+                    override fun run() {
+                        val left = ((until - SystemClock.uptimeMillis() + 999) / 1000).toInt()
+                        if (left < 1 || kind != which) return
+                        bodyView.text = countdown(left)
+                        main.postAtTime(this, until - (left - 1) * 1000L) // on the next whole second
+                    }
+                }.also { main.post(it) }
+            }
         }
     }
 
-    private fun build(ctx: Context, w: WindowManager, picture: String, title: String, body: String?, buttons: List<Btn>, which: String): Pair<View, View> {
+    private data class Built(val root: View, val cat: View, val body: TextView?)
+
+    private fun build(ctx: Context, w: WindowManager, picture: String, title: String, body: String?, buttons: List<Btn>, which: String, closable: Boolean): Built {
         val dark = (ctx.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         val d = ctx.resources.displayMetrics.density
         fun dp(x: Number) = (x.toFloat() * d).toInt()
@@ -182,8 +218,7 @@ object CatOverlay {
         val tonal = if (dark) 0xFF23332F.toInt() else 0xFFDCEBE7.toInt()
         val onTonal = if (dark) 0xFFA6F2E5.toInt() else 0xFF1F5E57.toInt()
         val nav = w.currentWindowMetrics.windowInsets.getInsets(WindowInsets.Type.navigationBars()).bottom
-        // A phone under 400 points wide (the S24+ is 384) gets tighter buttons, so "Let me in" and
-        // "Not really" aren't cut short.
+        // A phone under 400 points wide (the S24+ is 384) gets tighter buttons, so "Not really" isn't cut short.
         val narrow = ctx.resources.configuration.screenWidthDp < 400
         val btnText = if (narrow && buttons.size > 2) 14f else 15f
         val btnPad = when { buttons.size > 2 -> if (narrow) 10 else 12; narrow -> 14; else -> 18 }
@@ -201,15 +236,42 @@ object CatOverlay {
             text = title; setTextColor(ink); setTextSize(TypedValue.COMPLEX_UNIT_SP, if (title.length > 70) 16f else 19f)
             typeface = Typeface.create(Typeface.DEFAULT, 650, false); setLineSpacing(0f, 1.1f)
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { topMargin = dp(2) })
-        head.addView(TextView(ctx).apply {
+        if (closable) head.addView(TextView(ctx).apply {
             text = "×"; setTextColor(muted); setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f); gravity = Gravity.CENTER
             contentDescription = "Close"; setOnClickListener { hide(which) }
         }, LinearLayout.LayoutParams(dp(36), dp(32)).apply { marginStart = dp(4); topMargin = dp(-4) })
         card.addView(head)
-        if (!body.isNullOrBlank()) card.addView(TextView(ctx).apply {
+        val bodyView = if (body.isNullOrBlank()) null else TextView(ctx).apply {
             text = body; setTextColor(muted); setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); setLineSpacing(0f, 1.1f)
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4); marginEnd = dp(8) })
-        if (buttons.isNotEmpty()) {
+        }.also { card.addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4); marginEnd = dp(8) }) }
+        val held = buttons.filter { it.hold != null }
+        if (held.isNotEmpty()) {
+            // The leave cat: "Back to work" big and on its own, and the one you have to hold small under it.
+            buttons.filter { it.hold == null }.forEach { b ->
+                card.addView(TextView(ctx).apply {
+                    text = b.label; setTextColor(if (b.primary) onTint else onTonal); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+                    typeface = Typeface.create(Typeface.DEFAULT, 600, false); gravity = Gravity.CENTER; maxLines = 1
+                    setPadding(dp(18), dp(12), dp(18), dp(12))
+                    background = GradientDrawable().apply { cornerRadius = dp(24).toFloat(); setColor(if (b.primary) tint else tonal) }
+                    setOnClickListener { hide(which); b.onClick() }
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
+            }
+            held.forEach { b ->
+                val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+                col.addView(HoldButton(ctx, b.label, (tint and 0x00FFFFFF) or 0x55000000, dp(18).toFloat()) { hide(which); b.onClick() }.apply {
+                    setTextColor(onTonal); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                    typeface = Typeface.create(Typeface.DEFAULT, 600, false); gravity = Gravity.CENTER; maxLines = 1
+                    setPadding(dp(16), dp(7), dp(16), dp(7))
+                    background = GradientDrawable().apply { cornerRadius = dp(18).toFloat(); setColor(tonal) }
+                    contentDescription = "${b.label}. Hold for two seconds. ${b.hold}."
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                col.addView(TextView(ctx).apply {
+                    text = b.hold; setTextColor(muted); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); gravity = Gravity.CENTER
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO // the button says it
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(3) })
+                card.addView(col, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
+            }
+        } else if (buttons.isNotEmpty()) {
             val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
             buttons.forEachIndexed { i, b ->
                 row.addView(TextView(ctx).apply {
@@ -237,7 +299,63 @@ object CatOverlay {
         }
         val side = if (cat is LivingCatView) dp(136 * Motion.FW / 512f) else dp(136)
         root.addView(cat, FrameLayout.LayoutParams(side, if (cat is LivingCatView) side else dp(150), Gravity.BOTTOM or Gravity.END))
-        return root to cat
+        return Built(root, cat, bodyView)
+    }
+}
+
+/** How long "Leave anyway" has to be held. */
+private const val HOLD_MS = 2_000L
+
+/**
+ * A button that counts only when held for HOLD_MS: it fills from the left as you hold, and after a plain
+ * tap it says "Hold to leave" from then on. It runs on the main thread's clock, not the frame clock (frames can stall while
+ * Kavana is in the background), so the hold always ends on time.
+ */
+@SuppressLint("ViewConstructor", "ClickableViewAccessibility")
+private class HoldButton(ctx: Context, label: String, fill: Int, private val radius: Float, private val onHeld: () -> Unit) : TextView(ctx) {
+    private val h = Handler(Looper.getMainLooper())
+    private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = fill }
+    private val path = android.graphics.Path()
+    private var downAt = 0L
+    private var done = false
+    private val frame = object : Runnable { override fun run() { invalidate(); if (downAt != 0L) h.postDelayed(this, 16) } }
+    private val held = Runnable {
+        if (downAt == 0L || done) return@Runnable
+        done = true; downAt = 0L
+        performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        onHeld()
+    }
+
+    init {
+        text = label
+        setOnTouchListener { _, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    if (!done) {
+                        downAt = SystemClock.uptimeMillis()
+                        h.postDelayed(held, HOLD_MS); h.post(frame)
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val quick = downAt != 0L && SystemClock.uptimeMillis() - downAt < 400
+                    downAt = 0L
+                    h.removeCallbacks(held)
+                    invalidate()
+                    if (quick && !done) text = "Hold to leave"
+                }
+            }
+            true
+        }
+    }
+
+    override fun onDraw(c: Canvas) {
+        if (downAt != 0L) {
+            val f = ((SystemClock.uptimeMillis() - downAt) / HOLD_MS.toFloat()).coerceIn(0f, 1f)
+            path.reset()
+            path.addRoundRect(0f, 0f, width.toFloat(), height.toFloat(), radius, radius, android.graphics.Path.Direction.CW)
+            c.save(); c.clipPath(path); c.drawRect(0f, 0f, width * f, height.toFloat(), paint); c.restore()
+        }
+        super.onDraw(c)
     }
 }
 
