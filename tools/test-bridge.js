@@ -343,4 +343,21 @@ ok('empty: signed out, the account\'s history leaves the phone', () => {
   assert.equal(r.state.history.length, 0);
 });
 
+// Something bought on a newer version (a sound this app doesn't know yet) survives the app loading,
+// saving and merging the doc, so a sync never takes it away and refunds it (kavana 5c8e98f).
+const newer = E2.empty();
+newer.owned.push({ id: 'sound-somethingnew', at: at + 30 * MIN });
+newer.claimed.push({ id: 'a-reward-from-later', at: at + 30 * MIN });
+KB(`KB.load(${JSON.stringify(JSON.stringify(newer))})`);
+r = run({ op: 'tick' }, at + 31 * MIN);
+const kept = JSON.parse(KB('KB.dump()'));
+r = run({ op: 'merge', doc: newer }, at + 32 * MIN);
+const merged = JSON.parse(KB('KB.dump()'));
+ok('a thing bought on a newer version, and a reward claimed there, survive load, save and merge', () => {
+  assert.equal(kept.owned.some((x) => x.id === 'sound-somethingnew'), true);
+  assert.equal(kept.claimed.some((x) => x.id === 'a-reward-from-later'), true);
+  assert.equal(merged.owned.some((x) => x.id === 'sound-somethingnew'), true);
+  assert.equal(r.state.shop.owned.includes('sound-somethingnew'), true);
+});
+
 console.log(`\n${pass} passed`);

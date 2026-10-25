@@ -3,6 +3,8 @@ package xyz.tiresia.kavana
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioManager
+import android.media.MediaPlayer
 import android.media.AudioTrack
 import android.os.Build
 import android.util.Log
@@ -32,34 +34,93 @@ import kotlin.math.sqrt
 import kotlin.math.tanh
 import kotlin.random.Random
 
-/** A background sound. `about` is its line in the shop; the free ones have none. */
-data class SoundKind(val id: String, val name: String, val about: String?, val free: Boolean)
+/**
+ * A background sound. `about` is its line in the shop (the free ones have none); `like`: the sound made
+ * on the phone that stands in until its recording is decoded (none for the music, which waits for it).
+ */
+data class SoundKind(val id: String, val name: String, val about: String?, val group: String, val free: Boolean = false, val like: String? = null)
+
+data class SoundGroup(val id: String, val name: String)
 
 /**
- * Kavana's background sounds, like the web's sounds.js. Up to two play at once, each with its own
- * volume. Most are real recordings that come with the app (Recordings: the web's own files, nothing to
+ * Kavana's background sounds, like the web's sounds.js: 39 in seven groups, one free in each, the
+ * others in the shop ('sound-<id>'). Up to two play at once, each with its own volume. All but brown and
+ * white noise are real recordings that come with the app (Recordings: the web's own files, nothing to
  * download), each decoded once into a seamless loop and fed to a streaming AudioTrack round and round.
- * Decoding takes a few seconds the first time, so meanwhile the version made on the phone plays and the
- * recording takes over with a 2 s equal-power crossfade, as on the web. Brown and white noise, and any
- * recording that won't decode, are only made on the phone (SoundLoops: one loop, made once and kept,
- * played by an AudioTrack that loops it inside the mixer, so there's no seam and no thread feeding it).
- * Purring, rain, brown and white noise are free; the others are in the shop ('sound-<id>').
+ * Decoding takes a few seconds the first time, so meanwhile the sound it's `like`, made on the phone,
+ * plays and the recording takes over with a 2 s equal-power crossfade, as on the web; the music has
+ * nothing like it and starts once it's decoded. Brown and white noise, and any recording that won't
+ * decode, are made on the phone (SoundLoops: one loop, made once and kept, played by an AudioTrack that
+ * loops it inside the mixer, so there's no seam and no thread feeding it). A meow when a kitten comes home.
  */
 object Sound {
+    val GROUPS = listOf(
+        SoundGroup("cats", "Cats"), SoundGroup("water", "Rain and water"), SoundGroup("fire", "Fire"), SoundGroup("outside", "Outside"),
+        SoundGroup("places", "Places"), SoundGroup("music", "Music"), SoundGroup("noise", "Noise"),
+    )
+
     val KINDS: List<SoundKind> = listOf(
-        SoundKind("purr", "Purring", null, true),
-        SoundKind("rain", "Rain", null, true),
-        SoundKind("brown", "Brown noise", null, true),
-        SoundKind("white", "White noise", null, true),
-        SoundKind("cafe", "Café", "Murmur and the odd cup.", false),
-        SoundKind("fire", "Fireplace", "A low fire that crackles.", false),
-        SoundKind("waves", "Waves", "Slow surf on a beach.", false),
-        SoundKind("birds", "Birds", "Dawn in a pine forest.", false),
-        SoundKind("night", "Night", "Crickets on a warm night.", false),
-        SoundKind("wind", "Wind", "Wind around the house.", false),
+        SoundKind("purr", "Purring", null, "cats", free = true),
+        SoundKind("bigpurr", "Slow purr", "Long, even breaths.", "cats", like = "purr"),
+        SoundKind("deeppurr", "Deep purr", "On the sofa, very deep.", "cats", like = "purr"),
+        SoundKind("sleepypurr", "Sleepy purr", "Purring in its sleep.", "cats", like = "purr"),
+        SoundKind("tomasina", "Tomasina", "Purring on the bed, nose to the mic.", "cats", like = "purr"),
+        SoundKind("rain", "Rain", null, "water", free = true),
+        SoundKind("lightrain", "Light rain", "Soft rain on open country.", "water", like = "rain"),
+        SoundKind("heavyrain", "Heavy rain", "A downpour.", "water", like = "rain"),
+        SoundKind("thunder", "Thunderstorm", "Rain and rolling thunder.", "water", like = "rain"),
+        SoundKind("rainforest", "Rainforest", "Drops on ferns, and a shower now and then.", "water", like = "rain"),
+        SoundKind("stream", "Stream", "A brook in the Scottish Borders.", "water", like = "rain"),
+        SoundKind("waves", "Waves", "Slow surf on a beach.", "water"),
+        SoundKind("bigwaves", "Big waves", "The Baltic hitting the shore.", "water", like = "waves"),
+        SoundKind("baltic", "Baltic beach", "Small waves on a German beach.", "water", like = "waves"),
+        SoundKind("ocean", "Ocean", "Breakers coming in.", "water", like = "waves"),
+        SoundKind("sauna", "Sauna stove", "A wood stove, burning steady.", "fire", free = true, like = "fire"),
+        SoundKind("fire", "Fireplace", "A low fire that crackles.", "fire"),
+        SoundKind("crackle", "Crackling fire", "Lots of snaps and pops.", "fire", like = "fire"),
+        SoundKind("hearth", "Hearth", "A fire in the fireplace.", "fire", like = "fire"),
+        SoundKind("bigroom", "Fire in a big room", "Close up, and the room rings.", "fire", like = "fire"),
+        SoundKind("springbirds", "Spring birds", "A warbler, a sparrow and geese.", "outside", free = true, like = "birds"),
+        SoundKind("birds", "Birds", "Dawn in a pine forest.", "outside"),
+        SoundKind("birdsong", "Birdsong", "A spring day in Virginia.", "outside", like = "birds"),
+        SoundKind("night", "Night", "Crickets on a warm night.", "outside"),
+        SoundKind("crickets", "Crickets", "Just the crickets.", "outside", like = "night"),
+        SoundKind("farstorm", "Crickets and a far storm", "A summer garden, thunder far off.", "outside", like = "night"),
+        SoundKind("wind", "Wind", "Wind around the house.", "outside"),
+        SoundKind("hollowwind", "Hollow wind", "Empty and far away.", "outside", like = "wind"),
+        SoundKind("cafeteria", "Campus cafeteria", "Lunch at a university in Istanbul.", "places", free = true, like = "cafe"),
+        SoundKind("cafe", "Café", "Murmur and the odd cup.", "places"),
+        SoundKind("copenhagen", "Copenhagen café", "Sitting outside, people chatting.", "places", like = "cafe"),
+        SoundKind("city", "City at night", "A quiet street, the odd car.", "places", like = "wind"),
+        SoundKind("wandering", "Wandering", "Slow, calm synths.", "music", free = true),
+        SoundKind("dunes", "Dunes", "Spacey and wide.", "music"),
+        SoundKind("angelic", "Angelic pad", "Soft chords that drift.", "music"),
+        SoundKind("bowls", "Singing bowls", "Bowls, waves and a bird.", "music"),
+        SoundKind("tibetan", "Tibetan bowl", "A bowl and a gong.", "music"),
+        SoundKind("brown", "Brown noise", null, "noise", free = true),
+        SoundKind("white", "White noise", null, "noise", free = true),
     )
 
     fun byId(id: String): SoundKind? = KINDS.find { it.id == id }
+
+    private val MEOWS = listOf("meow-a", "meow-b", "meow-c")
+
+    /** A meow, once, when a kitten comes home (one of three at random). Not when the phone is on silent or vibrate. */
+    fun meow(ctx: Context) {
+        val app = ctx.applicationContext
+        if (app.getSystemService(AudioManager::class.java)?.ringerMode != AudioManager.RINGER_MODE_NORMAL) return
+        val name = Recordings.file(app, MEOWS.random()) ?: return
+        runCatching {
+            val mp = MediaPlayer()
+            mp.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+            app.assets.openFd(name).use { mp.setDataSource(it.fileDescriptor, it.startOffset, it.length) }
+            mp.setVolume(0.7f, 0.7f)
+            mp.setOnPreparedListener { it.start() }
+            mp.setOnCompletionListener { it.release() }
+            mp.setOnErrorListener { p, _, _ -> p.release(); true }
+            mp.prepareAsync()
+        }.onFailure { Log.w(TAG, "meow", it) }
+    }
 
     /**
      * Samples a second. The web takes the device's rate (44.1 or 48 kHz). Half that would save memory,
@@ -99,7 +160,7 @@ object Sound {
      */
     fun play(ctx: Context, layers: List<Pair<String, Float>>) {
         app = ctx.applicationContext
-        val want = layers.filter { SoundLoops.knows(it.first) }.take(2).map { (id, v) -> id to v.coerceIn(0f, 1f) }
+        val want = layers.filter { byId(it.first) != null }.take(2).map { (id, v) -> id to v.coerceIn(0f, 1f) }
         _playing.value = want.map { it.first }.distinct() // now, so a screen reading it right after sees it
         scope.launch { mix(want) }
     }
@@ -156,14 +217,19 @@ object Sound {
         kick()
     }
 
+    // The one made on the phone for a sound: its own, or the one it's like; none for the music.
+    private fun madeFor(id: String): String? = if (SoundLoops.knows(id)) id else byId(id)?.like
+
     private fun start(l: Layer) {
         val ctx = app
         if (ctx == null || Recordings.file(ctx, l.id) == null) { made(l); return }
         Recordings.ready(l.id)?.let { if (recorded(l, it)) return }
-        made(l) // until the recording is decoded
+        if (madeFor(l.id) != null) made(l) // until the recording is decoded
         scope.launch {
-            val loop = withContext(Dispatchers.Default) { Recordings.load(ctx, l.id) } ?: return@launch // it won't decode: the made one stays
-            if (l in wanted) recorded(l, loop)
+            val loop = withContext(Dispatchers.Default) { Recordings.load(ctx, l.id) }
+            if (l !in wanted) return@launch
+            // It won't decode: the made one stays (with nothing like it, there's nothing to play).
+            if (loop == null || !recorded(l, loop)) { if (l.track == null && madeFor(l.id) == null) { wanted.remove(l); changed() } }
         }
     }
 
@@ -179,14 +245,15 @@ object Sound {
     }
 
     private fun made(l: Layer) {
-        val made = cache.getOrPut(l.id) {
+        val id = madeFor(l.id) ?: return
+        val made = cache.getOrPut(id) {
             scope.async(Dispatchers.Default) {
-                runCatching { pcm(SoundLoops.render(l.id, RATE)) }.onFailure { Log.w(TAG, "sound ${l.id}", it) }.getOrNull()
+                runCatching { pcm(SoundLoops.render(id, RATE)) }.onFailure { Log.w(TAG, "sound $id", it) }.getOrNull()
             }
         }
         scope.launch {
             val pcm = made.await()
-            if (pcm == null && cache[l.id] === made) cache.remove(l.id) // try again next time
+            if (pcm == null && cache[id] === made) cache.remove(id) // try again next time
             if (l !in wanted || l.track != null) return@launch // stopped, replaced, or the recording came first
             val t = pcm?.let { track(it) }
             if (t == null) { if (l.feed == null) { wanted.remove(l); changed() }; return@launch }

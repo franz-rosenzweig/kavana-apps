@@ -53,8 +53,9 @@ fun SoundSheet(s: UiState, onShop: () -> Unit, onDone: () -> Unit) {
                 TextButton(onClick = onDone) { Text("Done") }
             }
             Text("Up to two at once.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Group {
-                Sound.KINDS.forEachIndexed { i, k ->
+            // In their groups (web drawSounds), one free in each.
+            for (g in Sound.GROUPS) Group(head = g.name) {
+                Sound.KINDS.filter { it.group == g.id }.forEachIndexed { i, k ->
                     if (i > 0) GroupDivider()
                     val owned = SoundMix.owned(s, k.id)
                     val on = mix.firstOrNull { it.first == k.id }
@@ -80,7 +81,7 @@ fun SoundSheet(s: UiState, onShop: () -> Unit, onDone: () -> Unit) {
                     }
                 }
             }
-            Text("Purring, rain, brown noise and white noise are free. The others are in the shop.", style = MaterialTheme.typography.bodySmall,
+            Text("One in each group is free. The others are in the shop.", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Start, modifier = Modifier.padding(start = 16.dp, top = 6.dp))
         }
     }

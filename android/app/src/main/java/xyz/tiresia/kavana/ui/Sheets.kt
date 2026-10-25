@@ -122,6 +122,8 @@ private fun OutcomeSheet(s: UiState, w: Block, act: MainActivity, wall: Wall) {
 private fun Homecoming(s: UiState, w: Block, h: Hist, wall: Wall, body: @Composable () -> Unit) {
     var arriving by remember(w.id) { mutableStateOf(true) }
     LaunchedEffect(w.id) { kotlinx.coroutines.delay(2300); arriving = false }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(w.id) { kotlinx.coroutines.delay(450); Sound.meow(ctx) } // and says hello as it drops in (CafeArrival's delay)
     val dark = androidx.compose.foundation.isSystemInDarkTheme()
     val scene = remember(w.id) {
         val today = java.time.LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()

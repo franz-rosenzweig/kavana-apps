@@ -45,13 +45,6 @@ import java.util.Locale
 /** Something to buy: a café thing, a cat, a theme, a sound or a shelter cat. */
 data class Offer(val id: String, val name: String, val kind: String)
 
-/** The sounds in the shop (web/sounds.js KINDS; purring, rain, brown and white noise are free). */
-val SOUNDS = listOf(
-    Triple("cafe", "Café", "Murmur and the odd cup."), Triple("fire", "Fireplace", "A low fire that crackles."),
-    Triple("waves", "Waves", "Slow surf on a beach."), Triple("birds", "Birds", "A quiet morning garden."),
-    Triple("night", "Night", "Crickets on a warm night."), Triple("wind", "Wind", "Wind around the house."),
-)
-
 @Composable
 fun CatsTab(s: UiState, act: MainActivity, pane: String, onPane: (String) -> Unit) {
     var sheetCat by remember { mutableStateOf<String?>(null) }
@@ -337,16 +330,21 @@ private fun ShopPane(s: UiState, act: MainActivity, onCat: (String) -> Unit, onB
     }
     Foot("Tap one you have to use it in your café.")
     Head("Sounds")
-    Group {
-        SOUNDS.forEachIndexed { i, (id, name, about) ->
-            if (i > 0) GroupDivider()
-            val sid = "sound-$id"
-            Item(name, Icons.Rounded.GraphicEq, LocalK.current.indigo, sub = about, onClick = if (s.owns(sid)) null else ({ onBuy(Offer(sid, name, "sound")) }), chevron = false) {
-                if (s.owns(sid)) Text("Yours", color = MaterialTheme.colorScheme.primary) else Price(s.price(sid), s.treats.left)
+    // The ones for sale, in their groups (xyz.tiresia.kavana.Sound.KINDS, the web's sounds.js).
+    for (g in xyz.tiresia.kavana.Sound.GROUPS) {
+        val kinds = xyz.tiresia.kavana.Sound.KINDS.filter { it.group == g.id && !it.free }
+        if (kinds.isEmpty()) continue
+        Group(head = g.name) {
+            kinds.forEachIndexed { i, k ->
+                if (i > 0) GroupDivider()
+                val sid = "sound-${k.id}"
+                Item(k.name, Icons.Rounded.GraphicEq, LocalK.current.indigo, sub = k.about, onClick = if (s.owns(sid)) null else ({ onBuy(Offer(sid, k.name, "sound")) }), chevron = false) {
+                    if (s.owns(sid)) Text("In Sounds", color = MaterialTheme.colorScheme.primary) else Price(s.price(sid), s.treats.left)
+                }
             }
         }
     }
-    Foot("Purring, rain, brown noise and white noise are free. Play them during a block.")
+    Foot("One sound in each group is free. Play them during a block, from Sound.")
     // Shelter cats: Forest's real trees, for cats. They come one after the other.
     Head("Shelter cats")
     val next = s.shop.shelter.firstOrNull { !s.owns(it.id) }
