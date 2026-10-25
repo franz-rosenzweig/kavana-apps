@@ -4,7 +4,7 @@ These are the native apps for Kavana, my focus app. The web version lives at htt
 
 ## Android (android/)
 
-![Kavana for Android: the start screen, a block with the kitten in the ring, the cat over the home screen, a check-in on the cat, "How did it go?", the Café, Cats, and dark mode](docs/android.webp)
+![Kavana for Android: the start screen, This Block, the menu, the sky during a block, the cat coming home to the café, the Café in 3D, and dark mode with a check-in](docs/android.webp)
 
 **Install it:** download the APK from the newest release on the [Releases page](https://github.com/franz-rosenzweig/kavana-apps/releases/latest) on your phone and open it (Android 12 or newer). The first time, Android asks you to allow installs from that source, which is normal for apps that don't come from the Play Store. If you'd rather get updates by themselves, add `https://github.com/franz-rosenzweig/kavana-apps` to Obtainium.
 
