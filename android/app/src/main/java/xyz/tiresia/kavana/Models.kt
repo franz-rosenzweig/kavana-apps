@@ -90,7 +90,7 @@ data class DailySet(val on: Boolean = false, val time: String = "09:00", val day
 @Serializable
 data class Block(
     val id: String,
-    val intention: String,
+    val intention: String = "",
     val minutes: Int,
     val interval: Int = 0,
     val start: Long,
@@ -138,7 +138,7 @@ data class LaterItem(val id: String, val text: String)
 data class Hist(
     val id: String,
     val start: Long,
-    val intention: String,
+    val intention: String = "",
     val minutes: Int,
     val actual: Int = 1,
     val stopped: Boolean = false,
@@ -268,6 +268,11 @@ data class Ping(
 data class Daily(val on: Boolean = false, val time: String = "09:00", val days: List<Int> = emptyList(), val body: String = "", val cat: Boolean = true)
 
 /** "25 min", "1 h 5 min" (web/app.js fmtMin). */
+/** A block's name where one has to be shown: its title, which is optional (like Forest's session title), else its tag. */
+fun titleOf(intention: String, tag: String?) = intention.ifBlank { tag?.ifBlank { null } ?: "Focus" }
+val Block.title get() = titleOf(intention, tag)
+val Hist.title get() = titleOf(intention, tag)
+
 fun fmtMin(m: Int): String = if (m < 60) "$m min" else "${m / 60} h" + (if (m % 60 != 0) " ${m % 60} min" else "")
 
 /** "04:59", "1:02:03" (web/app.js fmtClock). */

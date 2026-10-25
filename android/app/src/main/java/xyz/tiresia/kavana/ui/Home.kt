@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -24,8 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -50,8 +51,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import xyz.tiresia.kavana.*
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -147,15 +146,14 @@ fun DrawScope.drawSky(p: Float, paused: Boolean) {
 
 // ---------- the home screen ----------
 
-/** Starts the block in the form (Start, or the Enter key in the sheet). */
-fun startBlock(s: UiState, form: StartForm, act: MainActivity, onBlank: () -> Unit) {
+/** Starts the block in the form. The title is optional, like Forest's: pick how long and press Start. */
+fun startBlock(s: UiState, form: StartForm, act: MainActivity) {
     val repo = KavanaApp.repo
     val set = s.view.settings
     val mode = form.mode ?: set.mode
     val style = form.style ?: set.style
     val tag = form.tag ?: set.tag.takeIf { it in set.tags } ?: ""
     val minutes = if (mode == "stopwatch") 180 else if (form.minutes == 0) form.custom.toIntOrNull() ?: 0 else form.minutes
-    if (form.intention.isBlank()) { onBlank(); repo.toasts.tryEmit("Say what you're working on first."); return }
     if (minutes !in 1..240) { repo.toasts.tryEmit("Pick between 1 and 240 minutes."); return }
     if (!act.notificationsOn() && !repo.prefs.getBoolean("askedNotify", false)) act.askNotifications()
     repo.launch(op("start",
@@ -176,7 +174,8 @@ fun HomeScreen(s: UiState, form: StartForm, act: MainActivity, wall: Wall, newsU
     var hideOffer by remember { mutableStateOf<String?>(null) }
     var inviting by remember { mutableStateOf(false) }
     var options by remember { mutableStateOf(false) }
-    val focus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    var titling by remember { mutableStateOf(false) }
     val set = s.view.settings
     val mode = form.mode ?: set.mode
     val watch = mode == "stopwatch"
@@ -186,17 +185,19 @@ fun HomeScreen(s: UiState, form: StartForm, act: MainActivity, wall: Wall, newsU
     val muted = if (wall.lightInk) Color.White.copy(alpha = .72f) else MaterialTheme.colorScheme.onSurfaceVariant
     val chip = if (wall.lightInk) glassDark else glass
     val c = s.cat(s.companion)
-    fun start() = startBlock(s, form, act) { runCatching { focus.requestFocus() } }
+    fun start() { focusManager.clearFocus(); startBlock(s, form, act) }
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val winSize = minOf(maxWidth * 0.72f, maxHeight * 0.42f, 420.dp)
+    // a tap anywhere else puts the title away
+    BoxWithConstraints(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { focusManager.clearFocus() } }) {
+        val winSize = minOf(maxWidth * 0.74f, maxHeight * 0.44f, 420.dp)
         val boxH = maxHeight
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             Column(
                 Modifier.fillMaxWidth().heightIn(min = boxH).padding(horizontal = 16.dp).padding(top = 8.dp, bottom = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween,
             ) {
-                // the top row: room for the menu button, the tag, the treats
+                // the top: room for the menu button, the tag, the treats, and the title under the tag
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 44.dp), verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.width(54.dp))
                     Row(
@@ -211,30 +212,39 @@ fun HomeScreen(s: UiState, form: StartForm, act: MainActivity, wall: Wall, newsU
                     if (s.catsOn) Text("🐟 ${s.treats.left}", color = ink, style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.clip(RoundedCornerShape(50)).background(chip).padding(horizontal = 12.dp, vertical = 6.dp))
                 }
-                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMMM d")).uppercase(), style = MaterialTheme.typography.labelMedium,
-                    color = muted, letterSpacing = 1.sp, modifier = Modifier.padding(top = 14.dp))
-                // what you're working on, right in the middle
+                // The title is optional and quiet, like Forest's "Add session title" under the tag;
+                // your recent ones show only while you type one.
+                Column(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 BasicTextField(
                     form.intention, { form.intention = it.take(140); if (it.isEmpty()) form.fromLater = null },
-                    textStyle = MaterialTheme.typography.headlineSmall.copy(color = ink, textAlign = TextAlign.Center, fontWeight = FontWeight.SemiBold),
+                    textStyle = TextStyle(fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium, color = ink, textAlign = TextAlign.Center),
                     singleLine = true, cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { start() }),
-                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp).focusRequester(focus),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                    modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth().onFocusChanged { titling = it.isFocused }
+                        .semantics { contentDescription = "A title for this block (optional)" },
                     decorationBox = { inner ->
-                        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).padding(horizontal = 10.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
-                            if (form.intention.isEmpty()) Text("What are you working on?", style = MaterialTheme.typography.headlineSmall, color = muted.copy(alpha = .6f), textAlign = TextAlign.Center)
+                        Box(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                .background(if (!titling) Color.Transparent else if (wall.lightInk) Color.White.copy(alpha = .07f) else Color.White.copy(alpha = .55f))
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (form.intention.isEmpty()) Text("Add a title", fontSize = 17.sp, fontWeight = FontWeight.Medium, color = muted, textAlign = TextAlign.Center)
                             inner()
                         }
                     },
                 )
-                if (s.view.recent.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
+                if (titling && s.view.recent.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
                     s.view.recent.forEach { r ->
                         Text(r, color = ink, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.widthIn(max = 200.dp).clip(RoundedCornerShape(50)).background(if (wall.lightInk) Color.White.copy(alpha = .08f) else Color.White.copy(alpha = .55f))
-                                .clickable { form.intention = r }.padding(horizontal = 11.dp, vertical = 5.dp))
+                                .clickable { form.intention = r; focusManager.clearFocus() }.padding(horizontal = 11.dp, vertical = 5.dp))
                     }
                 }
+                }
+                }
+                // the window and Start sit in the middle of the screen
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 HomeWindow(
                     minutes = if (watch) 0 else len, fixed = watch, catId = if (s.catsOn) c.id else null, kitten = !watch && len < 25,
                     size = winSize, modifier = Modifier.padding(top = 18.dp, bottom = 6.dp),

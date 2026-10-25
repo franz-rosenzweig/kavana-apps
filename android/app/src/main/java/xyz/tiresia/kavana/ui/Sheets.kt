@@ -67,7 +67,7 @@ private fun CheckinSheet(s: UiState, a: Block?, why: Pair<String, Int>?, onAnswe
             if (s.catsOn && a != null) LiveCat(a.cat, "portrait", 96.dp, interactive = true, onCat = { it.tilt(Motion.HEAD_TILT, 1.6f) })
             if (why == null) {
                 Eyebrow("Check-in")
-                Text("Still on: ${a?.intention ?: ""}?", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
+                Text(if (a == null || a.intention.isBlank()) "Still focusing?" else "Still on: ${a.intention}?", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Choice("👍", "Yes", Modifier.weight(1f), strong = true) { onAnswer("yes") }
                     Choice("🌀", "Drifted", Modifier.weight(1f)) { onAnswer("drifted") }
@@ -155,7 +155,8 @@ private fun OutcomeBody(s: UiState, w: Block, act: MainActivity, note: String, o
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(top = if (showCat) 0.dp else 20.dp, bottom = 24.dp).imePadding(), horizontalAlignment = Alignment.CenterHorizontally) {
         Eyebrow(when { w.stopwatch -> if (w.stopped) "Stopwatch, under 10 minutes" else "Stopwatch"; w.over != null -> "Extra time"; w.stopped -> "Stopped early"; else -> "Time's up" }, color = MaterialTheme.colorScheme.primary)
         Text("How did it go?", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 4.dp))
-        Text(w.intention, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        // no title: its tag, or nothing (the title is optional)
+        w.intention.ifBlank { w.tag ?: "" }.takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center) }
         if (s.catsOn) {
             if (showCat) {
                 if (w.kitten == "home") LiveCat(c.id, "portrait", 132.dp, Modifier.padding(top = 10.dp), interactive = true, onCat = { it.hop(2); it.happy(1.2f); it.heart() })

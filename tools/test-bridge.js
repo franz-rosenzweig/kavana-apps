@@ -109,8 +109,8 @@ ok('the doc survives a dump and a load', () => assert.equal(r.state.history.leng
 
 r = run({ op: 'nope' }, t + 43 * MIN);
 ok('an unknown op is an error, not a crash', () => assert.equal(r.error, 'op'));
-r = run({ op: 'start', intention: '', minutes: 25 }, t + 43 * MIN);
-ok('bad input comes back as the engine\'s error', () => assert.equal(r.error, 'intention'));
+r = run({ op: 'edit', id: 'nope', patch: { note: 'x' } }, t + 43 * MIN);
+ok('bad input comes back as the engine\'s error', () => assert.equal(r.error, 'edit'));
 
 // ---------- the Forest round ----------
 t += 86400000; // a new day
@@ -298,6 +298,17 @@ ok('the screens get the newest 400; a period asks the engine for more', () => {
   assert.equal(r.state.history.length, 400);
   const p = run({ op: 'period', from: 0, to: at }, at);
   assert.equal(p.result.length, saved.blocks.length);
+});
+
+// The title is optional, like Forest's (kavana e05217d): no title is fine, and the pings say something else.
+KB(`KB.load(${JSON.stringify(JSON.stringify(E2.empty()))})`);
+at = new Date(2025, 5, 1, 9, 0, 0).getTime();
+r = run({ op: 'start', intention: '  ', minutes: 25, tag: 'Work', style: 'ask' }, at);
+ok('a block without a title starts', () => {
+  assert.equal(r.error, null);
+  assert.equal(r.state.view.active.intention, '');
+  assert.equal(r.state.view.recent.length, 0);
+  assert.equal(r.state.pings.some((p) => p.kind === 'checkin' && /Still focusing\?/.test(p.title)), true);
 });
 
 console.log(`\n${pass} passed`);

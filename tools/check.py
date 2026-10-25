@@ -7,12 +7,13 @@ taking a screenshot at each step.
     KAVANA_ADB=/path/to/adb python3 tools/check.py ...         # an emulator on this machine
 
 Part 1, the cat over other apps (a minute lasts 3 s, 6 s on a phone): the welcome and its café, the start screen,
-a block cancelled in its first seconds, a block with
+a block with no title cancelled in its first seconds, a block with
 the kitten in the ring and the countdown notification, leaving Kavana (the cat over the home
 screen), a check-in answered on the cat while away, the kitten that wandered off, "How did it go?",
 meeting Pepper, every tab (Cats with its missions and shop), the mindful minute, dark mode.
-Part 2, without the cat (a minute lasts 2 s, 4 s on a phone): "Pepper is waiting" as a notification, then a
-check-in notification answered with its own Yes button.
+Part 2, without the cat and without a title (a minute lasts 2 s, 4 s on a phone): the countdown called
+"Focus", "Miso is waiting" as a notification, a "Still focusing?" check-in notification with Yes and
+Drifted, then (on the emulator) the end answered with its own Done button.
 
 It clears only the DEBUG app's data (xyz.tiresia.kavana.debug), never the real app's, and puts
 the phone's dark mode and the debug app's overlay permission back as they were.
@@ -59,14 +60,16 @@ def launch(minute):
         time.sleep(1)
 
 
-def start_block(name):
-    if not P.find('What are you working on?'):
+def start_block(name=''):
+    """Starts a block, with a title if there's a name (the title is optional, like Forest's)."""
+    if not P.find('Add a title'):
         screen('Focus')
     time.sleep(0.5)
-    P.tap('What are you working on?')
-    P.type_text(name)
-    P.adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')  # the keyboard away
-    time.sleep(0.6)
+    if name:
+        P.tap('Add a title')
+        P.type_text(name)
+        P.adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')  # the keyboard away
+        time.sleep(0.6)
     P.tap('Start', exact=True)
     return running(name)
 
@@ -99,13 +102,13 @@ def doc():
     return P.adb('shell', 'run-as', P.PKG, 'cat', 'files/doc.json')
 
 
-def running(name):
+def running(name=""):
     """The block is running, from the saved doc (Samsung's uiautomator can't read the timer screen:
     it redraws every second and never goes idle)."""
     end = time.time() + 10
     while time.time() < end:
         try:
-            b = [x for x in json.loads(doc())['blocks'] if x['intention'] == name and not x.get('ended')]
+            b = [x for x in json.loads(doc())['blocks'] if x.get('intention', '') == name and not x.get('ended') and not x.get('cancelled')]
             if b:
                 return b[-1]
         except (ValueError, RuntimeError, KeyError):
@@ -145,14 +148,15 @@ try:
     check('the cat page says All set (overlay already allowed)', P.wait_for('All set'))
     step('welcome-cat')
     P.tap('Start Focusing')
-    check('the start screen: the café wall and the window', P.wait_for('What are you working on?'))
+    check('the start screen: the café wall, the window, and a quiet "Add a title"', P.wait_for('Add a title'))
     step('home')
 
     # Changed your mind: Cancel in the first 10 seconds takes the block back, nothing counts.
-    check('a block to cancel', bool(start_block('Oops')))
+    # This one has no title: Start is enough.
+    check('a block without a title starts', bool(start_block()))
     P.tap('Cancel', exact=True)
     time.sleep(1.5)
-    check('Cancel took it back', running('Oops') is None and '"cancelled"' in doc())
+    check('Cancel took it back', running() is None and '"cancelled"' in doc())
 
     b = start_block('Test block')
     t0 = time.time()
@@ -225,26 +229,28 @@ try:
     step('cafe-dark')
     P.adb('shell', 'cmd', 'uimode', 'night', 'no')
 
-    print('\npart 2: without the cat, notifications')
+    print('\npart 2: without the cat, notifications, and without a title')
     P.adb('shell', 'appops', 'set', P.PKG, 'SYSTEM_ALERT_WINDOW', 'deny')
     launch(SEC * 2000 // 3)
-    check('the second block runs', bool(start_block('Second')))
+    check('the second block runs, with no title', bool(start_block()))
+    time.sleep(2)
+    check('the countdown goes by the tag, or Focus', 'android.title=String (Focus)' in notifications())
     t0 = time.time()
     leave()
     time.sleep(2)
     check('"Miso is waiting" as a notification', 'Miso is waiting' in notifications())
     # The check-in at minute 15 (30 s): a notification with Yes and Drifted (a banner as it comes).
     end = time.time() + 15 * SEC * 2 // 3 + 12
-    while time.time() < end and 'Still on: Second?' not in notifications():
+    while time.time() < end and 'Still focusing?' not in notifications():
         time.sleep(1)
     dump = notifications()
-    i = dump.find('Still on: Second?')
+    i = dump.find('Still focusing?')
     check('the check-in notification, with Yes and Drifted', i >= 0 and '"Yes"' in dump[max(0, i - 4000):i + 2000] and '"Drifted"' in dump[max(0, i - 4000):i + 2000])
     # The end (50 s) takes its place: answer it from the shade with its own Done button. On a real
     # phone the shade holds other apps' notifications, so this part runs on the emulator only.
     if P.LOCAL:
         end = time.time() + 30
-        while time.time() < end and 'Second. Tap to log it.' not in notifications():
+        while time.time() < end and 'Tap to log it.' not in notifications():
             time.sleep(1)
         P.adb('shell', 'cmd', 'statusbar', 'expand-notifications')
         time.sleep(1.5)
@@ -260,7 +266,7 @@ try:
             P.tap('Done', exact=True)
             time.sleep(2.5)
         P.adb('shell', 'cmd', 'statusbar', 'collapse')
-        second = [b for b in json.loads(doc())['blocks'] if b['intention'] == 'Second']
+        second = [b for b in json.loads(doc())['blocks'] if not b.get('intention') and not b.get('cancelled')]
         check('Done on the notification was recorded', bool(second) and second[-1].get('outcome') == 'done')
 finally:
     mode = re.search(r'Night mode: (\w+)', night)

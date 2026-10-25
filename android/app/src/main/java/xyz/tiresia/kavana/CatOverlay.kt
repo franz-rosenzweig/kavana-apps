@@ -77,7 +77,7 @@ object CatOverlay {
                         },
                     ), 90_000, later)
             }
-            "nudge" -> show(ctx, "nudge", Art.portrait(catId), p.body, a?.intention, emptyList(), 9_000) {}
+            "nudge" -> show(ctx, "nudge", Art.portrait(catId), p.body, a?.intention?.ifBlank { null }, emptyList(), 9_000) {}
             "end" -> {
                 val id = p.block ?: return Notify.ping(ctx, p, st)
                 val c = st.cat(catId)
@@ -89,7 +89,7 @@ object CatOverlay {
                     w.kitten == "home" -> "${c.name} came home to your café. 🐟 +${w.treats}"
                     else -> "${c.name} wandered off."
                 }
-                show(ctx, "end", Art.portrait(catId), title, listOfNotNull(w?.intention, says).joinToString("\n"),
+                show(ctx, "end", Art.portrait(catId), title, listOfNotNull(w?.intention?.ifBlank { null }, says).joinToString("\n"),
                     listOf(
                         Btn("Done", true) { outcome(id, "done") },
                         Btn("Partly", false) { outcome(id, "partly") },

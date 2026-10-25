@@ -162,7 +162,8 @@ fun RunScreen(s: UiState, a: Block, now: Long, dive: Float, onSound: () -> Unit)
         Eyebrow(when { paused -> "Paused"; over -> "Extra time"; a.stopwatch -> "Stopwatch"; else -> "Focusing" },
             color = if (paused) k.orange else if (dusk) Color.White else MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(4.dp))
-        Text(a.intention, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center, color = ink)
+        // no title: its tag, or nothing; the sky and the kitten are enough
+        a.intention.ifBlank { a.tag ?: "" }.takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center, color = ink) }
         if (a.step != null) Text(
             buildAnnotatedString { withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append("First step: ") }; append(a.step) },
             style = MaterialTheme.typography.bodyMedium, color = muted, textAlign = TextAlign.Center,

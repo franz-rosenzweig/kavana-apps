@@ -104,7 +104,7 @@ object Notify {
         when {
             a != null -> {
                 val c = st.cat(a.cat)
-                b.setContentTitle(a.intention)
+                b.setContentTitle(a.title)
                 // Spent: time on the block so far, pauses left out (web/app.js renderRun).
                 val spent = a.total - (a.end - (a.paused ?: now))
                 b.setContentText(when {

@@ -895,7 +895,7 @@ fun cafeCat(s: xyz.tiresia.kavana.UiState, b: xyz.tiresia.kavana.Hist): CafeCat 
     return CafeCat(
         key = b.id, id = c.id, src = if (small) "cats/${c.id}-kitten-1.webp" else "cats/${c.id}-1.webp",
         napSrc = if (small) null else "cats/${c.id}-nap-1.webp", kitten = small, poses = if (small) null else c.poses,
-        ghost = c.ghost, title = c.name, sub = "${b.intention} · ${xyz.tiresia.kavana.fmtMin(b.actual)}",
+        ghost = c.ghost, title = c.name, sub = "${xyz.tiresia.kavana.titleOf(b.intention, b.tag)} · ${xyz.tiresia.kavana.fmtMin(b.actual)}",
     )
 }
 

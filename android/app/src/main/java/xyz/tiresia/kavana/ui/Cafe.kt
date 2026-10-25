@@ -373,7 +373,7 @@ private fun HistRow(s: UiState, b: Hist, onClick: () -> Unit) {
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(b.intention, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                Text(b.title, style = MaterialTheme.typography.bodyLarge, color = if (b.intention.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                 if (b.tag != null) TagChip(b.tag, s.view.settings.tags, Modifier.padding(start = 6.dp))
             }
             Text(listOfNotNull(word, length, if (b.drifts > 0) "drifted ${times(b.drifts)}" else null, if (b.treats > 0) "🐟 +${b.treats}" else null).joinToString(" · "),
@@ -397,7 +397,6 @@ private fun EditSheet(s: UiState, b: Hist, onDone: () -> Unit) {
     var tag by remember(b.id) { mutableStateOf(b.tag ?: "") }
     var note by remember(b.id) { mutableStateOf(b.note) }
     fun save() {
-        if (intention.isBlank()) { repo.toasts.tryEmit("Say what the block was."); return }
         repo.launch(op("edit", "id" to b.id, "patch" to mapOf("intention" to intention, "tag" to tag, "note" to note)))
         onDone()
     }
@@ -408,7 +407,7 @@ private fun EditSheet(s: UiState, b: Hist, onDone: () -> Unit) {
                 Text("Edit Block", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
                 TextButton(onClick = { save() }) { Text("Save") }
             }
-            OutlinedTextField(intention, { intention = it.take(140) }, label = { Text("What you worked on") }, singleLine = true,
+            OutlinedTextField(intention, { intention = it.take(140) }, label = { Text("A title (optional)") }, singleLine = true,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences), modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
             if (s.view.settings.tags.isNotEmpty()) FlowRow(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 s.view.settings.tags.forEach { t ->
