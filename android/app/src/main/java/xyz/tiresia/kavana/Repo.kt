@@ -43,8 +43,10 @@ class Repo(private val app: Context) {
     val toasts = MutableSharedFlow<String>(extraBufferCapacity = 8)
     /** Set when the engine can't run at all (no JavaScript sandbox on this phone). */
     val broken = MutableStateFlow<String?>(null)
+    /** The account and its sync (nothing at all until you sign in). */
+    val sync by lazy { Sync(this) }
 
-    suspend fun act(op: JsonObject): Out? = lock.withLock { run(op, retry = true) }
+    suspend fun act(op: JsonObject): Out? = kotlinx.coroutines.withContext(Dispatchers.Default) { lock.withLock { run(op, retry = true) } }
 
     /** Fire and forget, from the screens; `then` runs on the main thread. */
     fun launch(op: JsonObject, then: (Out?) -> Unit = {}) = scope.launch {
@@ -58,7 +60,11 @@ class Repo(private val app: Context) {
             if (engine.fresh) load()
             val raw = engine.eval("KB.run(${JSONObject.quote(op.toString())}, ${System.currentTimeMillis()})")
             val out = KJson.decodeFromString(Out.serializer(), raw)
-            if (out.changed) write(engine.eval("KB.dump()"))
+            if (out.changed) {
+                write(engine.eval("KB.dump()"))
+                // Signed in, the change goes up in a moment. The sync's own ops send (or don't) by themselves.
+                if (op.str("op") !in SYNC_OPS) sync.queue()
+            }
             if (out.error != null) Log.i(TAG, "${op["op"]}: ${out.error}")
             state.value = out.state
             if (out.meets.isNotEmpty()) meets.update { (it + out.meets).distinct() }
@@ -154,6 +160,7 @@ class Repo(private val app: Context) {
         const val TAG = "Kavana"
         /** Seconds away before the kitten wanders off (web/app.js AWAY_GRACE). */
         const val GRACE = 15_000L
+        private val SYNC_OPS = setOf("merge", "empty", "squeeze", "size")
     }
 }
 

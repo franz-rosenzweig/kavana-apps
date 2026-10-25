@@ -18,9 +18,12 @@ android {
         applicationId = "xyz.tiresia.kavana"
         minSdk = 31
         targetSdk = 36
-        versionCode = 9
-        versionName = "0.3.1"
+        versionCode = 10
+        versionName = "0.4.0"
         resValue("string", "app_name", "Kavana")
+        // Where the account and its sync live: the same server as the web app.
+        buildConfigField("String", "SERVER", "\"https://stuffs.tiresia.xyz/kavana/\"")
+        manifestPlaceholders["cleartext"] = "false"
     }
 
     // The signing key's properties: android/keystore.properties (never in git), or the file
@@ -51,6 +54,8 @@ android {
             // beside the real app, with its own data (check.sh may speed its clock up)
             applicationIdSuffix = ".debug"
             resValue("string", "app_name", "Kavana dev")
+            // tests point it at a sandbox server on this computer (http://10.0.2.2:<port>/ from the emulator)
+            manifestPlaceholders["cleartext"] = "true"
         }
     }
 

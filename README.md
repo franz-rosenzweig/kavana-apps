@@ -25,8 +25,9 @@ What it does:
 - Check-ins are scheduled on the phone itself, so nothing goes through my server. "Still on: …?" (or "Still focusing?" when the block has no title) has Yes / Drifted right on the notification, and "How did it go?" has Done / Partly / Not really, and a note.
 - The countdown (or the stopwatch) sits on the lock screen and in the status bar while a block runs (on Samsung, in the Now Bar).
 - Later, a daily goal, a daily reminder, breaks, park a thought, +5 / +10 at the end, your own nudge lines, tags, news.
+- **Sign in, if you want, and it syncs with the web.** Settings → Sign In: type your email and Kavana emails you a 6-digit code, and that's it, no password to remember (if you're new, the code makes your account). A name and a password work too. Your history on the phone comes along into the account, and from then on the phone and the web (and your other devices) have the same blocks, Later, cats and settings: a change goes up a moment after you make it, and what you did elsewhere comes in when you open Kavana. The account page has your email, a password if you want one, signing out (the account's history leaves the phone, it's safe on the server) and deleting the account (your history stays on the phone).
 
-What it doesn't do yet: accounts and sync, so nothing that needs them either (friends, napping together, rooms with a code, rankings, the shelter counters). Everything stays on the phone.
+What it doesn't do yet: the parts of the account that are about other people (friends, napping together, rooms with a code, rankings, the shelter counters). Without an account everything stays on the phone, and nothing is sent anywhere.
 
 ### Building it
 
@@ -44,6 +45,8 @@ The engine files and pictures come from the web repo with `tools/sync-web.sh` (i
 ## Living cats (motion/)
 
 The motion study and its tools: `warp.js` (the web's living cats, a copy of what's in the web app), `rig.json` (every picture's eyes, head, neck, ears, tail and ground line), `tools/eyes.js` and `tools/rig.js` (find them in new pictures, with hand fixes for what the finder misses) and `tools/folds.js` (checks no motion folds a picture over).
+
+The account check, `tools/check-account.py`, signs in and syncs on the emulator against a sandbox copy of the server on this computer (never the real one: it makes and deletes accounts, so it refuses any other address). It reads the emailed codes from the sandbox's outbox, plays a second device through the API, and walks signing in by email, syncing both ways, a password, signing out and back in, a password changed elsewhere, and deleting the account. How to start the sandbox is at the top of the script.
 
 The device check, `tools/check.py`, drives a phone plugged into my Mac over SSH (or an emulator, with `KAVANA_ADB`). It needs to know which Mac: `KAVANA_MAC=user@host`, plus `KAVANA_MAC_KEY` if ssh needs a key, or the same two lines in `~/.config/kavana-apps/mac.env`, which stays out of the repo. It stops and says so if neither is there.
 

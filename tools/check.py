@@ -198,8 +198,9 @@ try:
     P.tap('Done', exact=True)
     check('meeting Pepper after the first block', P.wait_for('You met Pepper', 8))
     step('meet')
-    P.tap('Nice!')
-    time.sleep(1)
+    while P.find('Nice!', exact=True):  # after 10 pm the first block meets Boo too
+        P.tap('Nice!', exact=True)
+        time.sleep(1)
 
     for name in ['Café', 'Cats', 'Later', 'Settings']:
         screen(name)

@@ -311,4 +311,36 @@ ok('a block without a title starts', () => {
   assert.equal(r.state.pings.some((p) => p.kind === 'checkin' && /Still focusing\?/.test(p.title)), true);
 });
 
+// The account's sync (web/data.js): the server's copy merged in, sign-out, and folding a doc too big.
+const phone = E2.empty();
+const server = E2.empty();
+at = new Date(2025, 6, 1, 9, 0, 0).getTime();
+E2.start(phone, { intention: 'On the phone', minutes: 2, cat: 'miso' }, at);
+E2.tick(phone, at + 2 * MIN + 1000);
+E2.outcome(phone, E2.awaiting(phone).id, 'done', at + 3 * MIN);
+E2.start(server, { intention: 'On the web', minutes: 2, cat: 'miso' }, at + 10 * MIN);
+E2.tick(server, at + 12 * MIN + 1000);
+E2.outcome(server, E2.awaiting(server).id, 'done', at + 13 * MIN);
+E2.setSettings(server, { goal: 90 }, at + 14 * MIN);
+KB(`KB.load(${JSON.stringify(JSON.stringify(phone))})`);
+r = run({ op: 'merge', doc: server, adopt: true }, at + 20 * MIN);
+ok('merge: both devices\' blocks, the account\'s settings, and something for the server', () => {
+  assert.equal(r.error, null);
+  assert.equal(r.changed, true);
+  assert.deepEqual(r.state.history.map((b) => b.intention).sort(), ['On the phone', 'On the web']);
+  assert.equal(r.state.view.settings.goal, 90);
+  assert.equal(r.result.mineToo, true);
+});
+r = run({ op: 'merge', doc: JSON.parse(KB('KB.dump()')) }, at + 21 * MIN);
+ok('merging the same copy again has nothing new for the server', () => assert.equal(r.result.mineToo, false));
+r = run({ op: 'size' }, at + 22 * MIN);
+ok('size: an everyday doc fits the server', () => assert.equal(r.result.big, false));
+r = run({ op: 'squeeze' }, at + 22 * MIN);
+ok('squeeze folds (nothing to fold here) and is saved', () => { assert.equal(r.changed, true); assert.equal(r.result.big, false); });
+r = run({ op: 'empty' }, at + 23 * MIN);
+ok('empty: signed out, the account\'s history leaves the phone', () => {
+  assert.equal(r.changed, true);
+  assert.equal(r.state.history.length, 0);
+});
+
 console.log(`\n${pass} passed`);

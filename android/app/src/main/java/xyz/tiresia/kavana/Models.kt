@@ -286,3 +286,13 @@ fun fmtClock(ms: Long): String {
 
 fun times(n: Int) = if (n == 1) "once" else "$n times"
 fun minLeft(ms: Long) = maxOf(1L, Math.round(ms / 60000.0))
+
+/** The signed-in account (the server's /api/me). Accounts from before email all have a password. */
+@Serializable
+data class Account(
+    val name: String,
+    val display: String? = null,
+    val admin: Boolean = false,
+    val email: String? = null,
+    val password: Boolean = true,
+)

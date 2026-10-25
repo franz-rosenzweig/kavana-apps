@@ -14,6 +14,7 @@ const NEWS = root.KavanaNews || [];
 let doc = E.empty();
 let missionsSeen = null; // missions already done, so each one is told once (web/app.js checkMissions)
 let rewardsSeen = null;  // achievements and challenge steps already done
+let dirty = false;       // an op replaced the doc (a merge, a sign-out), so it's saved whatever doc.u says
 
 const dayKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
 const catsOn = () => doc.settings.cat !== false;
@@ -116,6 +117,22 @@ const OPS = {
   claim: (o, t) => ({ treats: E.claim(doc, o.id, t) }),
   // The state carries the newest 400 blocks; a longer look back (the Café's months and years) asks for its span.
   period: (o) => E.history(doc).filter((b) => b.start >= o.from && b.start < o.to),
+  // ---- the account's sync (web/data.js) ----
+  // The server's copy merged in. adopt: signing in to an account that has settings, they come with it
+  // (this phone's look newer only because it was used last, and they'd rename you, turn off sharing, ...).
+  // mineToo: the merge has something the server's copy doesn't, so it goes back up.
+  merge: (o) => {
+    const theirs = E.normalize(o.doc);
+    if (o.adopt && theirs.settings.u) doc.settings = { ...theirs.settings, u: Math.max(theirs.settings.u, doc.settings.u || 0) };
+    doc = E.merge(doc, o.doc);
+    dirty = true;
+    return { mineToo: JSON.stringify(doc) !== JSON.stringify(theirs) };
+  },
+  // Signed out: the account's history leaves the phone (it's safe on the server).
+  empty: () => { doc = E.empty(); missionsSeen = null; rewardsSeen = null; dirty = true; return null; },
+  // Too big for the server: fold the oldest blocks into the past (E.normalize does), and say if it still is.
+  squeeze: () => { doc = E.normalize(doc); dirty = true; return { big: E.size(doc) > E.config.BYTES }; },
+  size: () => ({ big: E.size(doc) > E.config.BYTES }),
 };
 
 // The shop's shelves and the café's things (cats.js), with prices and what's yours.
@@ -180,6 +197,7 @@ root.KB = {
   run(opJson, now) {
     const op = JSON.parse(opJson);
     const before = doc.u;
+    dirty = false;
     let result = null, error = null;
     E.tick(doc, now);
     if (!OPS[op.op]) error = 'op';
@@ -189,7 +207,7 @@ root.KB = {
     E.tick(doc, now);
     const meets = checkMeets(now);
     const done = checkDone(now);
-    return JSON.stringify({ changed: doc.u !== before, result, error, meets, done, state: state(now) });
+    return JSON.stringify({ changed: dirty || doc.u !== before, result, error, meets, done, state: state(now) });
   },
 };
 })(this);

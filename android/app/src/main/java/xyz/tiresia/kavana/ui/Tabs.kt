@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -78,10 +79,13 @@ fun SettingsTab(s: UiState, act: MainActivity, onTab: (Tab) -> Unit) {
     val overlayOn = remember(resumes) { act.overlayOn() }
     var awake by remember { mutableStateOf(repo.prefs.getBoolean("awake", true)) }
     var sheet by remember { mutableStateOf<String?>(null) }
+    var account by rememberSaveable { mutableStateOf(false) }
+    if (account) { AccountScreen { account = false }; return }
     fun daily(d: DailySet) = repo.launch(settings("daily" to mapOf("on" to d.on, "time" to d.time, "days" to d.days), "tz" to TimeZone.getDefault().id))
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 16.dp, bottom = 28.dp)) {
         LargeTitle("Settings")
+        AccountRow { account = true }
         Group("Focus", foot = "Your kitten grows while you focus. Stop early, or leave Kavana for more than a few seconds, and it wanders off. Locking your phone is fine. A pause lasts 5 minutes at most. \"Count extra time\" keeps a block going past its end until you tap Done.") {
             Pick("Daily goal", Icons.Rounded.Flag, MaterialTheme.colorScheme.primary, GOALS, set.goal) { repo.launch(settings("goal" to it)) }
             GroupDivider()
@@ -152,7 +156,7 @@ fun SettingsTab(s: UiState, act: MainActivity, onTab: (Tab) -> Unit) {
                 Switch(awake, { awake = it; repo.prefs.edit().putBoolean("awake", it).apply() })
             }
         }
-        Group("About", foot = "Everything stays on this phone. Nothing is sent anywhere.") {
+        Group("About", foot = "Without an account, everything stays on this phone and nothing is sent anywhere. Signed in, your history is backed up on Kavana's server and syncs with the web app and your other devices.") {
             Item("Kavana on the web", Icons.Rounded.Language, k.blue, onClick = { act.openUrl("https://stuffs.tiresia.xyz/kavana/") })
             GroupDivider()
             Item("Kavana is open source", Icons.Rounded.Code, k.gray, onClick = { act.openUrl("https://github.com/franz-rosenzweig/kavana") })

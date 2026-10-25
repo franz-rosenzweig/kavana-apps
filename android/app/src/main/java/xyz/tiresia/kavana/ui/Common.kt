@@ -63,6 +63,7 @@ fun Item(
     onClick: (() -> Unit)? = null,
     chevron: Boolean = onClick != null,
     leading: (@Composable () -> Unit)? = null,
+    labelColor: Color = Color.Unspecified,
     trailing: @Composable RowScope.() -> Unit = {},
 ) {
     Row(
@@ -79,7 +80,7 @@ fun Item(
             Spacer(Modifier.width(12.dp))
         }
         Column(Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.bodyLarge)
+            Text(label, style = MaterialTheme.typography.bodyLarge, color = labelColor)
             if (sub != null) Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         trailing()
