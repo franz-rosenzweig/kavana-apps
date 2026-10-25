@@ -201,8 +201,9 @@ fun RunScreen(s: UiState, a: Block, now: Long, dive: Float, onSound: () -> Unit)
         if (a.line != null && !paused && a.style == "nudge") Text(a.line, fontStyle = FontStyle.Italic, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge, color = ink, modifier = Modifier.padding(top = 10.dp))
 
         Row(Modifier.padding(top = 22.dp), horizontalArrangement = Arrangement.spacedBy(40.dp)) {
-            RoundButton(when { grace > 0 -> "Cancel"; a.stopwatch || over -> "Done"; else -> "Stop" }, if (grace <= 0 && (a.stopwatch || over)) k.green else k.gray,
-                sub = if (grace > 0) "$grace s" else null) { stop() }
+            val done = grace <= 0 && (a.stopwatch || over)
+            RoundButton(when { grace > 0 -> "Cancel"; done -> "Done"; else -> "Stop" }, if (done) k.green else k.gray,
+                sub = if (grace > 0) "$grace s" else null, glass = if (done) null else ink) { stop() }
             if (s.canPause || paused) RoundButton(if (paused) "Resume" else "Pause", if (paused) k.green else k.orange) { repo.launch(op(if (paused) "resume" else "pause")) }
         }
         // the tools, as frosted chips on the sky

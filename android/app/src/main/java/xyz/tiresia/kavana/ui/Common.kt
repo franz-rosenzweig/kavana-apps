@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -131,13 +132,16 @@ fun Choice(emoji: String, label: String, modifier: Modifier = Modifier, strong: 
 
 /** The round buttons under the timer (Stop, Pause, Resume, End), like the iPhone's Clock. `sub`: a small line under it (Cancel's seconds). */
 @Composable
-fun RoundButton(label: String, color: Color, modifier: Modifier = Modifier, sub: String? = null, onClick: () -> Unit) {
+fun RoundButton(label: String, color: Color, modifier: Modifier = Modifier, sub: String? = null, glass: Color? = null, onClick: () -> Unit) {
+    // `glass`: frosted white with the words in this colour instead (the grey one on the sky, web body.sky .round.gray),
+    // fainter behind white words on a dark sky (body.sky.dusk).
+    val bg = when { glass == null -> color.copy(alpha = .2f); glass.luminance() > .5f -> Color.White.copy(alpha = .16f); else -> Color.White.copy(alpha = .42f) }
     Column(
-        modifier.size(84.dp).clip(CircleShape).background(color.copy(alpha = .2f)).clickable(onClick = onClick),
+        modifier.size(84.dp).clip(CircleShape).background(bg).clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
     ) {
-        Text(label, color = color, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, maxLines = 1)
-        if (sub != null) Text(sub, color = color, fontSize = 12.sp, maxLines = 1)
+        Text(label, color = glass ?: color, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, maxLines = 1)
+        if (sub != null) Text(sub, color = glass ?: color, fontSize = 12.sp, maxLines = 1)
     }
 }
 
