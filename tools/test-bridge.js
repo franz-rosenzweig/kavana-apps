@@ -360,4 +360,10 @@ ok('a thing bought on a newer version, and a reward claimed there, survive load,
   assert.equal(r.state.shop.owned.includes('sound-somethingnew'), true);
 });
 
+// The end ping says the cat's own name, from cats.js (kavana b5b9afc): Milo for pepper, Earl Grey for earl.
+KB(`KB.load(${JSON.stringify(JSON.stringify(E2.empty()))})`);
+r = run({ op: 'start', intention: 'Long one', mode: 'stopwatch', cat: 'pepper' }, at);
+const endPing = r.state.pings.find((p) => p.kind === 'end');
+ok('a stopwatch with Milo ends with "Milo came home", not the id', () => assert.equal(endPing && endPing.title, '🐱 Three hours! Milo came home'));
+
 console.log(`\n${pass} passed`);
