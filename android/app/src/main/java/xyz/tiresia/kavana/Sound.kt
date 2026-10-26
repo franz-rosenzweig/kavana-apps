@@ -36,18 +36,19 @@ import kotlin.random.Random
 
 /**
  * A background sound. `about` is its line in the shop (the free ones have none); `like`: the sound made
- * on the phone that stands in until its recording is decoded (none for the music, which waits for it).
+ * on the phone that stands in until its recording is downloaded and decoded (none for the music, which
+ * waits for it); `file`: its recording, web/audio/<file>.mp3 (a changed one gets a new number).
  */
-data class SoundKind(val id: String, val name: String, val about: String?, val group: String, val free: Boolean = false, val like: String? = null)
+data class SoundKind(val id: String, val name: String, val about: String?, val group: String, val free: Boolean = false, val like: String? = null, val file: String? = null)
 
 data class SoundGroup(val id: String, val name: String)
 
 /**
  * Kavana's background sounds, like the web's sounds.js: 39 in seven groups, one free in each, the
  * others in the shop ('sound-<id>'). Up to two play at once, each with its own volume. All but brown and
- * white noise are real recordings that come with the app (Recordings: the web's own files, nothing to
- * download), each decoded once into a seamless loop and fed to a streaming AudioTrack round and round.
- * Decoding takes a few seconds the first time, so meanwhile the sound it's `like`, made on the phone,
+ * white noise are real recordings (Recordings: the web's own files, downloaded the first time one is
+ * picked and kept), each decoded once into a seamless loop and fed to a streaming AudioTrack round and round.
+ * Getting one ready takes a few seconds the first time, so meanwhile the sound it's `like`, made on the phone,
  * plays and the recording takes over with a 2 s equal-power crossfade, as on the web; the music has
  * nothing like it and starts once it's decoded. Brown and white noise, and any recording that won't
  * decode, are made on the phone (SoundLoops: one loop, made once and kept, played by an AudioTrack that
@@ -60,56 +61,57 @@ object Sound {
     )
 
     val KINDS: List<SoundKind> = listOf(
-        SoundKind("purr", "Purring", null, "cats", free = true),
-        SoundKind("bigpurr", "Slow purr", "Long, even breaths.", "cats", like = "purr"),
-        SoundKind("deeppurr", "Deep purr", "On the sofa, very deep.", "cats", like = "purr"),
-        SoundKind("sleepypurr", "Sleepy purr", "Purring in its sleep.", "cats", like = "purr"),
-        SoundKind("tomasina", "Tomasina", "Purring on the bed, nose to the mic.", "cats", like = "purr"),
-        SoundKind("rain", "Rain", null, "water", free = true),
-        SoundKind("lightrain", "Light rain", "Soft rain on open country.", "water", like = "rain"),
-        SoundKind("heavyrain", "Heavy rain", "A downpour.", "water", like = "rain"),
-        SoundKind("thunder", "Thunderstorm", "Rain and rolling thunder.", "water", like = "rain"),
-        SoundKind("rainforest", "Rainforest", "Drops on ferns, and a shower now and then.", "water", like = "rain"),
-        SoundKind("stream", "Stream", "A brook in the Scottish Borders.", "water", like = "rain"),
-        SoundKind("waves", "Waves", "Slow surf on a beach.", "water"),
-        SoundKind("bigwaves", "Big waves", "The Baltic hitting the shore.", "water", like = "waves"),
-        SoundKind("baltic", "Baltic beach", "Small waves on a German beach.", "water", like = "waves"),
-        SoundKind("ocean", "Ocean", "Breakers coming in.", "water", like = "waves"),
-        SoundKind("sauna", "Sauna stove", "A wood stove, burning steady.", "fire", free = true, like = "fire"),
-        SoundKind("fire", "Fireplace", "A low fire that crackles.", "fire"),
-        SoundKind("crackle", "Crackling fire", "Lots of snaps and pops.", "fire", like = "fire"),
-        SoundKind("hearth", "Hearth", "A fire in the fireplace.", "fire", like = "fire"),
-        SoundKind("bigroom", "Fire in a big room", "Close up, and the room rings.", "fire", like = "fire"),
-        SoundKind("springbirds", "Spring birds", "A warbler, a sparrow and geese.", "outside", free = true, like = "birds"),
-        SoundKind("birds", "Birds", "Dawn in a pine forest.", "outside"),
-        SoundKind("birdsong", "Birdsong", "A spring day in Virginia.", "outside", like = "birds"),
-        SoundKind("night", "Night", "Crickets on a warm night.", "outside"),
-        SoundKind("crickets", "Crickets", "Just the crickets.", "outside", like = "night"),
-        SoundKind("farstorm", "Crickets and a far storm", "A summer garden, thunder far off.", "outside", like = "night"),
-        SoundKind("wind", "Wind", "Wind around the house.", "outside"),
-        SoundKind("hollowwind", "Hollow wind", "Empty and far away.", "outside", like = "wind"),
-        SoundKind("cafeteria", "Campus cafeteria", "Lunch at a university in Istanbul.", "places", free = true, like = "cafe"),
-        SoundKind("cafe", "Café", "Murmur and the odd cup.", "places"),
-        SoundKind("copenhagen", "Copenhagen café", "Sitting outside, people chatting.", "places", like = "cafe"),
-        SoundKind("city", "City at night", "A quiet street, the odd car.", "places", like = "wind"),
-        SoundKind("wandering", "Wandering", "Slow, calm synths.", "music", free = true),
-        SoundKind("dunes", "Dunes", "Spacey and wide.", "music"),
-        SoundKind("angelic", "Angelic pad", "Soft chords that drift.", "music"),
-        SoundKind("bowls", "Singing bowls", "Bowls, waves and a bird.", "music"),
-        SoundKind("tibetan", "Tibetan bowl", "A bowl and a gong.", "music"),
+        SoundKind("purr", "Purring", null, "cats", free = true, file = "purr-1"),
+        SoundKind("bigpurr", "Slow purr", "Long, even breaths.", "cats", like = "purr", file = "bigpurr-1"),
+        SoundKind("deeppurr", "Deep purr", "On the sofa, very deep.", "cats", like = "purr", file = "deeppurr-1"),
+        SoundKind("sleepypurr", "Sleepy purr", "Purring in its sleep.", "cats", like = "purr", file = "sleepypurr-1"),
+        SoundKind("tomasina", "Tomasina", "Purring on the bed, nose to the mic.", "cats", like = "purr", file = "tomasina-1"),
+        SoundKind("rain", "Rain", null, "water", free = true, file = "rain-1"),
+        SoundKind("lightrain", "Light rain", "Soft rain on open country.", "water", like = "rain", file = "lightrain-1"),
+        SoundKind("heavyrain", "Heavy rain", "A downpour.", "water", like = "rain", file = "heavyrain-1"),
+        SoundKind("thunder", "Thunderstorm", "Rain and rolling thunder.", "water", like = "rain", file = "thunder-1"),
+        SoundKind("rainforest", "Rainforest", "Drops on ferns, and a shower now and then.", "water", like = "rain", file = "rainforest-1"),
+        SoundKind("stream", "Stream", "A brook in the Scottish Borders.", "water", like = "rain", file = "stream-1"),
+        SoundKind("waves", "Waves", "Slow surf on a beach.", "water", file = "waves-1"),
+        SoundKind("bigwaves", "Big waves", "The Baltic hitting the shore.", "water", like = "waves", file = "bigwaves-1"),
+        SoundKind("baltic", "Baltic beach", "Small waves on a German beach.", "water", like = "waves", file = "baltic-1"),
+        SoundKind("ocean", "Ocean", "Breakers coming in.", "water", like = "waves", file = "ocean-1"),
+        SoundKind("sauna", "Sauna stove", "A wood stove, burning steady.", "fire", free = true, like = "fire", file = "sauna-1"),
+        SoundKind("fire", "Fireplace", "A low fire that crackles.", "fire", file = "fire-1"),
+        SoundKind("crackle", "Crackling fire", "Lots of snaps and pops.", "fire", like = "fire", file = "crackle-1"),
+        SoundKind("hearth", "Hearth", "A fire in the fireplace.", "fire", like = "fire", file = "hearth-1"),
+        SoundKind("bigroom", "Fire in a big room", "Close up, and the room rings.", "fire", like = "fire", file = "bigroom-1"),
+        SoundKind("springbirds", "Spring birds", "A warbler, a sparrow and geese.", "outside", free = true, like = "birds", file = "springbirds-1"),
+        SoundKind("birds", "Birds", "Dawn in a pine forest.", "outside", file = "birds-1"),
+        SoundKind("birdsong", "Birdsong", "A spring day in Virginia.", "outside", like = "birds", file = "birdsong-1"),
+        SoundKind("night", "Night", "Crickets on a warm night.", "outside", file = "night-1"),
+        SoundKind("crickets", "Crickets", "Just the crickets.", "outside", like = "night", file = "crickets-1"),
+        SoundKind("farstorm", "Crickets and a far storm", "A summer garden, thunder far off.", "outside", like = "night", file = "farstorm-1"),
+        SoundKind("wind", "Wind", "Wind around the house.", "outside", file = "wind-1"),
+        SoundKind("hollowwind", "Hollow wind", "Empty and far away.", "outside", like = "wind", file = "hollowwind-1"),
+        SoundKind("cafeteria", "Campus cafeteria", "Lunch at a university in Istanbul.", "places", free = true, like = "cafe", file = "cafeteria-1"),
+        SoundKind("cafe", "Café", "Murmur and the odd cup.", "places", file = "cafe-1"),
+        SoundKind("copenhagen", "Copenhagen café", "Sitting outside, people chatting.", "places", like = "cafe", file = "copenhagen-1"),
+        SoundKind("city", "City at night", "A quiet street, the odd car.", "places", like = "wind", file = "city-1"),
+        SoundKind("wandering", "Wandering", "Slow, calm synths.", "music", free = true, file = "wandering-1"),
+        SoundKind("dunes", "Dunes", "Spacey and wide.", "music", file = "dunes-1"),
+        SoundKind("angelic", "Angelic pad", "Soft chords that drift.", "music", file = "angelic-1"),
+        SoundKind("bowls", "Singing bowls", "Bowls, waves and a bird.", "music", file = "bowls-1"),
+        SoundKind("tibetan", "Tibetan bowl", "A bowl and a gong.", "music", file = "tibetan-1"),
         SoundKind("brown", "Brown noise", null, "noise", free = true),
         SoundKind("white", "White noise", null, "noise", free = true),
     )
 
     fun byId(id: String): SoundKind? = KINDS.find { it.id == id }
 
-    private val MEOWS = listOf("meow-a", "meow-b", "meow-c")
+    // The meows come with the app (assets/audio, about 45 KB together), so one is ready at the first homecoming.
+    private const val MEOW_DIR = "audio"
 
     /** A meow, once, when a kitten comes home (one of three at random). Not when the phone is on silent or vibrate. */
     fun meow(ctx: Context) {
         val app = ctx.applicationContext
         if (app.getSystemService(AudioManager::class.java)?.ringerMode != AudioManager.RINGER_MODE_NORMAL) return
-        val name = Recordings.file(app, MEOWS.random()) ?: return
+        val name = app.assets.list(MEOW_DIR)?.filter { it.startsWith("meow-") }?.randomOrNull()?.let { "$MEOW_DIR/$it" } ?: return
         runCatching {
             val mp = MediaPlayer()
             mp.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
@@ -222,7 +224,7 @@ object Sound {
 
     private fun start(l: Layer) {
         val ctx = app
-        if (ctx == null || Recordings.file(ctx, l.id) == null) { made(l); return }
+        if (ctx == null || !Recordings.has(l.id)) { made(l); return }
         Recordings.ready(l.id)?.let { if (recorded(l, it)) return }
         if (madeFor(l.id) != null) made(l) // until the recording is decoded
         scope.launch {

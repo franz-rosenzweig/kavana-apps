@@ -46,7 +46,7 @@ fun Welcome(act: MainActivity, s: UiState, onDone: () -> Unit) {
                 Point(Icons.Rounded.TrackChanges, MaterialTheme.colorScheme.primary, "One thing at a time", "Pick how long and press Start. A title is up to you.")
                 Point(Icons.Rounded.Notifications, k.orange, "Gentle check-ins", "\"Still on it?\" every so often, even when the app is closed.")
                 Point(Icons.Rounded.Pets, k.pink, "A kitten grows while you focus", "Stay to the end and it comes home to your Cat Café.")
-                Point(Icons.Rounded.Lock, k.blue, "Stays on your phone", "No account needed. Nothing is sent anywhere unless you sign in to sync.")
+                Point(Icons.Rounded.Lock, k.blue, "Stays on your phone", "No account needed. Your history only leaves the phone if you sign in to sync.")
             } else if (page == 1) {
                 // A glimpse of where this goes (Forest's "watch it grow"): the café filling up.
                 val things = s.shop.items.filter { it.limited == null }

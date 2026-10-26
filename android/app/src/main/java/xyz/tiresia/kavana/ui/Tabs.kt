@@ -156,7 +156,7 @@ fun SettingsTab(s: UiState, act: MainActivity, onTab: (Tab) -> Unit) {
                 Switch(awake, { awake = it; repo.prefs.edit().putBoolean("awake", it).apply() })
             }
         }
-        Group("About", foot = "Without an account, everything stays on this phone and nothing is sent anywhere. Signed in, your history is backed up on Kavana's server and syncs with the web app and your other devices.") {
+        Group("About", foot = "Without an account, your history stays on this phone and nothing about you is sent anywhere. The one thing Kavana fetches is a sound's recording, the first time you pick it. Signed in, your history is backed up on Kavana's server and syncs with the web app and your other devices.") {
             Item("Kavana on the web", Icons.Rounded.Language, k.blue, onClick = { act.openUrl("https://stuffs.tiresia.xyz/kavana/") })
             GroupDivider()
             Item("Kavana is open source", Icons.Rounded.Code, k.gray, onClick = { act.openUrl("https://github.com/franz-rosenzweig/kavana") })

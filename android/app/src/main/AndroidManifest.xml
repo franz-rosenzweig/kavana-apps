@@ -13,7 +13,7 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
-    <!-- only when you sign in: the account and the sync of your history with it -->
+    <!-- the account and the sync of your history (only when you sign in), and a sound's recording the first time it's picked -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application

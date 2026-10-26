@@ -5,6 +5,10 @@ import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.util.Log
+import java.io.File
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
@@ -12,12 +16,14 @@ import kotlin.math.roundToLong
 class Loop(val pcm: ShortArray, val rate: Int, val channels: Int)
 
 /**
- * The recorded background sounds: the web's web/audio/<id>-<n>.mp3 (CC0 from Freesound; docs/sounds.md
- * in the web repo has whose each one is), copied into the app's assets by tools/sync-web.sh, so they
- * play offline and nothing is downloaded. Each file is a loop of a whole number of seconds with PAD
- * seconds of its own end before it and of its own start after it (web/sounds.js), so the stretch from
- * PAD to PAD + the whole seconds is seamless whether or not the decoder trims the encoder's padding.
- * Brown and white noise have no recording; they're only made on the phone (SoundLoops).
+ * The recorded background sounds: the web's web/audio/<file>.mp3 (CC0 from Freesound; docs/sounds.md
+ * in the web repo has whose each one is). Like the web, the app downloads one the first time it's
+ * picked, from the same server (<server>/audio/<file>.mp3, public files), and keeps it in its own
+ * storage (files/audio), so the APK stays small and a sound played once plays offline after. A changed
+ * recording gets a new number (crackle-2), so files no longer in Sound.KINDS are deleted. Each file is a
+ * loop of a whole number of seconds with PAD seconds of its own end before it and of its own start after
+ * it (web/sounds.js), so the stretch from PAD to PAD + the whole seconds is seamless whether or not the
+ * decoder trims the encoder's padding. Brown and white noise have no recording (SoundLoops makes them).
  */
 object Recordings {
     private const val PAD = 0.5
@@ -25,15 +31,48 @@ object Recordings {
     /** Decoded loops kept (a minute and a half of 48 kHz stereo is about 17 MB). */
     private const val KEEP = 3
     private val kept = LinkedHashMap<String, Loop>(4, 0.75f, true) // the most recently used last
-    @Volatile private var files: Map<String, String>? = null
+    private var tidied = false
 
-    /** The asset for a sound, "audio/rain-1.mp3", or null if it has none (the newest number wins). */
-    fun file(ctx: Context, id: String): String? {
-        val all = files ?: (ctx.assets.list("audio") ?: emptyArray()).filter { it.endsWith(".mp3") }
-            .groupBy { it.substringBeforeLast('-') }
-            .mapValues { (_, names) -> "audio/" + names.maxBy { it.substringAfterLast('-').substringBefore('.').toIntOrNull() ?: 0 } }
-            .also { files = it }
-        return all[id]
+    /** Whether a sound has a recording (all but brown and white noise). */
+    fun has(id: String) = Sound.byId(id)?.file != null
+
+    private fun dir(ctx: Context) = File(ctx.filesDir, "audio").apply { mkdirs() }
+
+    /**
+     * The sound's file on the phone, downloaded now if it isn't there yet; null if it can't be (offline):
+     * then the made-up one keeps playing, and the next pick tries again. Slow: not on the main thread.
+     */
+    @Synchronized
+    private fun local(ctx: Context, file: String): File? {
+        val dir = dir(ctx)
+        if (!tidied) { // recordings that were replaced by a newer number, or dropped
+            tidied = true
+            val keep = Sound.KINDS.mapNotNull { it.file?.let { f -> "$f.mp3" } }.toSet()
+            dir.listFiles()?.filter { it.name !in keep }?.forEach { it.delete() }
+        }
+        val f = File(dir, "$file.mp3")
+        if (f.length() > 0) return f
+        val url = KavanaApp.repo.sync.server + "audio/$file.mp3"
+        val tmp = File(dir, "$file.mp3.part")
+        val t0 = System.nanoTime()
+        return try {
+            val c = URL(url).openConnection() as HttpURLConnection
+            try {
+                c.connectTimeout = 15_000
+                c.readTimeout = 30_000
+                if (c.responseCode != 200) throw IOException("HTTP ${c.responseCode}")
+                c.inputStream.use { i -> tmp.outputStream().use { o -> i.copyTo(o) } }
+            } finally {
+                c.disconnect()
+            }
+            if (!tmp.renameTo(f)) throw IOException("can't keep $file")
+            Log.i(TAG, "recording $file: downloaded ${f.length() / 1024} KB in ${(System.nanoTime() - t0) / 1_000_000} ms")
+            f
+        } catch (e: Exception) {
+            Log.w(TAG, "recording $file: not downloaded (${e.message})")
+            tmp.delete()
+            null
+        }
     }
 
     /** The loop for a sound if it's decoded already (then it can start at once). */
@@ -42,9 +81,10 @@ object Recordings {
     /** The loop for a sound, decoded once and kept; null if it has no recording or it won't decode. Slow: not on the main thread. */
     fun load(ctx: Context, id: String): Loop? {
         synchronized(kept) { kept[id]?.let { return it } }
-        val name = file(ctx, id) ?: return null
+        val name = Sound.byId(id)?.file ?: return null
+        val f = local(ctx, name) ?: return null
         val t0 = System.nanoTime()
-        val loop = runCatching { decode(ctx, name) }.onFailure { Log.w(TAG, "recording $name", it) }.getOrNull() ?: return null
+        val loop = runCatching { decode(f) }.onFailure { f.delete() /* a broken file: download it again next time */ }.onFailure { Log.w(TAG, "recording $name", it) }.getOrNull() ?: return null
         Log.i(TAG, "recording $name: ${loop.pcm.size / loop.channels / loop.rate} s, ${loop.channels} ch, ${loop.rate} Hz, decoded in ${(System.nanoTime() - t0) / 1_000_000} ms")
         synchronized(kept) {
             kept[id] = loop
@@ -56,14 +96,9 @@ object Recordings {
     }
 
     /** The whole file to 16-bit PCM with Android's own MP3 decoder, then the loop cut out of it. */
-    private fun decode(ctx: Context, name: String): Loop? {
+    private fun decode(f: File): Loop? {
         val ex = MediaExtractor()
-        val afd = ctx.assets.openFd(name) // MP3s are stored uncompressed in the APK, so this works
-        try {
-            ex.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
-        } finally {
-            afd.close()
-        }
+        ex.setDataSource(f.path)
         try {
             val track = (0 until ex.trackCount).firstOrNull { ex.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true } ?: return null
             val format = ex.getTrackFormat(track)
