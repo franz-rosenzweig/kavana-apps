@@ -190,7 +190,7 @@ fun RunScreen(s: UiState, a: Block, now: Long, dive: Float, onSound: () -> Unit)
         val meta = buildList {
             when {
                 paused -> add("Starts again by itself in ${fmtClock((a.pauseEnds ?: now) - now)}")
-                over -> add("Kavana counts until you tap Done")
+                over -> add("Chataltul counts until you tap Done")
                 a.interval == 0 -> add("Check-in at the end")
                 a.style == "nudge" -> add("Nudges about every ${a.interval} min")
                 a.next != null && a.next > now -> add("Next check-in in ${minLeft(a.next - now)} min")
@@ -314,7 +314,7 @@ fun kittenSays(a: Block, c: CatInfo, paused: Boolean, p: Float, spent: Long): St
         paused -> "${c.name} waits for you. A pause lasts 5 minutes at most."
         a.stopwatch -> if (spent < 600_000L) "Stay 10 minutes and ${c.name} can come home." else "${c.name} can come home now. Tap Done when you're done."
         stage == "grown" -> "Almost there. ${c.name} is nearly grown up."
-        stage == "nap" -> "${c.name} just arrived. Stay in Kavana and it grows."
+        stage == "nap" -> "${c.name} just arrived. Stay in Chataltul and it grows."
         else -> "${c.name} is growing. Stay with it."
     }
 }

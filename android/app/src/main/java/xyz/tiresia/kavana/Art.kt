@@ -37,9 +37,13 @@ object Art {
     }
 
     fun thing(id: String) = "cafe/$id-1.webp"
-    fun portrait(id: String) = "cats/$id-1.webp"
-    fun kitten(id: String) = "cats/$id-kitten-1.webp"
-    fun nap(id: String) = "cats/$id-nap-1.webp"
+    fun portrait(id: String) = cats[id]?.portrait ?: "cats/$id-1.webp"
+    fun kitten(id: String) = cats[id]?.kitten ?: "cats/$id-kitten-1.webp"
+    fun nap(id: String) = cats[id]?.nap ?: "cats/$id-nap-1.webp"
+
+    /** Each cat's painting paths, from the engine's cats (cats.js), learned with every state: a repainted cat's have a new number. */
+    @Volatile private var cats: Map<String, CatInfo> = emptyMap()
+    fun learn(list: List<CatInfo>) { if (list.size != cats.size || list.any { cats[it.id]?.portrait != it.portrait }) cats = list.associateBy { it.id } }
     const val GONE = "cafe/gone-1.webp"
 }
 

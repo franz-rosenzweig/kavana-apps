@@ -893,8 +893,8 @@ fun cafeCat(s: xyz.tiresia.kavana.UiState, b: xyz.tiresia.kavana.Hist): CafeCat 
     val c = s.cat(b.cat)
     val small = b.actual < 25
     return CafeCat(
-        key = b.id, id = c.id, src = if (small) "cats/${c.id}-kitten-1.webp" else "cats/${c.id}-1.webp",
-        napSrc = if (small) null else "cats/${c.id}-nap-1.webp", kitten = small, poses = if (small) null else c.poses,
+        key = b.id, id = c.id, src = if (small) xyz.tiresia.kavana.Art.kitten(c.id) else xyz.tiresia.kavana.Art.portrait(c.id),
+        napSrc = if (small) null else xyz.tiresia.kavana.Art.nap(c.id), kitten = small, poses = if (small) null else c.poses,
         ghost = c.ghost, title = c.name, sub = "${xyz.tiresia.kavana.titleOf(b.intention, b.tag)} · ${xyz.tiresia.kavana.fmtMin(b.actual)}",
     )
 }
@@ -908,7 +908,7 @@ fun cafeScene(s: xyz.tiresia.kavana.UiState, list: List<xyz.tiresia.kavana.Hist>
         things = s.shop.items.filter { s.owns(it.id) }.map { it.id },
         views = s.shop.items.mapNotNull { t -> t.views?.let { t.id to it } }.toMap(),
         cats = if (s.catsOn) home.take(60).map { cafeCat(s, it) } else emptyList(),
-        residents = s.shop.shelter.filter { s.owns(it.id) }.map { CafeCat(key = it.id, id = it.id, src = "cats/${it.id}-1.webp", title = it.name, sub = "A shelter cat you sponsored") },
+        residents = s.shop.shelter.filter { s.owns(it.id) }.map { CafeCat(key = it.id, id = it.id, src = xyz.tiresia.kavana.Art.portrait(it.id), title = it.name, sub = "A shelter cat you sponsored") },
         gone = list.filter { it.kitten == "gone" }.map { it.id }, quiet = quiet,
     )
 }

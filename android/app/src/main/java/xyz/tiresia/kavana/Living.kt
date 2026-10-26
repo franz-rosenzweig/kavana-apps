@@ -410,6 +410,8 @@ class LivingCat(private val ctx: Context, id: String, pose: String, seed: Int = 
 
     companion object {
         private const val HEART = 0; private const val SPARK = 1; private const val ZED = 2
-        fun keyOf(id: String, pose: String) = when (pose) { "kitten" -> "$id-kitten-1"; "nap" -> "$id-nap-1"; else -> "$id-1" }
+        // The rig's key is the painting's name (rig.json follows a repainted cat's new number, like Art).
+        fun keyOf(id: String, pose: String) = when (pose) { "kitten" -> Art.kitten(id); "nap" -> Art.nap(id); else -> Art.portrait(id) }
+            .substringAfterLast('/').removeSuffix(".webp")
     }
 }

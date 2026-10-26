@@ -86,7 +86,7 @@ fun SettingsTab(s: UiState, act: MainActivity, onTab: (Tab) -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 16.dp, bottom = 28.dp)) {
         LargeTitle("Settings")
         AccountRow { account = true }
-        Group("Focus", foot = "Your kitten grows while you focus. Stop early, or leave Kavana for more than a few seconds, and it wanders off. Locking your phone is fine. A pause lasts 5 minutes at most. \"Count extra time\" keeps a block going past its end until you tap Done.") {
+        Group("Focus", foot = "Your kitten grows while you focus. Stop early, or leave Chataltul for more than a few seconds, and it wanders off. Locking your phone is fine. A pause lasts 5 minutes at most. \"Count extra time\" keeps a block going past its end until you tap Done.") {
             Pick("Daily goal", Icons.Rounded.Flag, MaterialTheme.colorScheme.primary, GOALS, set.goal) { repo.launch(settings("goal" to it)) }
             GroupDivider()
             Pick("Check in every", Icons.Rounded.Notifications, k.orange, INTERVALS, set.interval) { repo.launch(settings("interval" to it)) }
@@ -105,7 +105,7 @@ fun SettingsTab(s: UiState, act: MainActivity, onTab: (Tab) -> Unit) {
             GroupDivider()
             Item("Count extra time", Icons.Rounded.Timer, k.green) { Switch(set.overtime, { repo.launch(settings("overtime" to it)) }) }
             GroupDivider()
-            Item("Swiping Kavana away counts as leaving", Icons.Rounded.SwipeUp, k.red) { Switch(set.closeCounts, { repo.launch(settings("closeCounts" to it)) }) }
+            Item("Swiping Chataltul away counts as leaving", Icons.Rounded.SwipeUp, k.red) { Switch(set.closeCounts, { repo.launch(settings("closeCounts" to it)) }) }
             GroupDivider()
             Item("Your own lines", Icons.Rounded.FormatQuote, k.indigo, sub = "Nudges in your own words, every other one", onClick = { sheet = "lines" }) {
                 Text(if (set.lines.isEmpty()) "None" else "${set.lines.size}", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -115,7 +115,7 @@ fun SettingsTab(s: UiState, act: MainActivity, onTab: (Tab) -> Unit) {
                 Text(s.shop.themes.firstOrNull { it.id == set.theme }?.name ?: "Classic", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        if (set.cat) Group("The cat over other apps", foot = "When you leave Kavana in the middle of a block, or a check-in comes while you're in another app, the cat pops up over it and says Boo!") {
+        if (set.cat) Group("The cat over other apps", foot = "When you leave Chataltul in the middle of a block, or a check-in comes while you're in another app, the cat pops up over it and says Boo!") {
             Item("Cat over other apps", Icons.Rounded.Layers, k.indigo, sub = if (overlayOn) "On" else "Needs your OK in Android's settings") {
                 if (!overlayOn) TextButton(onClick = { act.askOverlay() }) { Text("Allow") }
             }
@@ -143,7 +143,7 @@ fun SettingsTab(s: UiState, act: MainActivity, onTab: (Tab) -> Unit) {
                 }
             }
         }
-        Group("Notifications", foot = "Using Do Not Disturb or a Mode? Add Kavana to its allowed apps so check-ins still come through.") {
+        Group("Notifications", foot = "Using Do Not Disturb or a Mode? Add Chataltul to its allowed apps so check-ins still come through.") {
             Item(if (notifyOn) "Notifications are on" else "Notifications are off", Icons.Rounded.NotificationsActive, k.red) {
                 if (!notifyOn) TextButton(onClick = { act.askNotifications() }) { Text("Turn On") }
                 else TextButton(onClick = {
@@ -156,10 +156,10 @@ fun SettingsTab(s: UiState, act: MainActivity, onTab: (Tab) -> Unit) {
                 Switch(awake, { awake = it; repo.prefs.edit().putBoolean("awake", it).apply() })
             }
         }
-        Group("About", foot = "Without an account, your history stays on this phone and nothing about you is sent anywhere. The one thing Kavana fetches is a sound's recording, the first time you pick it. Signed in, your history is backed up on Kavana's server and syncs with the web app and your other devices.") {
-            Item("Kavana on the web", Icons.Rounded.Language, k.blue, onClick = { act.openUrl("https://stuffs.tiresia.xyz/kavana/") })
+        Group("About", foot = "Without an account, your history stays on this phone and nothing about you is sent anywhere. The one thing Chataltul fetches is a sound's recording, the first time you pick it. Signed in, your history is backed up on Chataltul's server and syncs with the web app and your other devices.") {
+            Item("Chataltul on the web", Icons.Rounded.Language, k.blue, onClick = { act.openUrl("https://stuffs.tiresia.xyz/kavana/") })
             GroupDivider()
-            Item("Kavana is open source", Icons.Rounded.Code, k.gray, onClick = { act.openUrl("https://github.com/franz-rosenzweig/kavana") })
+            Item("Chataltul is open source", Icons.Rounded.Code, k.gray, onClick = { act.openUrl("https://github.com/franz-rosenzweig/kavana") })
             GroupDivider()
             Item("Version", chevron = false) { Text(BuildConfig.VERSION_NAME, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }

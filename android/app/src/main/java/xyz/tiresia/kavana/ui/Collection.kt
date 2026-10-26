@@ -358,7 +358,7 @@ private fun ShopPane(s: UiState, act: MainActivity, onCat: (String) -> Unit, onB
                     Text(if (s.treats.left >= s.price(next.id)) "Sponsor for 🐟 ${s.price(next.id)}" else "🐟 ${s.price(next.id)} · ${s.price(next.id) - s.treats.left} more to go")
                 }
             } else Text("You sponsor all four. Thank you.", style = MaterialTheme.typography.titleMedium)
-            Text("Each one stands for a real shelter cat. No money goes through Kavana; to help a real one, give to ${s.shop.shelterOrg.name}.",
+            Text("Each one stands for a real shelter cat. No money goes through Chataltul; to help a real one, give to ${s.shop.shelterOrg.name}.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp))
             if (s.shop.shelterOrg.url.isNotEmpty()) TextButton(onClick = { act.openUrl(s.shop.shelterOrg.url) }) { Text("Visit ${s.shop.shelterOrg.name}") }
         }

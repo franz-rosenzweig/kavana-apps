@@ -92,7 +92,7 @@ class MainActivity : ComponentActivity() {
     }
 
     fun copy(text: String) {
-        getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Kavana", text))
+        getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Chataltul", text))
     }
 
     companion object {

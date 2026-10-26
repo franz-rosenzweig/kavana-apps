@@ -43,7 +43,7 @@ object Notify {
             },
             NotificationChannel(CH_DAILY, "Daily reminder", NotificationManager.IMPORTANCE_DEFAULT),
             NotificationChannel(CH_AWAY, "Come back", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "When you leave Kavana in the middle of a block"
+                description = "When you leave Chataltul in the middle of a block"
                 setSound(null, null)
             },
         ))
@@ -134,7 +134,7 @@ object Notify {
                 val total = (brk.end - brk.start).coerceAtLeast(1)
                 if (Build.VERSION.SDK_INT >= 36) promote(b, 1f - (brk.end - now).toFloat() / total, null)
             }
-            else -> b.setContentTitle("Kavana")
+            else -> b.setContentTitle("Chataltul")
         }
         return b.build()
     }
@@ -159,7 +159,7 @@ object Notify {
     fun away(ctx: Context, name: String) {
         post(ctx, ID_AWAY, Notification.Builder(ctx, CH_AWAY)
             .setSmallIcon(R.drawable.ic_notify).setColor(TINT)
-            .setContentTitle("🐱 $name is waiting").setContentText("Come back to Kavana, or $name wanders off.")
+            .setContentTitle("🐱 $name is waiting").setContentText("Come back to Chataltul, or $name wanders off.")
             .setAutoCancel(true).setTimeoutAfter(Repo.GRACE).setContentIntent(open(ctx)).build())
     }
 

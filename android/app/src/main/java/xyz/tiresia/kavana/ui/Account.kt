@@ -66,7 +66,7 @@ private fun Avatar(name: String?, big: Boolean = false) {
 
 /** What went wrong, in words (web/app.js accountTrouble). */
 private fun trouble(e: Exception, wrong: String): String {
-    if (e !is Sync.ApiError) return "Can't reach Kavana. Check your connection and try again."
+    if (e !is Sync.ApiError) return "Can't reach Chataltul. Check your connection and try again."
     return when {
         e.status == 401 -> wrong
         e.status == 429 -> "Too many tries. Wait a while, then try again."
@@ -74,8 +74,8 @@ private fun trouble(e: Exception, wrong: String): String {
         e.error == "taken" -> "Another account has that email."
         e.error == "mail" -> "Couldn't send the email just now. Try again in a minute."
         e.error == "password" -> "Pick a password of at least 8 characters."
-        e.error == "full" -> "Kavana has all the accounts it can hold for now. Try again another day."
-        else -> "Can't reach Kavana. Check your connection and try again."
+        e.error == "full" -> "Chataltul has all the accounts it can hold for now. Try again another day."
+        else -> "Can't reach Chataltul. Check your connection and try again."
     }
 }
 

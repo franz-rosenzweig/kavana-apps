@@ -42,7 +42,7 @@ fun Welcome(act: MainActivity, s: UiState, onDone: () -> Unit) {
         ) {
             if (page == 0) {
                 LiveCat(s.companion, "portrait", 120.dp, Modifier.padding(top = 8.dp), interactive = true)
-                Text("Welcome to Kavana", style = MaterialTheme.typography.headlineLarge, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp, bottom = 14.dp))
+                Text("Welcome to Chataltul", style = MaterialTheme.typography.headlineLarge, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp, bottom = 14.dp))
                 Point(Icons.Rounded.TrackChanges, MaterialTheme.colorScheme.primary, "One thing at a time", "Pick how long and press Start. A title is up to you.")
                 Point(Icons.Rounded.Notifications, k.orange, "Gentle check-ins", "\"Still on it?\" every so often, even when the app is closed.")
                 Point(Icons.Rounded.Pets, k.pink, "A kitten grows while you focus", "Stay to the end and it comes home to your Cat Café.")
@@ -65,7 +65,7 @@ fun Welcome(act: MainActivity, s: UiState, onDone: () -> Unit) {
                     modifier = Modifier.padding(top = 12.dp),
                 )
                 Text(
-                    if (on) "All set." else "Android calls this \"Display over other apps\". Find Kavana in the list and switch it on, then come back.",
+                    if (on) "All set." else "Android calls this \"Display over other apps\". Find Chataltul in the list and switch it on, then come back.",
                     style = if (on) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center,
                     color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 12.dp),

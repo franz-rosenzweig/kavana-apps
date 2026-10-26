@@ -97,7 +97,7 @@ object CatOverlay {
                 val c = st.cat(catId)
                 // Extra time: the block counts on, so no Done yet; just the news, and the way back.
                 if (a?.id == id) return show(ctx, "end", Art.portrait(catId), title, p.body,
-                    listOf(Btn("Open Kavana", true) { openApp(ctx) }), 30_000) {}
+                    listOf(Btn("Open Chataltul", true) { openApp(ctx) }), 30_000) {}
                 val says = when {
                     w == null || !st.catsOn -> null
                     w.kitten == "home" -> "${c.name} came home to your café. 🐟 +${w.treats}"
@@ -111,7 +111,7 @@ object CatOverlay {
                     ), 60_000, onTimeout = later)
             }
             "break-over" -> show(ctx, "break", Art.portrait(catId), title, "It's time to focus. Ready for the next block?",
-                listOf(Btn("Open Kavana", true) { openApp(ctx) }), 30_000, onTimeout = later)
+                listOf(Btn("Open Chataltul", true) { openApp(ctx) }), 30_000, onTimeout = later)
             else -> Notify.ping(ctx, p, st)
         }
     }
@@ -171,7 +171,7 @@ object CatOverlay {
             ).apply {
                 gravity = Gravity.BOTTOM
                 fitInsetsTypes = 0
-                setTitle("Kavana")
+                setTitle("Chataltul")
                 // The slide up and down is the window's, played by Android. A view animation stalls
                 // while Kavana is in the background (seen on the S24+), which left the cat below the
                 // edge: there, but out of sight.

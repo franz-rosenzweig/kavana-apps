@@ -186,6 +186,10 @@ data class CatInfo(
     /** What it can do in the 3D café besides sit and nap: walk, loaf, stretch, wash, back (paintings). */
     val poses: Map<String, String>? = null,
     val ghost: Boolean = false,
+    /** Its paintings, from cats.js: a repainted cat's have a new number (Milo's are pepper-2). */
+    val portrait: String? = null,
+    val kitten: String? = null,
+    val nap: String? = null,
 )
 
 @Serializable

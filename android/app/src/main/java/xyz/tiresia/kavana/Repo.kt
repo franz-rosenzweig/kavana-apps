@@ -66,6 +66,7 @@ class Repo(private val app: Context) {
                 if (op.str("op") !in SYNC_OPS) sync.queue()
             }
             if (out.error != null) Log.i(TAG, "${op["op"]}: ${out.error}")
+            Art.learn(out.state.cats) // before anything below draws a cat (the cat over other apps, a notification)
             state.value = out.state
             if (out.meets.isNotEmpty()) meets.update { (it + out.meets).distinct() }
             for (d in out.done) toasts.tryEmit(if (d.kind == "mission") "Mission done: ${d.text}. 🐟 +${d.pay}" else "Ready to collect in Cats: ${d.text}")

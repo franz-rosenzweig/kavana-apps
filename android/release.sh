@@ -1,9 +1,9 @@
 #!/bin/zsh
-# Builds the signed release APK, android/Kavana-<version>.apk, on the Mac, and checks its signature.
+# Builds the signed release APK, android/Chataltul-<version>.apk, on the Mac, and checks its signature.
 #
 #   ./release.sh                     # signs with android/keystore.properties if there is one,
 #                                    # else with Dvarim's (../../dvarim/android/keystore.properties)
-#   adb install -r Kavana-0.1.0.apk
+#   adb install -r Chataltul-0.4.4.apk
 set -euo pipefail
 cd "${0:A:h}"
 export JAVA_HOME=${JAVA_HOME:-/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home}
@@ -18,7 +18,7 @@ fi
 APK=app/build/outputs/apk/release/app-release.apk
 [[ -f $APK ]] || { echo "the release build is not signed: check $SIGNING" >&2; exit 1; }
 VERSION=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts | head -1)
-OUT=Kavana-$VERSION.apk
+OUT=Chataltul-$VERSION.apk
 cp $APK $OUT
 SIGNER=$(ls -d $ANDROID_HOME/build-tools/*/apksigner | tail -1)
 $SIGNER verify --print-certs $OUT | grep -E "Signer #1 certificate (DN|SHA-256)"

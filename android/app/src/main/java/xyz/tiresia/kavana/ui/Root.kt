@@ -238,7 +238,7 @@ private fun Menu(s: UiState, here: String, newsUnread: Boolean, onGo: (String) -
             Row(Modifier.padding(start = 10.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Image(painterResource(R.drawable.kavana_icon), null, Modifier.size(30.dp).clip(RoundedCornerShape(7.dp)))
                 Spacer(Modifier.width(10.dp))
-                Text("Kavana", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text("Chataltul", fontSize = 22.sp, fontWeight = FontWeight.Bold)
             }
             Row(Modifier.padding(horizontal = 4.dp).padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val goal = s.view.settings.goal
@@ -323,8 +323,8 @@ private fun Splash(broken: String?) {
     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         if (broken == null) CircularProgressIndicator()
         else Text(
-            if (broken == "nosandbox") "Kavana needs a newer Android System WebView. Update it from the Play Store, then open Kavana again."
-            else "Kavana couldn't start: $broken",
+            if (broken == "nosandbox") "Chataltul needs a newer Android System WebView. Update it from the Play Store, then open Chataltul again."
+            else "Chataltul couldn't start: $broken",
             textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge,
         )
     }

@@ -10,7 +10,7 @@ Part 1, the cat over other apps (a minute lasts 3 s, 6 s on a phone): the welcom
 a block with no title cancelled in its first seconds, a block with
 the kitten in the ring and the countdown notification, leaving Kavana (the cat over the home
 screen, counting down), a check-in answered on the cat while away, the kitten that wandered off,
-"How did it go?", meeting Pepper, every tab (Cats with its missions and shop), the mindful minute,
+"How did it go?", meeting Milo, every tab (Cats with its missions and shop), the mindful minute,
 dark mode (the home screen, the café, a block's night sky), and "Leave anyway" on the cat (a tap
 only says to hold; holding sends the kitten off and the block keeps going).
 Part 2, without the cat and without a title (a minute lasts 2 s, 4 s on a phone): the countdown called
@@ -77,7 +77,7 @@ def start_block(name=''):
 
 
 def screen(name):
-    """A place in Kavana, through the menu (the drawer at the top left)."""
+    """A place in Chataltul, through the menu (the drawer at the top left)."""
     P.tap('Menu', exact=True)
     time.sleep(1.0)
     P.tap(name, exact=True)
@@ -85,7 +85,7 @@ def screen(name):
 
 
 def notifications():
-    """Kavana's own notification records only: on a real phone, nobody else's leave the phone."""
+    """Chataltul's own notification records only: on a real phone, nobody else's leave the phone."""
     return P.adb('shell', "dumpsys notification --noredact | awk '/NotificationRecord\\(/{on=/pkg=xyz\\.tiresia\\.kavana\\.debug /} on'")
 
 
@@ -149,7 +149,7 @@ if not P.LOCAL:
 try:
     print('\npart 1: the cat over other apps')
     launch(SEC * 1000)
-    check('welcome shows', P.wait_for('Welcome to Kavana'))
+    check('welcome shows', P.wait_for('Welcome to Chataltul'))
     step('welcome')
     P.tap('Continue')
     check('a glimpse: the café fills up', P.wait_for('Your café fills up'))
@@ -208,7 +208,7 @@ try:
     check('the end: How did it go?', P.wait_for('How did it go?', max(5, 25 * SEC + 6 - (time.time() - t0))))
     step('outcome')
     P.tap('Done', exact=True)
-    check('meeting Pepper after the first block', P.wait_for('You met Pepper', 8))
+    check('meeting Milo (the black cat with gold eyes) after the first block', P.wait_for('You met Milo', 8))
     step('meet')
     while P.find('Nice!', exact=True):  # after 10 pm the first block meets Boo too
         P.tap('Nice!', exact=True)

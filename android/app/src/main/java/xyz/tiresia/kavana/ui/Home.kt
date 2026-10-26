@@ -266,7 +266,7 @@ fun HomeScreen(s: UiState, form: StartForm, act: MainActivity, wall: Wall, newsU
                 )
                 Text(
                     when {
-                        !s.catsOn -> if (watch) "Counts up, for up to 3 hours." else "Kavana checks in while you work."
+                        !s.catsOn -> if (watch) "Counts up, for up to 3 hours." else "Chataltul checks in while you work."
                         watch -> "Stay 10 minutes and ${c.name} can come home. Stay 25 and it comes home grown up."
                         len < 25 -> "Under 25 minutes, ${c.name} comes home a kitten."
                         else -> "${c.name} comes home grown up."
@@ -445,7 +445,7 @@ fun ThisBlockSheet(s: UiState, form: StartForm, onEditTags: () -> Unit, onDone: 
             val n = set.interval
             Text(
                 (if (mode == "stopwatch") "Counts up, for up to 3 hours. Tap Done when you are; after 10 minutes your kitten comes home. " else "") +
-                    when { n == 0 -> "Kavana checks in once, at the end."; style == "nudge" -> "About every $n minutes it sends a short line to keep you going."; else -> "Every $n minutes it asks if you're still on it." },
+                    when { n == 0 -> "Chataltul checks in once, at the end."; style == "nudge" -> "About every $n minutes it sends a short line to keep you going."; else -> "Every $n minutes it asks if you're still on it." },
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
             )

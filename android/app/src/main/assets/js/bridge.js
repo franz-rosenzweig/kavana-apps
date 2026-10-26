@@ -170,6 +170,7 @@ function state(now) {
       return {
         id: c.id, name: c.name, about: c.about, how: c.how || null, adopt: Boolean(c.adopt), met: metIds.has(c.id),
         limited: c.limited || null, price: E.SHOP[c.id] || 0, poses: c.poses || null, ghost: c.breed === 'ghost',
+        portrait: c.portrait, kitten: c.kitten, nap: c.nap, // a repainted cat's pictures have a new number (cats.js V)
         have: m ? Math.min(cs[m[0]], m[1]) : 0, need: m ? m[1] : 0, unit: m ? m[2] : null,
       };
     }),

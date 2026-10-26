@@ -269,7 +269,7 @@ fun CafeTab(s: UiState) {
         val size = when (span) { Span.Day -> "day"; Span.Week -> "week"; else -> "month" }
         val scene = if (someday) cafeScene(s, emptyList(), "month", 7, dark, quiet = false).copy(
             things = things.map { it.id },
-            cats = s.cats.filter { !it.adopt }.map { c -> CafeCat("someday-${c.id}", c.id, "cats/${c.id}-1.webp", "cats/${c.id}-nap-1.webp", poses = c.poses, ghost = c.ghost, title = c.name, sub = c.about) },
+            cats = s.cats.filter { !it.adopt }.map { c -> CafeCat("someday-${c.id}", c.id, Art.portrait(c.id), Art.nap(c.id), poses = c.poses, ghost = c.ghost, title = c.name, sub = c.about) },
         ) else cafeScene(s, list, size, cafeHash("${span.name}${from.ms()}"), dark)
         Box(Modifier.fillMaxWidth().aspectRatio(1.08f).padding(top = 6.dp)) {
             CafeView(scene, cafeNames(s), Modifier.fillMaxSize())

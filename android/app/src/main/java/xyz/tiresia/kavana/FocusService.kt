@@ -65,7 +65,7 @@ class FocusService : Service() {
         getSystemService(NotificationManager::class.java).notify(Notify.ID_ONGOING, Notify.ongoing(this, st))
     }
 
-    // Kavana swiped away from the recent apps. With "Swiping Kavana away counts as leaving" off, that's
+    // Chataltul swiped away from the recent apps. With "Swiping Chataltul away counts as leaving" off, that's
     // not leaving: forget it, and take the cat away (the web's closeCounts, for a closed tab).
     override fun onTaskRemoved(rootIntent: Intent?) {
         val repo = KavanaApp.repo
