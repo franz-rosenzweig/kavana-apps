@@ -593,6 +593,303 @@ check("the review as Markdown", md.hasPrefix("# This week\n") && md.contains("##
 section("settings: timing")
 equal("remembering is on, and the shortcuts are empty", [MacSettings().recordTiming, MacSettings().shortcutStart.isEmpty, MacSettings().shortcutEnd.isEmpty], [true, true, true])
 
+// ---------------------------------------------------------------- ready-made lists
+func spin(until cond: () -> Bool, seconds: Double = 15) -> Bool {
+    let end = Date().addingTimeInterval(seconds)
+    while !cond(), Date() < end { RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01)) }
+    return cond()
+}
+func scratch(_ name: String = "lists") -> URL {
+    let u = FileManager.default.temporaryDirectory.appendingPathComponent("ct-\(name)-\(UUID().uuidString)")
+    try? FileManager.default.createDirectory(at: u, withIntermediateDirectories: true)
+    return u
+}
+func textFile(_ text: String) -> URL {
+    let u = scratch("file").appendingPathComponent("list.txt")
+    try? text.write(to: u, atomically: true, encoding: .utf8)
+    return u
+}
+func names(_ n: Int, _ tld: String = "example") -> String { (1...n).map { "site\($0).\(tld)" }.joined(separator: "\n") + "\n" }
+
+section("lists: reading what the web publishes")
+let hostsText = """
+# Title: a hosts file
+127.0.0.1 localhost
+127.0.0.1 localhost.localdomain
+::1 ip6-localhost
+0.0.0.0 0.0.0.0
+0.0.0.0 Tracker.Example.com   # a comment
+0.0.0.0 www.cats.example
+127.0.0.1\tdog.example   alias.example
+0.0.0.0 *.wild.example
+255.255.255.255 broadcasthost
+fe80::1%lo0 localhost
+10.0.0.1 10.0.0.2
+"""
+equal("a hosts file gives names only, lowercase, without www", ListParser.domains(in: hostsText), ["tracker.example.com", "cats.example", "dog.example"])
+let plainText = "cats.example\r\nDogs.Example.org\n\n  spaced.example  \n# no\nlocalhost\nexample\n1.2.3.4\nhttp://x.example/path\nunder_score.example\nlast.example"
+equal("a plain list: one name a line, however it ends", ListParser.domains(in: plainText), ["cats.example", "dogs.example.org", "spaced.example", "under_score.example", "last.example"])
+let abpText = """
+[Adblock Plus 2.0]
+! Title: x
+||ads.example^
+||Social.example^$important
+||all.example^$all
+||third.example^$third-party
+||path.example/ads^
+||wild*.example^
+@@||ok.example^
+example.org##.banner
+example.net#@#.banner
+||www.news.example^
+||port.example:8080^
+"""
+equal("AdGuard rules: whole domains only", ListParser.domains(in: abpText), ["ads.example", "social.example", "all.example", "news.example"])
+let page = ListParser.parse(Data("  <!DOCTYPE html><html><body>Not found</body></html>".utf8))
+check("a web page isn't a list", page.webPage && page.hashes.isEmpty)
+equal("a byte-order mark is ignored", ListParser.parse(Data([0xEF, 0xBB, 0xBF] + Array("cats.example\n".utf8))).hashes.count, 1)
+equal("an empty answer has no names", ListParser.parse(Data()).hashes.count, 0)
+let parsed = ListParser.parse(Data(hostsText.utf8))
+equal("the hashes are those of the names", Set(parsed.hashes), Set(["tracker.example.com", "cats.example", "dog.example"].map { DomainSet.hash($0) }))
+
+section("lists: a set of domains")
+equal("a name hashes the same in any case", DomainSet.hash("TikTok.COM"), DomainSet.hash("tiktok.com"))
+equal("and the hash never changes (the copies on disk depend on it)", DomainSet.hash("example.com"), 10777630962659677593)
+let ds = DomainSet(domains: ["tiktok.com", "bad.example.org", "tiktok.com", "ONE.example"])
+equal("repeats are dropped", ds.count, 3)
+equal("a listed domain is found", ds.contains("tiktok.com"), true)
+equal("a subdomain finds it", ds.firstSuffix(of: "m.l.tiktok.com"), "tiktok.com")
+equal("the host itself", ds.firstSuffix(of: "tiktok.com"), "tiktok.com")
+equal("a name that only ends the same isn't it", ds.firstSuffix(of: "nottiktok.com"), nil)
+equal("a name below it isn't it, either way round", ds.firstSuffix(of: "tiktok.com.evil.net"), nil)
+equal("a parent of a listed name isn't listed", ds.firstSuffix(of: "example.org"), nil)
+equal("a listed deeper name", ds.firstSuffix(of: "x.bad.example.org"), "bad.example.org")
+equal("the broadest listed name is the one given", DomainSet(domains: ["a.tiktok.com", "tiktok.com"]).firstSuffix(of: "b.a.tiktok.com"), "tiktok.com")
+equal("one name alone never matches", DomainSet(domains: ["com"]).firstSuffix(of: "com"), nil)
+equal("nor does a host with no dots", ds.firstSuffix(of: "localhost"), nil)
+equal("an empty host doesn't crash", ds.firstSuffix(of: ""), nil)
+equal("it survives the disk", DomainSet(serialized: ds.serialized()), ds)
+equal("a cut-short copy is refused", DomainSet(serialized: ds.serialized().dropLast(3)), nil)
+equal("so is something else", DomainSet(serialized: Data("hello world, not a list".utf8)), nil)
+var swapped = ds.serialized()
+swapped.replaceSubrange(8..<16, with: swapped[16..<24] + [])
+equal("and one that isn't in order", DomainSet(serialized: swapped), nil)
+equal("an empty set round-trips", DomainSet(serialized: DomainSet().serialized()), DomainSet())
+
+section("lists: the catalog")
+let cats = Catalog.all
+equal("category ids are their own", Set(cats.map { $0.id }).count, cats.count)
+let allSources = cats.flatMap { $0.sources }
+equal("source ids are their own", Set(allSources.map { $0.id }).count, allSources.count)
+check("every category has a list behind it", cats.allSatisfy { !$0.sources.isEmpty })
+check("every address is https", cats.allSatisfy { $0.sources.allSatisfy { $0.url.hasPrefix("https://") } })
+check("every list names its licence and who made it", cats.allSatisfy { $0.sources.allSatisfy { !$0.license.isEmpty && !$0.credit.isEmpty } })
+check("an archive names the file in it", cats.allSatisfy { $0.sources.allSatisfy { $0.member == nil || $0.url.hasSuffix(".tar.gz") } })
+equal("the kinds people asked for are there", ["adult", "social", "dating", "gambling"].allSatisfy { Catalog.category($0) != nil }, true)
+let mine = Catalog.custom(name: " Work stuff ", link: " https://lists.example.net/path/hosts.txt ")
+equal("a list added by its link", [mine?.name, mine?.sources.first?.url, mine?.custom == true ? "custom" : "no"], ["Work stuff", "https://lists.example.net/path/hosts.txt", "custom"])
+equal("with no name it is called by its host", Catalog.custom(name: "", link: "https://lists.example.net/a.txt")?.name, "lists.example.net")
+equal("http isn't taken", Catalog.custom(name: "x", link: "http://lists.example.net/a.txt") == nil, true)
+equal("nor a file or a word", [Catalog.custom(name: "x", link: "file:///etc/hosts") == nil, Catalog.custom(name: "x", link: "lists") == nil], [true, true])
+equal("nor one with a password in it", Catalog.custom(name: "x", link: "https://me:pw@lists.example.net/a.txt") == nil, true)
+equal("a custom list is found among the person's own", Catalog.category(mine!.id, custom: [mine!])?.name, "Work stuff")
+
+section("lists: on a list")
+struct FakeMatcher: DomainMatcher {
+    var sets: [String: [String]]
+    func match(host: String, categories: [String]) -> String? {
+        for c in categories { for d in sets[c] ?? [] where host == d || host.hasSuffix("." + d) { return d } }
+        return nil
+    }
+}
+let fake = FakeMatcher(sets: ["social": ["tiktok.com", "linkedin.com", "reddit.com"], "dating": ["match.example"]])
+let soc = GuardList(id: "s", name: "Social", categories: ["social"], allow: ["linkedin.com"])
+equal("without the lists, a category finds nothing", soc.site(forURL: "https://m.tiktok.com/"), nil)
+equal("with them, a subdomain is found", soc.site(forURL: "https://m.tiktok.com/", matcher: fake), "tiktok.com")
+equal("and shown by the listed name", Blocklist(lists: [soc]).hit(url: "https://www.reddit.com/r/cats", browser: "Safari", matcher: fake)?.target, .site(domain: "reddit.com", browser: "Safari"))
+equal("an allowed site isn't matched", soc.site(forURL: "https://www.linkedin.com/in/me", matcher: fake), nil)
+equal("nor its subdomains", soc.site(forURL: "https://jobs.linkedin.com/", matcher: fake), nil)
+equal("only the categories switched on count", soc.site(forURL: "https://match.example/", matcher: fake), nil)
+equal("a typed site still counts", GuardList(name: "x", sites: ["linkedin.com"], categories: ["social"], allow: ["linkedin.com"]).site(forURL: "https://linkedin.com/", matcher: fake), "linkedin.com")
+let two = Blocklist(lists: [soc, GuardList(id: "t", name: "Typed", sites: ["tiktok.com"])])
+equal("a site typed into one list isn't taken by another list's category", two.hit(url: "https://tiktok.com/", browser: "Chrome", matcher: fake)?.list.id, "t")
+equal("a ready-made list brings the card for a site that is only in it", two.hit(url: "https://reddit.com/", browser: "Chrome", matcher: fake)?.list.id, "s")
+equal("and nothing for one that is in none", two.hit(url: "https://example.org/", browser: "Chrome", matcher: fake) == nil, true)
+equal("a list with only categories isn't empty", Blocklist(lists: [soc]).isEmpty, false)
+equal("it watches sites", Blocklist(lists: [soc]).watchesSites, true)
+equal("a list with nothing isn't watching", [Blocklist(lists: [GuardList(name: "x")]).isEmpty, Blocklist(lists: [GuardList(name: "x")]).watchesSites], [true, false])
+equal("the count is still the apps and typed sites", Blocklist(lists: [soc, GuardList(name: "x", sites: ["a.example"])]).count, 1)
+equal("the lists switched on are counted once each", Blocklist(lists: [soc, GuardList(name: "y", categories: ["social", "dating"])]).categoryIDs, ["social", "dating"])
+equal("the lists survive a round trip", try JSONDecoder().decode(Blocklist.self, from: JSONEncoder().encode(Blocklist(lists: [soc]))), Blocklist(lists: [soc]))
+let oldList = try JSONDecoder().decode(Blocklist.self, from: Data("{\"lists\":[{\"id\":\"a\",\"name\":\"Old\",\"sites\":[\"x.com\"]}]}".utf8))
+equal("a list saved before the ready-made ones has none", [oldList.lists[0].categories, oldList.lists[0].allow], [[], []])
+var withCustom = MacSettings(); withCustom.customLists = [mine!]; withCustom.blocklist = Blocklist(lists: [soc])
+equal("settings keep the lists added by link", try JSONDecoder().decode(MacSettings.self, from: JSONEncoder().encode(withCustom)), withCustom)
+equal("and start with none", MacSettings().customLists.isEmpty, true)
+var lt = TimingLog()
+for _ in 0..<5 { lt.add(block: "l", start: t, bundleID: "com.apple.Safari", name: "Safari", ms: 60_000, site: ("m.tiktok.com", "Safari")) }
+equal("where it went marks a site a ready-made list names", Went.rows(lt.timings(for: ["l"]), blocklist: Blocklist(lists: [soc]), matcher: fake).first?.distraction, true)
+equal("and not without them", Went.rows(lt.timings(for: ["l"]), blocklist: Blocklist(lists: [soc])).first?.distraction, false)
+
+section("lists: downloading, with a fake web")
+final class FakeFetcher: ListFetcher {
+    var answers: [String: Fetched] = [:]
+    var calls: [(url: String, etag: String?, modified: String?)] = []
+    func fetch(_ url: URL, etag: String?, lastModified: String?, maxBytes: Int, done: @escaping (Fetched) -> Void) {
+        calls.append((url.absoluteString, etag, lastModified))
+        let a = answers[url.absoluteString] ?? .failed("Couldn't reach it")
+        DispatchQueue.main.async { done(a) }
+    }
+}
+let ff = FakeFetcher()
+var clockMs = 1_800_000_000_000
+let dir = scratch("store")
+let mineCat = Catalog.custom(name: "Mine", link: "https://lists.example.net/mine.txt")!
+let url1 = "https://lists.example.net/mine.txt"
+let cs = CategoryStore(folder: dir, fetcher: ff, clock: { clockMs })
+cs.custom = [mineCat]
+var changes = 0
+cs.onChange = { changes += 1 }
+equal("before any download, it is not here", cs.state(of: mineCat.id), .none(sizeKB: 0))
+equal("an unknown list is not here either", cs.state(of: "nope"), .none(sizeKB: 0))
+equal("and nothing matches", cs.match(host: "site1.example", categories: [mineCat.id]), nil)
+ff.answers[url1] = .file(textFile(names(6)), etag: "\"v1\"", lastModified: "Mon, 01 Jun 2026 00:00:00 GMT")
+var ok = false
+cs.refresh([mineCat.id]) { ok = true }
+check("a download finishes", spin { ok })
+equal("it is here with its six sites", cs.state(of: mineCat.id), .ready(sites: 6, updated: clockMs))
+equal("a listed site is found", cs.match(host: "www.site3.example", categories: [mineCat.id]), "site3.example")
+equal("a subdomain too", cs.match(host: "a.b.site3.example", categories: [mineCat.id]), "site3.example")
+equal("another isn't", cs.match(host: "other.example", categories: [mineCat.id]), nil)
+equal("only for the categories asked", cs.match(host: "site3.example", categories: ["dating"]), nil)
+check("the app was told", changes >= 2)
+equal("one request went out", ff.calls.count, 1)
+equal("with no etag to offer, as it had none", ff.calls[0].etag, nil)
+ok = false; cs.refresh([mineCat.id]) { ok = true }
+check("asking again right away answers at once", spin { ok })
+equal("without going to the web", ff.calls.count, 1)
+let cs2 = CategoryStore(folder: dir, fetcher: ff, clock: { clockMs })
+cs2.custom = [mineCat]
+equal("it is still here after a restart", cs2.state(of: mineCat.id), .ready(sites: 6, updated: clockMs))
+equal("and still matches", cs2.match(host: "site5.example", categories: [mineCat.id]), "site5.example")
+let onDisk = (try? Data(contentsOf: dir.appendingPathComponent(mineCat.sources[0].id + ".chd"))) ?? Data()
+check("the copy on disk has no names in it", !onDisk.isEmpty && onDisk.range(of: Data("site1".utf8)) == nil)
+clockMs += 8 * 86_400_000
+ff.answers[url1] = .notModified
+ok = false; cs.refresh([mineCat.id]) { ok = true }
+check("after a week it asks again", spin { ok })
+equal("a second request went out", ff.calls.count, 2)
+equal("with the etag it was given", ff.calls[1].etag, "\"v1\"")
+equal("and the date", ff.calls[1].modified, "Mon, 01 Jun 2026 00:00:00 GMT")
+equal("not modified: the copy stays as it was", cs.state(of: mineCat.id), .ready(sites: 6, updated: clockMs - 8 * 86_400_000))
+equal("and is checked today", cs.status[mineCat.sources[0].id]?.checked, clockMs)
+ff.answers[url1] = .file(textFile(names(7)), etag: "\"v2\"", lastModified: nil)
+ok = false; cs.refresh([mineCat.id], force: true) { ok = true }
+check("forced, it takes the new one", spin { ok })
+equal("seven sites now", cs.state(of: mineCat.id), .ready(sites: 7, updated: clockMs))
+ff.answers[url1] = .failed("Server said 500")
+clockMs += 1000
+ok = false; cs.refresh([mineCat.id], force: true) { ok = true }
+check("a failure finishes", spin { ok })
+equal("it says so and keeps what it had", cs.state(of: mineCat.id), .failed("Server said 500", sites: 7))
+equal("which still matches", cs.match(host: "site7.example", categories: [mineCat.id]), "site7.example")
+let callsBefore = ff.calls.count
+ok = false; cs.refresh([mineCat.id]) { ok = true }
+check("a failed list isn't tried again at once", spin { ok } && ff.calls.count == callsBefore)
+clockMs += 3_600_000
+ff.answers[url1] = .file(textFile("<html><body>Sorry</body></html>"), etag: nil, lastModified: nil)
+ok = false; cs.refresh([mineCat.id]) { ok = true }
+check("after an hour it tries again", spin { ok } && ff.calls.count == callsBefore + 1)
+equal("a web page in place of the list is refused", cs.state(of: mineCat.id), .failed("Not a list of sites", sites: 7))
+clockMs += 3_600_000
+ff.answers[url1] = .file(textFile(names(2)), etag: nil, lastModified: nil)
+ok = false; cs.refresh([mineCat.id]) { ok = true }
+_ = spin { ok }
+equal("one with two names in it is refused", cs.state(of: mineCat.id), .failed("Too few sites", sites: 7))
+equal("and the old copy still stands", cs.match(host: "site7.example", categories: [mineCat.id]), "site7.example")
+clockMs += 3_600_000
+ff.answers[url1] = .file(textFile(names(9)), etag: "\"v3\"", lastModified: nil)
+ok = false; cs.refresh([mineCat.id]) { ok = true }
+_ = spin { ok }
+equal("a good answer clears the failure", cs.state(of: mineCat.id), .ready(sites: 9, updated: clockMs))
+let off = CategoryStore(folder: scratch("off"), fetcher: ff, network: false)
+off.custom = [mineCat]
+let callsNow = ff.calls.count
+ok = false; off.refresh([mineCat.id]) { ok = true }
+check("with the network off it never asks", spin { ok } && ff.calls.count == callsNow)
+cs.remove(sources: [mineCat.sources[0].id])
+equal("taken away, it is gone", cs.state(of: mineCat.id), .none(sizeKB: 0))
+equal("and matches nothing", cs.match(host: "site1.example", categories: [mineCat.id]), nil)
+check("and so is its file", !FileManager.default.fileExists(atPath: dir.appendingPathComponent(mineCat.sources[0].id + ".chd").path))
+let inst = CategoryStore(folder: scratch("inst"), fetcher: ff, network: false)
+inst.install(["a.example", "b.example"], source: "ut1-dating")
+if case .ready(let n, _) = inst.state(of: "dating") { equal("a list put in place counts as here", n, 2) } else { check("a list put in place counts as here", false) }
+equal("and matches for its category", inst.match(host: "x.a.example", categories: ["dating"]), "a.example")
+equal("a category with two lists is only ready when both are here", { () -> CategoryState in let i = CategoryStore(folder: scratch("two"), fetcher: ff, network: false); i.install(["a.example"], source: "ut1-gambling"); return i.state(of: "gambling") }(), .none(sizeKB: 150))
+equal("the same category twice asks for its lists once", CategoryStore(folder: scratch("dup"), fetcher: ff, network: false).sources(of: ["social", "social"]).count, 2)
+
+section("lists: reading a tar.gz")
+let tarDir = scratch("tar")
+try? FileManager.default.createDirectory(at: tarDir.appendingPathComponent("dating"), withIntermediateDirectories: true)
+try? names(12, "love").write(to: tarDir.appendingPathComponent("dating/domains"), atomically: true, encoding: .utf8)
+try? "http://x.love/\n".write(to: tarDir.appendingPathComponent("dating/urls"), atomically: true, encoding: .utf8)
+let tgz = tarDir.appendingPathComponent("dating.tar.gz")
+let packer = Process()
+packer.executableURL = URL(fileURLWithPath: "/usr/bin/tar"); packer.arguments = ["-czf", tgz.path, "-C", tarDir.path, "dating"]
+try? packer.run(); packer.waitUntilExit()
+let datingSrc = Catalog.category("dating")!.sources[0]
+equal("the file asked for comes out", Tar.read("dating/domains", from: tgz, maxBytes: 1 << 20).map { String(decoding: $0, as: UTF8.self) }, names(12, "love"))
+equal("another file in it isn't the one", Tar.read("dating/urls", from: tgz, maxBytes: 1 << 20).map { String(decoding: $0, as: UTF8.self) == "http://x.love/\n" }, true)
+equal("a file that isn't there gives nothing", Tar.read("dating/nope", from: tgz, maxBytes: 1 << 20), nil)
+equal("something that isn't an archive gives nothing", Tar.read("dating/domains", from: textFile("not a tar"), maxBytes: 1 << 20), nil)
+equal("one that grows past the limit gives nothing", Tar.read("dating/domains", from: tgz, maxBytes: 20), nil)
+var smallSrc = datingSrc; smallSrc.floor = 5
+if case .success(let built) = CategoryStore.build(smallSrc, from: tgz) { equal("a category built from it", [built.count, built.contains("site3.love") ? 1 : 0], [12, 1]) } else { check("a category built from it", false) }
+if case .failure(let why) = CategoryStore.build(datingSrc, from: tgz) { equal("under the floor it is refused", why.description, "Too few sites") } else { check("under the floor it is refused", false) }
+
+// ---------------------------------------------------------------- against a real server on this Mac (selftest.sh starts one)
+if let base = ProcessInfo.processInfo.environment["CHATALTUL_LISTS_SERVER"], !base.isEmpty {
+    section("lists: downloading, from a server on this Mac")
+    let realDir = scratch("real")
+    func src(_ file: String, member: String? = nil, floor: Int = 5) -> ListCategory {
+        let id = "t-" + file.replacingOccurrences(of: ".", with: "-")
+        return ListCategory(id: id, name: file, sources: [ListSource(id: id, name: file, url: base + file, member: member, license: "test", credit: "test", sizeKB: 1, floor: floor)], custom: true)
+    }
+    let cases = [src("hosts.txt"), src("plain.txt"), src("abp.txt"), src("dating.tar.gz", member: "dating/domains"), src("page.html"), src("tiny.txt"), src("missing.txt")]
+    let rs = CategoryStore(folder: realDir, fetcher: URLSessionFetcher())
+    rs.custom = cases
+    ok = false; rs.refresh(cases.map { $0.id }) { ok = true }
+    check("every download finishes", spin { ok })
+    equal("a hosts file", rs.state(of: "t-hosts-txt") == .ready(sites: 8, updated: rs.status["t-hosts-txt"]?.updated ?? -1), true)
+    equal("a plain list", rs.status["t-plain-txt"]?.count, 8)
+    equal("AdGuard rules", rs.status["t-abp-txt"]?.count, 8)
+    equal("a tar.gz", rs.status["t-dating-tar-gz"]?.count, 12)
+    equal("a web page", rs.state(of: "t-page-html"), .failed("Not a list of sites", sites: 0))
+    equal("a list that is nearly empty", rs.state(of: "t-tiny-txt"), .failed("Too few sites", sites: 0))
+    equal("a page that isn't there", rs.state(of: "t-missing-txt"), .failed("Server said 404", sites: 0))
+    equal("a site in the downloaded hosts file", rs.match(host: "m.site4.example", categories: ["t-hosts-txt"]), "site4.example")
+    check("the server gave a date to ask with", rs.status["t-hosts-txt"]?.lastModified != nil)
+    let first = rs.status["t-hosts-txt"]?.updated ?? 0
+    Thread.sleep(forTimeInterval: 0.01)
+    ok = false; rs.refresh(["t-hosts-txt"], force: true) { ok = true }
+    check("asked again", spin { ok })
+    equal("the server says not modified, and the copy stays", [rs.status["t-hosts-txt"]?.updated == first, (rs.status["t-hosts-txt"]?.checked ?? 0) > first, rs.status["t-hosts-txt"]?.error == nil], [true, true, true])
+    var got: Fetched?
+    URLSessionFetcher().fetch(URL(string: base + "big.txt")!, etag: nil, lastModified: nil, maxBytes: 1000) { got = $0 }
+    check("a download over the limit is cut off", spin { got != nil })
+    if case .failed(let why)? = got { equal("and says so", why, "Too big") } else { check("and says so", false) }
+    got = nil
+    URLSessionFetcher().fetch(URL(string: "http://127.0.0.1:1/x.txt")!, etag: nil, lastModified: nil, maxBytes: 1000) { got = $0 }
+    check("nothing listening", spin { got != nil })
+    if case .failed(let why)? = got { equal("is couldn't reach it", why, "Couldn't reach it") } else { check("is couldn't reach it", false) }
+    got = nil
+    URLSessionFetcher().fetch(URL(string: "http://lists.example.net/x.txt")!, etag: nil, lastModified: nil, maxBytes: 1000) { got = $0 }
+    check("plain http to another host", spin { got != nil })
+    if case .failed(let why)? = got { equal("is refused", why, "Not a secure address") } else { check("is refused", false) }
+} else {
+    print("SKIP lists from a server on this Mac (CHATALTUL_LISTS_SERVER is not set)")
+}
+
 // ---------------------------------------------------------------- with the engine change we asked for
 if args.count > 2 {
     section("with E.takeOff in the engine (docs/engine-takeoff.patch)")

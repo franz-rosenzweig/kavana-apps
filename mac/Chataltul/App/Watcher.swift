@@ -50,7 +50,7 @@ final class Watcher {
             return
         }
         // a browser is read for the list's sites, and for the sites a block went to when that is being remembered
-        guard let browser = ReadableBrowser.with(bundleID: bid), (!store.settings.blocklist.sites.isEmpty || (store.settings.recordTiming && store.running)) else {
+        guard let browser = ReadableBrowser.with(bundleID: bid), (store.settings.blocklist.watchesSites || (store.settings.recordTiming && store.running)) else {
             onFront(nil, bid)
             return
         }
@@ -125,7 +125,7 @@ final class Watcher {
                 // only act if the browser is still the one in front
                 guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == browser.bundleID else { return }
                 if let url, let d = Blocklist.host(of: url) { self.lastDomain[browser.bundleID] = (d, nowMs()) }
-                if let url, let hit = self.store.settings.blocklist.hit(url: url, browser: browser.name) {
+                if let url, let hit = self.store.settings.blocklist.hit(url: url, browser: browser.name, matcher: self.store.categories) {
                     self.lastURL[browser.bundleID] = url
                     self.onFront(hit, browser.bundleID)
                 } else {

@@ -96,6 +96,41 @@ enum LiveScenarios {
         store.act("stop"); store.act("tick", now: nowMs() + 10 * MIN)
         if let a = store.awaiting { store.act("outcome", ["id": a.id, "outcome": nil as Any? ?? NSNull()]) }
 
+        // ---- a site that only a ready-made list names
+        store.resetForTest()
+        app.speed = SpeedBump()
+        app.looked(nil, "test.writer")
+        let listedBefore = store.settings.blocklist
+        store.categories.install(["listed.test"], source: "ut1-dating")
+        store.settings.blocklist.lists[0].categories = ["dating"]
+        store.start(title: "Ready-made")
+        let viaList = store.settings.blocklist.hit(url: "https://www.m.listed.test/page?x=1", browser: "Chrome", matcher: store.categories)
+        check("a ready-made list finds a site no one typed", viaList?.target == .site(domain: "listed.test", browser: "Chrome"))
+        app.looked(viaList, "com.google.Chrome")
+        spin()
+        check("a site only a ready-made list names brings the card", app.bump.isShown && app.bump.model.card?.target.label == "listed.test")
+        app.looked(nil, "test.writer")
+        spin()
+        check("leaving it takes the card away", !app.bump.isShown)
+        store.settings.blocklist.lists[0].allow = ["listed.test"]
+        check("allowed, it brings nothing", store.settings.blocklist.hit(url: "https://m.listed.test/", browser: "Chrome", matcher: store.categories) == nil)
+        store.settings.blocklist = listedBefore
+        store.categories.remove(sources: ["ut1-dating"])
+        check("taken off the list, nothing is found", store.settings.blocklist.hit(url: "https://listed.test/", browser: "Chrome", matcher: store.categories) == nil)
+        let readyListID = store.settings.blocklist.lists[0].id
+        store.setCategory("social", on: true, in: readyListID)
+        check("switching a ready-made list on puts it on the list", store.settings.blocklist.lists[0].categories == ["social"])
+        store.setCategory("social", on: true, in: readyListID)
+        check("twice doesn't put it there twice", store.settings.blocklist.lists[0].categories == ["social"])
+        store.setCategory("social", on: false, in: readyListID)
+        check("switching it off takes it away", store.settings.blocklist.lists[0].categories.isEmpty)
+        check("a link that isn't https is refused", !store.addCustomList(name: "x", link: "http://lists.example.net/x.txt", to: readyListID) && store.settings.customLists.isEmpty)
+        check("an https link is added and switched on", store.addCustomList(name: "Mine", link: "https://lists.example.net/x.txt", to: readyListID) && store.settings.customLists.count == 1 && store.settings.blocklist.lists[0].categories.count == 1)
+        check("and it is kept in the settings file", store.settingsStore.read().customLists.count == 1)
+        store.removeCustomList(store.settings.customLists[0].id)
+        check("taking it away takes it off the list too", store.settings.customLists.isEmpty && store.settings.blocklist.lists[0].categories.isEmpty)
+        store.settings.blocklist = listedBefore
+
         // ---- Back to work
         store.resetForTest()
         app.speed = SpeedBump()

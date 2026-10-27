@@ -97,7 +97,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         changed(store.state)
         store.startClock()
         sync.opened()
+        // the ready-made lists that are on: fetched a little after launch, then looked at every few hours (a list is only fetched again after a week)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in self?.store.refreshLists() }
+        listTimer = Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { [weak self] _ in self?.store.refreshLists() }
     }
+    private var listTimer: Timer?
 
     // ---------------------------------------------------------------- shortcuts
 
@@ -375,7 +379,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let c = store.shownCat
         cat.show("access", model: CatCardModel(
             label: "ONE QUESTION", cat: c.id, title: "May I see which page is open in \(browser.name)?",
-            body: (store.settings.blocklist.sites.isEmpty ? "So a block can show which sites it went to. " : "Your list has websites on it. ") + "macOS will ask once. I only note the site's name, never the address, and nothing leaves this Mac. If you say no, I just won't watch \(browser.name).",
+            body: (store.settings.blocklist.watchesSites ? "Your list has websites on it. " : "So a block can show which sites it went to. ") + "macOS will ask once. I only note the site's name, never the address, and nothing leaves this Mac. If you say no, I just won't watch \(browser.name).",
             buttons: [
                 CatButton(label: "Ask macOS", primary: true) { [weak self] in
                     self?.cat.hide("access")

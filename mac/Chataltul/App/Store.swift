@@ -15,7 +15,17 @@ final class Store: ObservableObject {
     let catalog: SoundCatalog
 
     @Published private(set) var state: UiState
-    @Published var settings: MacSettings { didSet { if settings != oldValue { settingsStore.write(settings) } } }
+    @Published var settings: MacSettings {
+        didSet {
+            guard settings != oldValue else { return }
+            settingsStore.write(settings)
+            if settings.customLists != oldValue.customLists { categories.custom = settings.customLists }
+        }
+    }
+    /// The ready-made lists of sites, downloaded to this Mac (lists/).
+    let categories: CategoryStore
+    /// Goes up whenever a ready-made list changes, so the windows that show them redraw.
+    @Published private(set) var listsRevision = 0
     /// "You were away from the Mac": waiting for Count them or Take them off.
     @Published var awayPrompt: AwayReturn?
     /// A break longer than the engine allows (5, 10 or 15 minutes) runs on past the engine's own: the Mac keeps its end.
@@ -64,6 +74,7 @@ final class Store: ObservableObject {
         timingStore = TimingStore(folder: folder)
         timing = timingStore.read()
         timing.prune(before: nowMs() - 400 * 86_400_000)
+        categories = CategoryStore(folder: folder.appendingPathComponent("lists"), network: ProcessInfo.processInfo.environment["CHATALTUL_NO_LISTS"] == nil)
         // The doc: loaded, or if it doesn't parse, kept aside (never written over) and started anew.
         do { try host.load(docs.read()) }
         catch {
@@ -76,6 +87,8 @@ final class Store: ObservableObject {
         Art.learn(out.state.cats)
         if out.changed { persist() }
         _ = tracker.update(out.state.pings, at: out.state.now)
+        categories.custom = settings.customLists
+        categories.onChange = { [weak self] in self?.listsRevision += 1 }
         Store.shared = self
     }
 
@@ -97,7 +110,40 @@ final class Store: ObservableObject {
     func clearTiming() { timing.clear(); timingStore.erase(); timingDirty = false; objectWillChange.send() }
 
     /// The lines of "where it went" for these blocks.
-    func wentRows(for blockIDs: [String]) -> [WentRow] { Went.rows(timing.timings(for: blockIDs), blocklist: settings.blocklist) }
+    func wentRows(for blockIDs: [String]) -> [WentRow] { Went.rows(timing.timings(for: blockIDs), blocklist: settings.blocklist, matcher: categories) }
+
+    // ---------- the ready-made lists ----------
+
+    /// Fetches the ready-made lists that are switched on and not here yet, or last looked at over a week ago.
+    func refreshLists(force: Bool = false) { categories.refresh(settings.blocklist.categoryIDs, force: force) }
+
+    /// Switches a ready-made list on or off in a list, and fetches it when it is switched on.
+    func setCategory(_ id: String, on: Bool, in listID: String) {
+        guard let i = settings.blocklist.lists.firstIndex(where: { $0.id == listID }) else { return }
+        var l = settings.blocklist.lists[i]
+        l.categories.removeAll { $0 == id }
+        if on { l.categories.append(id) }
+        settings.blocklist.lists[i] = l
+        if on { categories.refresh([id]) }
+    }
+
+    /// A list from its link, switched on in this list. False if it isn't an https address.
+    @discardableResult
+    func addCustomList(name: String, link: String, to listID: String) -> Bool {
+        guard let c = Catalog.custom(name: name, link: link) else { return false }
+        settings.customLists.append(c)
+        categories.custom = settings.customLists
+        setCategory(c.id, on: true, in: listID)
+        return true
+    }
+
+    /// Takes away a list added by link, and the copy of it on this Mac.
+    func removeCustomList(_ id: String) {
+        let sources = settings.customLists.first { $0.id == id }?.sources.map { $0.id } ?? []
+        for i in settings.blocklist.lists.indices { settings.blocklist.lists[i].categories.removeAll { $0 == id } }
+        settings.customLists.removeAll { $0.id == id }
+        categories.remove(sources: sources)
+    }
 
     /// Days in a row, with the week's pause.
     var streak: StreakInfo { Streaks.withPause(state.history) }

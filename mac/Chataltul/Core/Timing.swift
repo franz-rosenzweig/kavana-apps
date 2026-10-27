@@ -86,7 +86,7 @@ public struct WentRow: Equatable {
 
 public enum Went {
     /// The apps (and sites) these blocks spent their time in, biggest first. Apps under 3% are folded into "Other".
-    public static func rows(_ timings: [BlockTiming], blocklist: Blocklist = Blocklist(lists: []), limit: Int = 6) -> [WentRow] {
+    public static func rows(_ timings: [BlockTiming], blocklist: Blocklist = Blocklist(lists: []), matcher: DomainMatcher? = nil, limit: Int = 6) -> [WentRow] {
         var apps: [String: TimedApp] = [:], sites: [String: [String: Int]] = [:]
         for t in timings {
             for (id, a) in t.apps { var x = apps[id] ?? TimedApp(bundleID: id, name: a.name, ms: 0); x.ms += a.ms; apps[id] = x }
@@ -95,7 +95,7 @@ public enum Went {
         let total = max(1, apps.values.reduce(0) { $0 + $1.ms })
         var rows = apps.values.sorted { $0.ms != $1.ms ? $0.ms > $1.ms : $0.name < $1.name }.map { a -> WentRow in
             let top = (sites[a.name] ?? [:]).sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }.prefix(2).map { $0.key }
-            let bad = blocklist.app(a.bundleID) != nil || top.contains { blocklist.sites.contains($0) || blocklist.site(forURL: $0) != nil }
+            let bad = blocklist.app(a.bundleID) != nil || top.contains { blocklist.sites.contains($0) || blocklist.site(forURL: $0, matcher: matcher) != nil }
             return WentRow(name: a.name, ms: a.ms, share: Double(a.ms) / Double(total), sites: Array(top), distraction: bad)
         }
         if rows.count > limit {
