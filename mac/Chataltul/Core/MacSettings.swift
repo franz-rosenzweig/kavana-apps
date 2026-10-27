@@ -68,6 +68,8 @@ public struct MixEntry: Codable, Equatable {
 /// Everything the Mac app keeps for itself, apart from the doc: mac.json in the app's folder.
 public struct MacSettings: Codable, Equatable {
     public var blocklist = Blocklist.starter
+    /// Lists from the web the person added by their link, next to the ready-made ones.
+    public var customLists: [ListCategory] = []
     /// The speed bump on/off. On, but with an empty list, it never comes up.
     public var speedBump = true
     public var awayAfterMin = 2
@@ -96,7 +98,7 @@ public struct MacSettings: Codable, Equatable {
     public init() {}
     public init(from decoder: Decoder) throws {
         let c = try decoder.keyed()
-        blocklist = c.v("blocklist", Blocklist.starter); speedBump = c.v("speedBump", true)
+        blocklist = c.v("blocklist", Blocklist.starter); customLists = c.v("customLists", []); speedBump = c.v("speedBump", true)
         awayAfterMin = c.v("awayAfterMin", 2); awayAction = c.v("awayAction", AwayAction.ask)
         cycle = c.v("cycle", Cycle())
         startKey = c.v("startKey", startKey); parkKey = c.v("parkKey", parkKey)

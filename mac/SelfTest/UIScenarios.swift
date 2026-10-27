@@ -220,6 +220,40 @@ enum UIScenarios {
         rich = savedList
         store.settings.blocklist = savedList
 
+        // ---- the ready-made lists: some here, one coming, one that failed, one added by link
+        func fakeDomains(_ n: Int, _ tag: String) -> [String] { (0..<n).map { "\(tag)\($0).test" } }
+        let mineList = Catalog.custom(name: "Work distractions", link: "https://lists.example.net/work.txt")!
+        store.settings.customLists = [mineList]
+        store.settings.blocklist = Blocklist(lists: [
+            GuardList(name: "Distractions", color: 0, apps: [ListedApp(bundleID: "com.apple.MobileSMS", name: "Messages")], sites: ["youtube.com", "news.ycombinator.com"],
+                      categories: ["adult", "social", "dating", "gambling", mineList.id], allow: ["linkedin.com"]),
+            GuardList(name: "News", color: 1, sites: ["bbc.co.uk"], categories: ["news"]),
+        ])
+        store.categories.install(fakeDomains(90_862, "a"), source: "hagezi-nsfw")
+        store.categories.install(fakeDomains(76_874, "b"), source: "stevenblack-porn-only")
+        store.categories.install(fakeDomains(715, "c") + ["tiktok.com", "m.reddit.com"], source: "ut1-social_networks")
+        store.categories.install(fakeDomains(3_808, "d"), source: "stevenblack-social-only")
+        store.categories.simulate(source: "ut1-dating", working: true)
+        store.categories.install(fakeDomains(6_723, "e"), source: "stevenblack-gambling-only")
+        store.categories.simulate(source: "ut1-gambling", error: "Couldn't reach it")
+        store.categories.install(fakeDomains(1_240, "f"), source: mineList.sources[0].id)
+        store.categories.install(fakeDomains(4_644, "g"), source: "ut1-press")
+        check("lists: a category is ready when all its lists are here", { if case .ready(let n, _) = store.categories.state(of: "adult") { return n == 167_736 } else { return false } }())
+        check("lists: one being fetched says so", store.categories.state(of: "dating") == .working)
+        check("lists: a failed one keeps the sites it had", store.categories.state(of: "gambling") == .failed("Couldn't reach it", sites: 6_723))
+        check("lists: one added by link is here", { if case .ready(let n, _) = store.categories.state(of: mineList.id) { return n == 1_240 } else { return false } }())
+        check("lists: one not asked for is not here", store.categories.state(of: "games") == .none(sizeKB: 200))
+        check("lists: a site on a switched-on list is found", store.settings.blocklist.hit(url: "https://www.tiktok.com/@x", browser: "Safari", matcher: store.categories)?.target == .site(domain: "tiktok.com", browser: "Safari"))
+        check("lists: an allowed site is not", store.settings.blocklist.hit(url: "https://www.linkedin.com/in/me", browser: "Safari", matcher: store.categories) == nil)
+        check("lists: the typed ones still are", store.settings.blocklist.hit(url: "https://youtube.com/watch", browser: "Safari", matcher: store.categories)?.list.name == "Distractions")
+        for dark in [false, true] {
+            let nav = WindowNav(.blocklist)
+            let root = WindowRoot(store: store, nav: nav, sync: sync2, watcher: watch2, openSettings: { _ in }, startBlock: {}).frame(width: 1240, height: 1500)
+            check("window-blocklist-lists \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(root, name: "window-blocklist-lists", dark: dark, pad: 0, wall: false)))
+        }
+        store.settings.customLists = []
+        store.settings.blocklist = savedList
+
         // ---- the full-screen break, and the eye break card
         let model = BreakModel(brk: Brk(minutes: 10, start: nowMs() - 80_000, end: nowMs() + 520_000), idea: BreakSettings().ideaFor(0), strict: false, postponeMin: 5, cat: "miso", eyeTip: true)
         check("break-screen drawn", Shot.exists(Shot.render(BreakScreenView(model: model).frame(width: 1440, height: 900), name: "break-screen", dark: true, pad: 0, wall: false)))

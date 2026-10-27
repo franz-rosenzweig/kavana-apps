@@ -51,7 +51,7 @@ public struct GuardWhen: Codable, Equatable {
     }
 }
 
-/// One list: apps and sites, and what to do when one of them is opened.
+/// One list: apps and sites (typed, and ready-made by kind), and what to do when one of them is opened.
 public struct GuardList: Codable, Equatable, Identifiable {
     public var id: String
     public var name: String
@@ -63,22 +63,36 @@ public struct GuardList: Codable, Equatable, Identifiable {
     public var when: GuardWhen
     /// Minutes a day allowed outside blocks (0: none).
     public var allowanceMin: Int
+    /// The ready-made lists switched on (ids from the Catalog, or the person's own), on top of the typed sites.
+    public var categories: [String]
+    /// Sites that are never matched by a ready-made list (and their subdomains).
+    public var allow: [String]
 
-    public init(id: String = UUID().uuidString, name: String, color: Int = 0, apps: [ListedApp] = [], sites: [String] = [], mode: GuardMode = .speedBump, when: GuardWhen = GuardWhen(), allowanceMin: Int = 0) {
+    public init(id: String = UUID().uuidString, name: String, color: Int = 0, apps: [ListedApp] = [], sites: [String] = [], mode: GuardMode = .speedBump, when: GuardWhen = GuardWhen(), allowanceMin: Int = 0, categories: [String] = [], allow: [String] = []) {
         self.id = id; self.name = name; self.color = color; self.apps = apps; self.sites = sites; self.mode = mode; self.when = when; self.allowanceMin = allowanceMin
+        self.categories = categories; self.allow = allow
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.keyed()
         id = c.v("id", UUID().uuidString); name = c.v("name", "List"); color = c.v("color", 0)
         apps = c.v("apps", []); sites = c.v("sites", [])
         mode = c.v("mode", GuardMode.speedBump); when = c.v("when", GuardWhen()); allowanceMin = c.v("allowanceMin", 0)
+        categories = c.v("categories", []); allow = c.v("allow", [])
     }
 
+    /// The apps and typed sites. The ready-made lists are counted apart.
     public var count: Int { apps.count + sites.count }
-    public func site(forURL url: String) -> String? {
+    public func site(forURL url: String) -> String? { site(forURL: url, matcher: nil) }
+
+    /// The typed site this address is on, else (unless it is allowed) the domain a ready-made list names for it.
+    public func site(forURL url: String, matcher: DomainMatcher?) -> String? {
         guard let host = Blocklist.host(of: url) else { return nil }
-        return sites.first { host == $0 || host.hasSuffix("." + $0) }
+        if let s = sites.first(where: { host == $0 || host.hasSuffix("." + $0) }) { return s }
+        guard let matcher, !categories.isEmpty, !isAllowed(host) else { return nil }
+        return matcher.match(host: host, categories: categories)
     }
+
+    public func isAllowed(_ host: String) -> Bool { allow.contains { host == $0 || host.hasSuffix("." + $0) } }
 }
 
 /// A list, and the thing on it that was found.
@@ -111,14 +125,24 @@ public struct Blocklist: Codable, Equatable {
     public var apps: [ListedApp] { lists.flatMap { $0.apps } }
     public var sites: [String] { lists.flatMap { $0.sites } }
     public var count: Int { lists.reduce(0) { $0 + $1.count } }
-    public var isEmpty: Bool { count == 0 }
+    public var isEmpty: Bool { count == 0 && categoryCount == 0 }
+
+    /// How many ready-made lists are switched on, over all the lists.
+    public var categoryCount: Int { lists.reduce(0) { $0 + $1.categories.count } }
+    /// The ready-made lists switched on anywhere, once each.
+    public var categoryIDs: [String] {
+        var seen = Set<String>()
+        return lists.flatMap { $0.categories }.filter { seen.insert($0).inserted }
+    }
+    /// Is there anything on the web to watch for (typed sites or ready-made lists)?
+    public var watchesSites: Bool { !sites.isEmpty || categoryCount > 0 }
 
     /// The listed app with this bundle id.
     public func app(_ bundleID: String) -> ListedApp? { apps.first { $0.bundleID == bundleID } }
 
     /// The listed domain a page address falls under (a listed domain covers its subdomains), or nil.
-    public func site(forURL url: String) -> String? {
-        for l in lists { if let s = l.site(forURL: url) { return s } }
+    public func site(forURL url: String, matcher: DomainMatcher? = nil) -> String? {
+        for l in lists { if let s = l.site(forURL: url, matcher: matcher) { return s } }
         return nil
     }
 
@@ -128,9 +152,12 @@ public struct Blocklist: Codable, Equatable {
         return nil
     }
 
-    /// The list that has the site this address is on, if any.
-    public func hit(url: String, browser: String) -> GuardHit? {
+    /// The list that has the site this address is on, if any. The typed sites of every list come before the
+    /// ready-made ones, so a site someone typed into one list isn't taken by another list's category.
+    public func hit(url: String, browser: String, matcher: DomainMatcher? = nil) -> GuardHit? {
         for l in lists { if let d = l.site(forURL: url) { return GuardHit(list: l, target: .site(domain: d, browser: browser)) } }
+        guard let matcher else { return nil }
+        for l in lists { if let d = l.site(forURL: url, matcher: matcher) { return GuardHit(list: l, target: .site(domain: d, browser: browser)) } }
         return nil
     }
 

@@ -317,10 +317,13 @@ struct FocusPane: View {
     }
 
     private func guarding(_ b: Block) -> String {
-        let n = store.settings.blocklist.count
+        let n = store.settings.blocklist.count, k = store.settings.blocklist.categoryCount
         if let u = store.lockedUntil { return "Locked until \(clockTime(u))" }
-        guard store.settings.speedBump, n > 0 else { return store.mixLabel == "Sound" ? "" : store.mixLabel }
-        return "Watching \(n) apps and sites until \(clockTime(b.end))"
+        guard store.settings.speedBump, n > 0 || k > 0 else { return store.mixLabel == "Sound" ? "" : store.mixLabel }
+        var parts = [String]()
+        if n > 0 { parts.append("\(n) apps and sites") }
+        if k > 0 { parts.append(k == 1 ? "1 ready-made list" : "\(k) ready-made lists") }
+        return "Watching \(parts.joined(separator: " and ")) until \(clockTime(b.end))"
     }
 }
 

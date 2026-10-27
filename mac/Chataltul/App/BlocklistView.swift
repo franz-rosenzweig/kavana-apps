@@ -35,6 +35,12 @@ struct BlocklistView: View {
     @State private var selected: String?
     @State private var site = ""
     @State private var siteError = false
+    @State private var addingList = false
+    @State private var customName = ""
+    @State private var customLink = ""
+    @State private var customError = false
+    @State private var allowText = ""
+    @State private var allowError = false
 
     private var lists: [GuardList] { store.settings.blocklist.lists }
     private var index: Int { lists.firstIndex { $0.id == (selected ?? lists.first?.id) } ?? 0 }
@@ -98,7 +104,7 @@ struct BlocklistView: View {
                 Toggle("", isOn: $store.settings.speedBump).toggleStyle(.switch).labelsHidden().tint(Palette.teal).help("Watching on or off, for every list")
             }
             HStack(alignment: .top, spacing: 16) {
-                appsCard(list)
+                appsCard(list).frame(maxWidth: 330)
                 sitesCard(list)
             }
             VStack(alignment: .leading, spacing: 10) {
@@ -172,8 +178,106 @@ struct BlocklistView: View {
                 Button("Add") { addSite(list) }.buttonStyle(Chip(fill: Palette.accent, text: Palette.onAccent, size: 13, radius: 9, padding: EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14)))
             }
             if siteError { Text("That isn't a website address.").font(.system(size: 12)).foregroundStyle(Palette.orange) }
+            Divider().overlay(Palette.hairline)
+            readyMade(list)
             Text("Covers subdomains. Safari, Chrome, Brave, Arc and Edge are read by the Mac app. Firefox and Zen can't be, so list the app itself if you want it guarded.")
                 .font(.system(size: 12)).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // ---------------------------------------------------------------- the ready-made lists
+
+    private func readyMade(_ list: Binding<GuardList>) -> some View {
+        let _ = store.listsRevision   // redraws when a download finishes
+        let custom = store.settings.customLists
+        return VStack(alignment: .leading, spacing: 9) {
+            Label11(text: "READY-MADE")
+            ForEach(Catalog.all) { c in categoryRow(c, list) }
+            ForEach(custom) { c in categoryRow(c, list) }
+            if addingList { addListForm(list) }
+            else {
+                Button { addingList = true } label: { Text("+ Add a list from a link").font(.system(size: 13)).foregroundStyle(Palette.accentText) }.buttonStyle(.plain)
+            }
+            if !list.wrappedValue.categories.isEmpty { allowBlock(list) }
+            Text("Public lists by UT1 Toulouse (CC BY-SA 4.0), StevenBlack (MIT) and Hagezi (GPL-3.0). This Mac downloads them and looks again about once a week. Nothing about you is sent.")
+                .font(.system(size: 12)).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func categoryRow(_ c: ListCategory, _ list: Binding<GuardList>) -> some View {
+        let on = list.wrappedValue.categories.contains(c.id)
+        let state = store.categories.state(of: c.id)
+        let (text, problem) = stateText(state)
+        var kept = [String]()
+        if case .failed(_, let sites) = state, sites > 0 { kept = ["\(count(sites)) sites kept from before"] }
+        return HStack(spacing: 10) {
+            Toggle("", isOn: Binding(get: { on }, set: { store.setCategory(c.id, on: $0, in: list.wrappedValue.id) }))
+                .toggleStyle(.switch).controlSize(.small).labelsHidden().tint(Palette.teal)
+                .accessibilityLabel(c.name)
+            Text(c.name).font(.system(size: 13, weight: on ? .semibold : .regular)).foregroundStyle(Palette.ink).lineLimit(1)
+            Spacer(minLength: 6)
+            Text(text).font(.system(size: 12)).foregroundStyle(problem ? Palette.orange : Palette.muted).lineLimit(1)
+            if case .failed = state {
+                Button("Retry") { store.categories.refresh([c.id], force: true) }
+                    .buttonStyle(Chip(size: 12, radius: 8, padding: EdgeInsets(top: 4, leading: 9, bottom: 4, trailing: 9)))
+            }
+            if c.custom {
+                Button { store.removeCustomList(c.id) } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
+                    .buttonStyle(.plain).foregroundStyle(Palette.muted).accessibilityLabel("Remove \(c.name)")
+            }
+        }
+        .help((c.sources.map { $0.license.isEmpty ? "\($0.name)" : "\($0.name) · \($0.license)" } + kept).joined(separator: "\n"))
+    }
+
+    private func stateText(_ state: CategoryState) -> (String, Bool) {
+        switch state {
+        case .none(let kb): return (kb > 0 ? "About \(sizeText(kb))" : "Not downloaded", false)
+        case .working: return ("Downloading…", false)
+        case .ready(let sites, let updated): return ("\(count(sites)) sites · \(ago(updated))", false)
+        case .failed(let why, _): return (why, true)
+        }
+    }
+    private func sizeText(_ kb: Int) -> String { kb < 1000 ? "\(kb) KB" : String(format: "%.1f MB", Double(kb) / 1000) }
+    private func count(_ n: Int) -> String { NumberFormatter.localizedString(from: NSNumber(value: n), number: .decimal) }
+    private func ago(_ ms: Int) -> String {
+        let days = max(0, (nowMs() - ms) / 86_400_000)
+        return days == 0 ? "today" : days == 1 ? "yesterday" : "\(days) days ago"
+    }
+
+    private func addListForm(_ list: Binding<GuardList>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TitleField(placeholder: "Name, like Work distractions", text: $customName, size: 13, center: false, onSubmit: { addCustom(list) })
+            TitleField(placeholder: "https:// link to a hosts, domain or AdGuard list", text: $customLink, size: 13, center: false, onSubmit: { addCustom(list) })
+            HStack {
+                Button("Add") { addCustom(list) }.buttonStyle(Chip(fill: Palette.accent, text: Palette.onAccent, size: 13, radius: 9, padding: EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14)))
+                Button("Cancel") { addingList = false; customName = ""; customLink = ""; customError = false }
+                    .buttonStyle(Chip(size: 13, radius: 9, padding: EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14)))
+            }
+            if customError { Text("That needs to be an https link.").font(.system(size: 12)).foregroundStyle(Palette.orange) }
+        }
+    }
+
+    private func allowBlock(_ list: Binding<GuardList>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label11(text: "ALWAYS ALLOW")
+            if !list.wrappedValue.allow.isEmpty {
+                FlowLayout {
+                    ForEach(list.wrappedValue.allow, id: \.self) { s in
+                        HStack(spacing: 6) {
+                            Text(s).font(.system(size: 13)).foregroundStyle(Palette.ink)
+                            Button { list.wrappedValue.allow.removeAll { $0 == s } } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
+                                .buttonStyle(.plain).foregroundStyle(Palette.muted).accessibilityLabel("Stop allowing \(s)")
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Palette.soft))
+                    }
+                }
+            }
+            HStack {
+                TitleField(placeholder: "A site to leave out, like linkedin.com", text: $allowText, size: 13, center: false, onSubmit: { addAllow(list) })
+                Button("Add") { addAllow(list) }.buttonStyle(Chip(fill: Palette.accent, text: Palette.onAccent, size: 13, radius: 9, padding: EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14)))
+            }
+            if allowError { Text("That isn't a website address.").font(.system(size: 12)).foregroundStyle(Palette.orange) }
         }
     }
 
@@ -269,6 +373,19 @@ struct BlocklistView: View {
         guard let d = Blocklist.normalizeDomain(site) else { if !site.trimmingCharacters(in: .whitespaces).isEmpty { siteError = true }; return }
         if !store.settings.blocklist.sites.contains(d) { list.wrappedValue.sites.append(d) }
         site = ""
+    }
+
+    private func addCustom(_ list: Binding<GuardList>) {
+        if store.addCustomList(name: customName, link: customLink, to: list.wrappedValue.id) {
+            addingList = false; customName = ""; customLink = ""; customError = false
+        } else { customError = true }
+    }
+
+    private func addAllow(_ list: Binding<GuardList>) {
+        allowError = false
+        guard let d = Blocklist.normalizeDomain(allowText) else { if !allowText.trimmingCharacters(in: .whitespaces).isEmpty { allowError = true }; return }
+        if !list.wrappedValue.allow.contains(d) { list.wrappedValue.allow.append(d) }
+        allowText = ""
     }
 
     private func chooseApp(_ list: Binding<GuardList>) {
