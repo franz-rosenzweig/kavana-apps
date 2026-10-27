@@ -132,7 +132,8 @@ say "built from $SHA; files in mac/build/release: $(ls "$OUT" | tr '\n' ' ')"
 if (( ! PUBLISH )); then say "nothing is published: no release, no tag, no cask pushed"; exit 0; fi
 
 # --- the release, then the cask
-gh release create "$TAG" "$ZIP" --repo $REPO --target "$SHA" --title "Chataltul for Mac $V" --notes "${NOTES:-$(cat "$OUT/release-notes.md")}"
+# not "Latest": the Android app's releases in this repository are watched by Obtainium, which takes the latest one
+gh release create "$TAG" "$ZIP" --repo $REPO --target "$SHA" --latest=false --title "Chataltul for Mac $V" --notes "${NOTES:-$(cat "$OUT/release-notes.md")}"
 git clone -q "$TAP" "$WORK/tap"
 mkdir -p "$WORK/tap/Casks"
 cp "$CASK" "$WORK/tap/Casks/chataltul.rb"
