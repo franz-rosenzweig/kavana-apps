@@ -8,6 +8,9 @@ struct PopoverActions {
     var park: () -> Void = {}
     var quit: () -> Void = {}
     var allowBrowsers: () -> Void = {}
+    /// Yes or Drifted, through the app (Drifted asks what pulled the person away).
+    var answer: (String) -> Void = { _ in }
+    var openWeek: () -> Void = {}
 }
 
 enum BlockKind: String { case focus, short, long }
@@ -49,7 +52,8 @@ private struct Header: View {
     var actions: PopoverActions
     var body: some View {
         HStack {
-            Color.clear.frame(width: 30, height: 30)
+            Button { actions.openWeek() } label: { Image(systemName: "chart.bar").font(.system(size: 14, weight: .medium)) }
+                .buttonStyle(IconButton()).accessibilityLabel("Your week")
             Spacer()
             Text(center).font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.muted)
             Spacer()
@@ -265,9 +269,9 @@ struct FocusPane: View {
                 Text("A check-in is waiting").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
             }
             HStack(spacing: 8) {
-                Button { store.answer("yes") } label: { HStack { Symbol.check(); Text("Yes") }.frame(maxWidth: .infinity) }
+                Button { actions.answer("yes") } label: { HStack { Symbol.check(); Text("Yes") }.frame(maxWidth: .infinity) }
                     .buttonStyle(Chip(fill: Palette.accent, text: Palette.onAccent, size: 14, radius: 10))
-                Button { store.answer("drifted") } label: { HStack { Symbol.drift(); Text("Drifted") }.frame(maxWidth: .infinity) }
+                Button { actions.answer("drifted") } label: { HStack { Symbol.drift(); Text("Drifted") }.frame(maxWidth: .infinity) }
                     .buttonStyle(Chip(size: 14, radius: 10))
             }
         }
@@ -355,6 +359,7 @@ struct HomePane: View {
                     }
                 }
             }
+            WhereItWent(rows: store.settings.recordTiming ? store.wentRows(for: [block.id]) : [], limit: 3)
             breakOffer(store.settings.cycle.shortBreak)
             Footer(left: "\(store.blocksToday) of \(store.perDay) blocks · \(fmtMin(store.state.stats.today)) today", actions: actions)
         }
@@ -390,6 +395,46 @@ struct HomePane: View {
         if !n.isEmpty { store.note(block.id, n) }
         store.outcome(block.id, outcome)
         note = ""
+    }
+}
+
+/// "Where it went": the apps the block spent its time in, kept only on this Mac (screen 9).
+struct WhereItWent: View {
+    var rows: [WentRow]
+    var limit = 3
+    private let palette: [Color] = [Palette.tealLight, Color(hex: 0xFFCF8A), Color(hex: 0xA99BE8), Color(hex: 0x7FB1F5), Color(hex: 0xF29BB0), Color(hex: 0x8A8A95)]
+
+    var body: some View {
+        if !rows.isEmpty {
+            let shown = Array(rows.prefix(limit))
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("WHERE IT WENT").font(.system(size: 12, weight: .bold)).tracking(0.9)
+                    Spacer()
+                    Text("only on this Mac").font(.system(size: 12))
+                }.foregroundStyle(Palette.muted)
+                GeometryReader { g in
+                    let total = max(0.001, shown.reduce(0) { $0 + $1.share })
+                    HStack(spacing: 2) {
+                        ForEach(Array(shown.enumerated()), id: \.offset) { i, r in
+                            RoundedRectangle(cornerRadius: 4).fill(r.distraction ? Color(hex: 0xFFCF8A) : palette[i % palette.count]).frame(width: max(4, (g.size.width - 4) * CGFloat(r.share / total)))
+                        }
+                    }
+                }.frame(height: 8)
+                VStack(spacing: 5) {
+                    ForEach(Array(shown.enumerated()), id: \.offset) { i, r in
+                        HStack(spacing: 8) {
+                            RoundedRectangle(cornerRadius: 2).fill(r.distraction ? Color(hex: 0xFFCF8A) : palette[i % palette.count]).frame(width: 8, height: 8)
+                            Text(r.label).font(.system(size: 13)).foregroundStyle(Palette.ink).lineLimit(1)
+                            Spacer(minLength: 6)
+                            Text("\(r.minutes) min").font(.system(size: 13)).foregroundStyle(Palette.muted)
+                        }
+                    }
+                }
+            }
+            .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Palette.softer))
+        }
     }
 }
 

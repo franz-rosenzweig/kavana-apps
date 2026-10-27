@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum WindowSection: String, CaseIterable, Identifiable {
     case today, cafe, history, later, blocklist, breaks
@@ -28,6 +29,8 @@ enum WindowSection: String, CaseIterable, Identifiable {
 
 final class WindowNav: ObservableObject {
     @Published var section: WindowSection
+    /// Which span Today opens on (the popover's "Your week" opens it on the week).
+    @Published var openSpan: Span = .day
     init(_ s: WindowSection = .today) { section = s }
 }
 
@@ -38,8 +41,9 @@ final class AppWindow: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     let nav = WindowNav()
 
-    func show(store: Store, app: AppDelegate, section: String?) {
+    func show(store: Store, app: AppDelegate, section: String?, span: Span? = nil) {
         if let s = section.flatMap(WindowSection.init(rawValue:)) { nav.section = s }
+        if let span { nav.openSpan = span }
         if window == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 800), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
             w.title = "Chataltul"
@@ -142,7 +146,7 @@ struct WindowRoot: View {
 
     @ViewBuilder private var page: some View {
         switch nav.section {
-        case .today: TodayView(store: store, showCafe: { nav.section = .cafe })
+        case .today: TodayView(store: store, showCafe: { nav.section = .cafe }, initialSpan: nav.openSpan).id(nav.openSpan)
         case .cafe: CafePage(store: store)
         case .history: HistoryView(store: store)
         case .later: LaterView(store: store)
@@ -186,6 +190,9 @@ struct TodayView: View {
     }
     @State private var blocks: [Hist] = []
     @State private var before: [Hist] = []
+    @State private var question = ""
+    @State private var answer = ""
+    @State private var asking = false
     @StateObject private var cafe = CafeController()
     @Environment(\.colorScheme) private var scheme
 
@@ -194,18 +201,19 @@ struct TodayView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             header
-            stats
-            GeometryReader { g in
+            if span == .week { WeekReview(store: store, blocks: blocks, period: period, question: $question, answer: $answer, asking: $asking, ask: ask) }
+            else { stats }
+            if span != .week { GeometryReader { g in
                 let w = g.size.width - 16
                 HStack(alignment: .top, spacing: 16) {
                     cafeCard.frame(width: w * 0.535, height: g.size.height)
                     VStack(spacing: 14) {
-                        if span == .day { timeline; hours } else { chart; tags }
+                        if span == .day { timeline; hours; went } else { chart; tags; went }
                         Spacer(minLength: 0)
                     }.frame(width: w * 0.465, height: g.size.height, alignment: .top)
                 }
             }
-            .frame(maxHeight: .infinity)
+            .frame(maxHeight: .infinity) }
         }
         .padding(.init(top: 34, leading: 36, bottom: 28, trailing: 36))
         .onAppear(perform: load)
@@ -239,8 +247,51 @@ struct TodayView: View {
                 }
             }
             .padding(3).background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Palette.soft))
+            exportMenu
         }
     }
+
+    private var exportMenu: some View {
+        Menu {
+            Button("The blocks, as a spreadsheet (CSV)") { exportBlocks() }
+            Button("Where the time went, as a spreadsheet (CSV)") { exportWent() }
+            Button("The review in words (Markdown)") { exportReview() }
+        } label: { Text("Export").font(.system(size: 13)).foregroundStyle(Palette.ink) }
+        .menuStyle(.borderlessButton).fixedSize()
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Palette.tile))
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Palette.tileLine, lineWidth: 1))
+    }
+
+    private var rangeLabel: String {
+        let f = DateFormatter(); f.dateFormat = "d MMM yyyy"
+        return "\(f.string(from: period.start)) to \(f.string(from: Date(timeIntervalSince1970: Double(period.to - 1) / 1000)))"
+    }
+    private var fileStem: String { "chataltul-\(span.rawValue)-\(Self.stamp.string(from: period.start))" }
+    private static let stamp: DateFormatter = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f }()
+
+    private func exportBlocks() { Exporter.save(Export.blocksCSV(blocks, catName: { store.cat($0).name }), name: "\(fileStem)-blocks.csv", type: .commaSeparatedText) }
+    private func exportWent() { Exporter.save(Export.wentCSV(wentRows), name: "\(fileStem)-where-it-went.csv", type: .commaSeparatedText) }
+    private func exportReview() {
+        let f = Review.facts(blocks: blocks, period: period, goalMin: store.engineSettings.goal, streak: store.streak)
+        Exporter.save(Export.reviewMarkdown(title: title, range: rangeLabel, summary: Review.summary(f), f: f, went: wentRows), name: "\(fileStem)-review.md", type: UTType(filenameExtension: "md") ?? .plainText)
+    }
+
+    private var wentRows: [WentRow] { store.settings.recordTiming ? store.wentRows(for: blocks.map { $0.id }) : [] }
+
+    /// "Ask about your week": the model on this Mac if there is one, else the numbers.
+    private func ask() {
+        let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return }
+        let f = Review.facts(blocks: blocks, period: period, goalMin: store.engineSettings.goal, streak: store.streak)
+        asking = true
+        Task {
+            let text = await OnDevice.answer(q, facts: Review.factsText(f, title: title)) ?? Review.answer(q, f)
+            await MainActor.run { answer = text; asking = false }
+        }
+    }
+
+    private var went: some View { WentPanel(rows: wentRows) }
 
     private var title: String {
         let f = DateFormatter()
@@ -270,13 +321,13 @@ struct TodayView: View {
         let o = Insights.outcomes(blocks)
         let goal = store.engineSettings.goal
         let prev = Insights.compare(m, Insights.minutes(before))
-        let streak = Insights.streak(store.state.history)
+        let streak = store.streak.days
         return HStack(spacing: 14) {
             if span == .day {
                 tile(Insights.hours(m), goal > 0 ? "focused, goal \(Insights.hours(goal))" : "focused")
                 tile("\(home)", home == 1 ? "cat came home" : "cats came home")
                 tile("\(Insights.drifts(blocks))", Insights.drifts(blocks) == 1 ? "drifted" : "drifted")
-                tile(streak == 1 ? "1 day" : "\(streak) days", "in a row")
+                tile(streak == 1 ? "1 day" : "\(streak) days", "in a row" + (store.streak.pausesLeft > 0 ? " · 1 pause left" : ""))
             } else {
                 tile(Insights.hours(m), prev.map { "focused · \($0) on \(before.isEmpty ? "before" : previousName)" } ?? "focused")
                 tile("\(home)", home == 1 ? "cat came home" : "cats came home")

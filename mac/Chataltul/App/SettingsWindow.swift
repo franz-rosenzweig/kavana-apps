@@ -204,6 +204,16 @@ struct GeneralPane: View {
                     PickRow(title: "Next kitten", detail: nil, last: true, options: store.state.cats.filter { $0.met }.map { ($0.id, $0.name) }, value: Binding(get: { eng.companion }, set: { store.setEngine(["companion": $0]) }))
                 }
             }
+            Section_("Where the time goes", note: "While a block runs, Chataltul notes which app is in front and, in a browser, the site's name (never the address or the page). It stays in a file on this Mac and is never sent anywhere, not even with an account.") {
+                Row(title: "Remember where each block went", detail: "Shown after a block and in the week's review.") { Switch(on: $store.settings.recordTiming) }
+                Row(title: "Forget it all", detail: "\(store.timing.blocks.count) blocks remembered", last: true) {
+                    Button("Forget") { store.clearTiming() }.buttonStyle(Chip(size: 13, radius: 9, padding: EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))).disabled(store.timing.isEmpty)
+                }
+            }
+            Section_("Focus on your Mac", note: "Chataltul can't turn a Focus on itself, but a Shortcut can. Make two Shortcuts in the Shortcuts app that set the Focus on and off, and put their names here: they run when a block starts and when it ends.") {
+                Row(title: "When a block starts") { TitleField(placeholder: "Shortcut name", text: $store.settings.shortcutStart, size: 13, center: false).frame(width: 220) }
+                Row(title: "When a block ends", last: true) { TitleField(placeholder: "Shortcut name", text: $store.settings.shortcutEnd, size: 13, center: false).frame(width: 220) }
+            }
             Section_("This Mac") {
                 Row(title: "Open at login") {
                     Switch(on: Binding(get: { login }, set: { setLogin($0) }))

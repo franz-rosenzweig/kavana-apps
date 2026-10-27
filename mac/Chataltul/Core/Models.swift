@@ -244,10 +244,12 @@ public struct Hist: Decodable {
     public var tag: String?
     public var mode: String
     public var note: String
+    /// What pulled the person away at each Drifted check-in that was given a reason (engine ids: phone, web, ...).
+    public var whys: [String]
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.keyed()
-        mode = c.v("mode", "timer"); note = c.v("note", "")
+        mode = c.v("mode", "timer"); note = c.v("note", ""); whys = c.v("whys", [])
         id = c.v("id", ""); start = c.v("start", 0); intention = c.v("intention", ""); minutes = c.v("minutes", 0)
         actual = c.v("actual", 1); stopped = c.v("stopped", false); outcome = c.o("outcome"); drifts = c.v("drifts", 0)
         cat = c.v("cat", "miso"); kitten = c.v("kitten", "home"); treats = c.v("treats", 0); tag = c.o("tag")

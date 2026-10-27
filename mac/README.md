@@ -14,12 +14,14 @@ mac/
                          EngineHost (the web's engine in JavaScriptCore), Models, SpeedBump (+ HoldTracker),
                          AwayTracker, PingTracker, Blocklist (lists, modes, schedules), GuardPolicy (what a list asks
                          for now, wait it out, locked, allowances), Breaks (cycles, ideas, eye breaks), Insights (the
-                         numbers in Today), MacSettings, Sounds, SyncClient, DocStore
+                         numbers in Today), Timing (where each block went), Review (streaks with a pause, the
+                         week in words, answers, export), MacSettings, Sounds, SyncClient, DocStore
     App/                 AppKit and SwiftUI: AppDelegate (puts it together), Store (the one model), the menu
                          bar item, the popover, the cat's windows, Watcher (front app and browser address),
                          Hotkeys, Notifier, SoundPlayer, SyncController, Settings, the app window (AppWindow), the
                          café (CafeScene, a native port of web/cafe3d.js), the full Blocklist and Breaks views, the
-                         full-screen break (BreakScreen) and Busy (is a call or full-screen video on?)
+                         full-screen break (BreakScreen), Busy (is a call or full-screen video on?), the week in review
+                         (WeekReview), Exporter, OnDevice (the model on the Mac, if there is one) and ShortcutRunner
     Resources/js/        engine.js lines.js cats.js news.js: the web's, copied as they are; bridge.js: the
                          Android app's, with a few lines marked MAC
     Resources/           cats/ cafe/ audio/(meows) rig.json sounds.json AppIcon.icns
@@ -59,3 +61,7 @@ The doc is `~/Library/Application Support/<bundle id>/doc.json`, written whole a
 ## What I could not check without a person
 
 The permission prompts (Notifications, and Automation for each browser), a real full-screen app with the cat over it, and the two-second hold with a real mouse. The code for each is there and its rules are tested; the system's side of them is not.
+
+## Releasing
+
+`mac/release.sh X.Y.Z` builds the app from a commit in a clean checkout, signs it with the shared identity the other apps use (in its own keychain; the script's settings are in `~/.config/chataltul-release.env`, outside the repository), checks it (the signature and who signed it, the version, the id, the hardened runtime, that no home folder's path, address or data is inside, and that it starts), zips it and writes the cask and the release notes into `mac/build/release/`. That is all it does by default. `--publish` makes the GitHub release (tagged `mac-vX.Y.Z`, so it isn't taken for one of the Android app's) and puts the cask in the tap, and only works from `origin/main`. The version is X.Y.Z and the build number is 10000·X + 100·Y + Z; nothing is committed for them. The signature is my own, not Apple's, so the cask removes the quarantine flag the way the other casks do.

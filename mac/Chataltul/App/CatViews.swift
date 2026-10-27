@@ -25,6 +25,8 @@ struct CatCardModel {
     /// A ring that counts down to this time (an eye break's 20 seconds).
     var countdownUntil: Int? = nil
     var countdownTotalMs: Int = 20_000
+    /// Many small buttons that wrap (the reasons for a drift), instead of a row of big ones.
+    var compactButtons = false
 }
 
 /// The cat peeking up from the corner of the screen with a card beside it (screen 3).
@@ -67,7 +69,15 @@ struct CatCardView: View {
                     }
                 }
             }
-            if !model.buttons.isEmpty {
+            if !model.buttons.isEmpty, model.compactButtons {
+                FlowLayout(spacing: 6) {
+                    ForEach(model.buttons) { b in
+                        Button(action: b.action) { Text(b.label) }
+                            .buttonStyle(Chip(fill: Palette.soft, text: Palette.ink, size: 13, radius: 10, padding: EdgeInsets(top: 7, leading: 12, bottom: 7, trailing: 12)))
+                            .probe("cat.\(b.label)")
+                    }
+                }
+            } else if !model.buttons.isEmpty {
                 HStack(spacing: 8) {
                     ForEach(model.buttons) { b in
                         Button(action: b.action) {

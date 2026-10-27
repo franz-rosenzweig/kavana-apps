@@ -81,6 +81,28 @@ public enum Insights {
         return out
     }
 
+    /// Minutes in each slot, split by tag (no tag is ""): for stacked bars.
+    public static func slotsByTag(_ list: [Hist], in p: Period, calendar cal: Calendar = .current) -> [[String: Int]] {
+        let n = slots([], in: p, calendar: cal).count
+        var out = [[String: Int]](repeating: [:], count: n)
+        for b in list {
+            for i in 0..<max(0, b.actual) {
+                let t = b.start + i * 60_000
+                guard t >= p.from, t < p.to else { continue }
+                let d = Date(timeIntervalSince1970: Double(t) / 1000)
+                let k: Int
+                switch p.span {
+                case .day: k = cal.component(.hour, from: d)
+                case .week: k = ((cal.component(.weekday, from: d) + 5) % 7)
+                case .month: k = cal.component(.day, from: d) - 1
+                case .year: k = cal.component(.month, from: d) - 1
+                }
+                if k >= 0, k < n { out[k][b.tag ?? "", default: 0] += 1 }
+            }
+        }
+        return out
+    }
+
     /// Minutes by tag, biggest first (no tag is "Untagged").
     public static func byTag(_ list: [Hist]) -> [(tag: String, minutes: Int)] {
         var m: [String: Int] = [:]

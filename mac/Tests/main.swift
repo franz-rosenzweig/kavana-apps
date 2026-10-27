@@ -488,6 +488,111 @@ equal("breaks are offered, not started", ms2.breaks.start, .offer)
 let bsRound = try JSONDecoder().decode(MacSettings.self, from: JSONEncoder().encode(ms2))
 equal("break settings survive a round trip", bsRound, ms2)
 
+// ---------------------------------------------------------------- stage 3: where it went, streaks, the week in words, export
+section("where it went")
+var log = TimingLog()
+for _ in 0..<41 { log.add(block: "b1", start: t, bundleID: "com.apple.TextEdit", name: "Writer", ms: 60_000) }
+for _ in 0..<4 { log.add(block: "b1", start: t, bundleID: "com.apple.Safari", name: "Safari", ms: 60_000, site: ("youtube.com", "Safari")) }
+for _ in 0..<2 { log.add(block: "b1", start: t, bundleID: "com.apple.Safari", name: "Safari", ms: 60_000, site: ("library.example", "Safari")) }
+for _ in 0..<3 { log.add(block: "b1", start: t, bundleID: "com.apple.mail", name: "Mail", ms: 60_000) }
+equal("a block's time adds up by app", log.blocks["b1"]?.totalMs, 50 * 60_000)
+equal("and by site", log.blocks["b1"]?.sites["youtube.com"]?.ms, 4 * 60_000)
+let wrows = Went.rows(log.timings(for: ["b1", "nope"]), blocklist: Blocklist(apps: [ListedApp(bundleID: "com.apple.mail", name: "Mail")], sites: ["youtube.com"]))
+equal("the biggest is first", wrows.first?.name, "Writer")
+equal("the shares add up to the whole", Int((wrows.reduce(0) { $0 + $1.share } * 100).rounded()), 100)
+equal("a browser's line names its sites", wrows.first { $0.name == "Safari" }?.label, "Safari: youtube.com, library.example")
+equal("what is on a list is marked", wrows.filter { $0.distraction }.map { $0.name }.sorted(), ["Mail", "Safari"])
+equal("a block with no record has no rows", Went.rows([]).count, 0)
+var many = TimingLog()
+for (i, ms) in [50, 40, 30, 20, 10, 5, 3, 2].enumerated() { many.add(block: "m", start: t, bundleID: "a\(i)", name: "App \(i)", ms: ms * 60_000) }
+let folded = Went.rows(many.timings(for: ["m"]), limit: 4)
+equal("more than the limit folds the rest into one line", folded.count, 4)
+equal("called Other", folded.last?.name, "Other")
+log.prune(before: t + 1)
+equal("old blocks are pruned", log.isEmpty, true)
+let tStore = TimingStore(folder: FileManager.default.temporaryDirectory.appendingPathComponent("ct-\(UUID().uuidString)"))
+try? FileManager.default.createDirectory(at: tStore.file.deletingLastPathComponent(), withIntermediateDirectories: true)
+var tl = TimingLog(); tl.add(block: "z", start: t, bundleID: "x", name: "X", ms: 5000)
+tStore.write(tl)
+equal("it survives the file", tStore.read(), tl)
+tStore.erase()
+equal("and can be erased", tStore.read().isEmpty, true)
+
+section("streaks with a pause")
+func dayHist(_ y: Int, _ m: Int, _ d: Int) -> Hist { hist(day(y, m, d, 10), 30) }
+// Mon 26 Oct 2026 is a Monday
+let fri = day(2026, 10, 30, 12), sun = day(2026, 11, 1, 12)
+var st = Streaks.withPause([dayHist(2026, 10, 26), dayHist(2026, 10, 27), dayHist(2026, 10, 28), dayHist(2026, 10, 29), dayHist(2026, 10, 30)], today: fri, calendar: utc)
+equal("Monday to Friday is five in a row", st.days, 5)
+equal("with the week's pause still there", st.pausesLeft, 1)
+st = Streaks.withPause([dayHist(2026, 10, 26), dayHist(2026, 10, 27), dayHist(2026, 10, 28), dayHist(2026, 10, 29), dayHist(2026, 10, 30), dayHist(2026, 11, 1)], today: sun, calendar: utc)
+equal("a missed Saturday is carried over", st.days, 6)
+equal("by the week's pause", [st.pausedDays.count, st.pausesLeft], [1, 0])
+equal("which was Saturday", utc.component(.weekday, from: st.pausedDays[0]), 7)
+st = Streaks.withPause([dayHist(2026, 10, 26), dayHist(2026, 10, 28), dayHist(2026, 10, 30)], today: fri, calendar: utc)
+equal("only one pause a week: the second miss ends it", st.days, 2)
+st = Streaks.withPause([dayHist(2026, 10, 26), dayHist(2026, 10, 27), dayHist(2026, 10, 30)], today: fri, calendar: utc)
+equal("two missed days in a row end it", st.days, 1)
+st = Streaks.withPause([dayHist(2026, 10, 28), dayHist(2026, 10, 29)], today: day(2026, 10, 30, 8), calendar: utc)
+equal("today isn't over: yesterday still counts, no pause used", [st.days, st.pausesLeft], [2, 1])
+st = Streaks.withPause([dayHist(2026, 10, 22), dayHist(2026, 10, 23), dayHist(2026, 10, 25), dayHist(2026, 10, 26)], today: day(2026, 10, 26, 12), calendar: utc)
+equal("a pause in last week is that week's, and this week's is still there", [st.days, st.pausedDays.count, st.pausesLeft], [4, 1, 1])
+equal("no blocks, no streak", Streaks.withPause([], today: fri, calendar: utc).days, 0)
+
+section("the week in words")
+let wkPeriod = Insights.period(.week, containing: day(2026, 10, 28), calendar: utc)
+func wh(_ d: Date, _ min: Int, tag: String?, drifts: Int = 0, whys: [String] = [], outcome: String? = "done") -> Hist {
+    var o = ["id": "\(ms(d))", "start": ms(d), "actual": min, "minutes": min, "kitten": "home", "drifts": drifts, "whys": whys] as [String: Any]
+    if let tag { o["tag"] = tag }
+    if let outcome { o["outcome"] = outcome }
+    return try! JSONDecoder().decode(Hist.self, from: JSONSerialization.data(withJSONObject: o))
+}
+let weekBlocks = [wh(day(2026, 10, 26, 10), 120, tag: "Writing"), wh(day(2026, 10, 27, 10), 150, tag: "Writing"), wh(day(2026, 10, 27, 16), 40, tag: "Work", drifts: 1, whys: ["web"]),
+                  wh(day(2026, 10, 28, 16), 60, tag: "Reading", drifts: 2, whys: ["web", "phone"]), wh(day(2026, 10, 29, 15), 60, tag: "Writing", drifts: 1, whys: ["web"], outcome: "partly"), wh(day(2026, 10, 30, 11), 90, tag: "Writing")]
+let wf = Review.facts(blocks: weekBlocks, period: wkPeriod, goalMin: 120, streak: StreakInfo(days: 5, pausedDays: [], pausesLeft: 1), calendar: utc)
+equal("the week's minutes", wf.minutes, 520)
+equal("best on Tuesday", wf.bestDay?.name, "Tuesday")
+equal("Writing took most", wf.topTag, "Writing")
+equal("the web pulled most", wf.reasons.first?.id, "web")
+equal("and 3 times", wf.reasons.first?.times, 3)
+equal("the drifts were late in the day", wf.lateDrifts, true)
+equal("days that met the goal", wf.daysMet, 2)
+let said = Review.summary(wf)
+check("the summary starts with a verdict and the numbers", said.hasPrefix("An uneven week: 8 h 40 min over 6 blocks, best on Tuesday."))
+check("and names the tag", said.contains("Writing took most of it."))
+check("and what pulled away, and when", said.contains("usually the web, mostly in blocks that began after 3 PM"))
+check("and suggests the speed bump", said.contains("might want the speed bump on"))
+equal("a week with no blocks says so", Review.summary(WeekFacts()).hasPrefix("No blocks yet"), true)
+equal("a phone drift is out of reach", Review.summary(Review.facts(blocks: [wh(day(2026, 10, 26, 10), 60, tag: nil, drifts: 1, whys: ["phone"])], period: wkPeriod, goalMin: 0, streak: wf.streak, calendar: utc)).contains("out of Chataltul's reach"), true)
+equal("best day question", Review.answer("which day was my best day?", wf), "Your best day was Tuesday, with 3 h 10 min.")
+equal("total question", Review.answer("How much did I do?", wf), "8 h 40 min over 6 blocks.")
+check("distraction question", Review.answer("what distracted me", wf).hasPrefix("What pulled you away: the web 3 times"))
+check("tag question", Review.answer("what did I work on most", wf).contains("Writing"))
+check("streak question", Review.answer("what's my streak", wf).contains("5 days in a row"))
+check("a question it can't answer says what it can", Review.answer("why is the sky blue", wf).contains("I can answer"))
+check("facts for a model", Review.factsText(wf, title: "This week").contains("Best day: Tuesday"))
+equal("reasons have words", [Reason.label("web"), Reason.label("hungry")], ["The web", "Hunger"])
+
+let stacked = Insights.slotsByTag(weekBlocks, in: wkPeriod, calendar: utc)
+equal("stacked by tag: Tuesday has Writing and Work", [stacked[1]["Writing"] ?? 0, stacked[1]["Work"] ?? 0], [150, 40])
+equal("and each day adds up to the day", stacked[1].values.reduce(0, +), Insights.slots(weekBlocks, in: wkPeriod, calendar: utc)[1])
+
+section("export")
+equal("a plain field is left alone", Export.field("hello"), "hello")
+equal("a comma gets quotes", Export.field("a, b"), "\"a, b\"")
+equal("a quote is doubled", Export.field("say \"hi\""), "\"say \"\"hi\"\"\"")
+let csvText = Export.blocksCSV(weekBlocks, catName: { $0 == "miso" ? "Miso" : $0 }, calendar: utc)
+equal("a header and a row for each block", csvText.split(separator: "\n").count, 7)
+check("the header names the columns", csvText.hasPrefix("start,minutes,title,tag,how it went,drifts,what pulled away,cat,the kitten,note\n"))
+check("a row has the time, the length and the tag", csvText.contains("2026-10-27T10:00:00Z,150,Writing,Writing,done,0,,Miso,came home,"))
+check("the reasons are in words", csvText.contains("The web; Phone"))
+equal("where it went as CSV", Export.wentCSV([WentRow(name: "Writer", ms: 41 * 60_000, share: 0.82, sites: [], distraction: false)]), "app,minutes,share\nWriter,41,82%\n")
+let md = Export.reviewMarkdown(title: "This week", range: "26 to 1 November", summary: said, f: wf, went: [WentRow(name: "Writer", ms: 41 * 60_000, share: 0.82, sites: [], distraction: false)])
+check("the review as Markdown", md.hasPrefix("# This week\n") && md.contains("## What pulled you away") && md.contains("Kept only on this Mac"))
+
+section("settings: timing")
+equal("remembering is on, and the shortcuts are empty", [MacSettings().recordTiming, MacSettings().shortcutStart.isEmpty, MacSettings().shortcutEnd.isEmpty], [true, true, true])
+
 // ---------------------------------------------------------------- with the engine change we asked for
 if args.count > 2 {
     section("with E.takeOff in the engine (docs/engine-takeoff.patch)")
