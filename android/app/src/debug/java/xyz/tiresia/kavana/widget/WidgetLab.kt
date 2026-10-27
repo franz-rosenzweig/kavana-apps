@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -92,7 +93,16 @@ class WidgetLab : Activity() {
             bound += id
         }
         WidgetStore.setDemo(this, ids)
-        setContentView(ScrollView(this).apply { addView(col, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)); setBackgroundColor(Color.parseColor("#E6E2DA")) })
+        setContentView(ScrollView(this).apply {
+            addView(col, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            setBackgroundColor(Color.parseColor("#E6E2DA"))
+            // edge to edge: keep the first label out from under the status bar, whatever its height
+            setOnApplyWindowInsetsListener { _, ins ->
+                val bars = ins.getInsets(WindowInsets.Type.systemBars())
+                col.setPadding(px(10), bars.top + px(8), px(10), bars.bottom + px(24))
+                ins
+            }
+        })
         host.startListening()
         WidgetUpdater.refresh(this)
     }

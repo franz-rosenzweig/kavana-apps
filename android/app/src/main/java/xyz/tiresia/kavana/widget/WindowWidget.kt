@@ -364,9 +364,9 @@ private fun Sub(text: String, pal: Pal) =
 
 /** A pill-shaped button: an optional little icon, and its words. */
 @Composable
-fun Pill(label: String, bg: Color, fg: Color, action: Action, modifier: GlanceModifier = GlanceModifier, icon: Int? = null, height: Dp = 44.dp, textSize: TextUnit = 15.sp) {
+fun Pill(label: String, bg: Color, fg: Color, action: Action, modifier: GlanceModifier = GlanceModifier, icon: Int? = null, height: Dp = 44.dp, textSize: TextUnit = 15.sp, pad: Dp = 0.dp) {
     Box(modifier.height(height).background(ColorProvider(bg)).cornerRadius(height / 2).clickable(action), contentAlignment = Alignment.Center) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(GlanceModifier.padding(horizontal = pad), verticalAlignment = Alignment.CenterVertically) {  // (a pill as wide as its words needs room, or its round ends cut into the letters)
             if (icon != null) {
                 Image(ImageProvider(icon), null, GlanceModifier.size(14.dp), colorFilter = ColorFilter.tint(ColorProvider(fg)))
                 Spacer(GlanceModifier.width(6.dp))

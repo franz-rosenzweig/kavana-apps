@@ -208,7 +208,7 @@ fun LaterContent(s: Snap) {
                 Spacer(GlanceModifier.width(8.dp))
                 Text(when (s.later.size) { 0 -> "nothing yet"; 1 -> "1 thing"; else -> "${s.later.size} things" }, style = TextStyle(color = ColorProvider(pal.muted), fontSize = 12.sp), maxLines = 1)
                 Spacer(GlanceModifier.defaultWeight())
-                Pill("Park a thought", pal.soft, pal.onSoft, actionStartActivity<ParkActivity>(), icon = R.drawable.w_plus, height = 34.dp, textSize = 13.sp)
+                Pill("Park a thought", pal.soft, pal.onSoft, actionStartActivity<ParkActivity>(), icon = R.drawable.w_plus, height = 34.dp, textSize = 13.sp, pad = 14.dp)
             }
             if (shown.isEmpty()) {
                 Box(GlanceModifier.fillMaxWidth().defaultWeight(), contentAlignment = Alignment.Center) {
