@@ -33,11 +33,19 @@ core() {
   node tools/check-web.js
 }
 
+# the self-test copy: the app with SelfTest/ in place of Main.swift, built once per run
+UI_BUILT=
+build_ui() {
+  [[ -n $UI_BUILT ]] && return
+  CHATALTUL_SELFTEST=1 CHATALTUL_BUNDLE_ID=xyz.tiresia.chataltul.selftest CHATALTUL_OUT=$OUT/ui CHATALTUL_SIGN=- CHATALTUL_OPT=${CHATALTUL_OPT:--Onone} \
+      ./build.sh >$OUT/ui-build.log 2>&1 || { grep -E "error" $OUT/ui-build.log | head -30; echo "the self-test copy didn't build (build/selftest/ui-build.log)" >&2; exit 1; }
+  UI_BUILT=1
+}
+
 # the app's own windows, drawn to PNG with nothing on the screen
 ui() {
   local APP=$OUT/ui/Chataltul.app
-  CHATALTUL_SELFTEST=1 CHATALTUL_BUNDLE_ID=xyz.tiresia.chataltul.selftest CHATALTUL_OUT=$OUT/ui CHATALTUL_SIGN=- CHATALTUL_OPT=${CHATALTUL_OPT:--Onone} \
-      ./build.sh >$OUT/ui-build.log 2>&1 || { grep -E "error" $OUT/ui-build.log | head -30; echo "the self-test copy didn't build (build/selftest/ui-build.log)" >&2; exit 1; }
+  build_ui
   rm -rf $OUT/shots; mkdir -p $OUT/shots
   local FOLDER; FOLDER=$(mktemp -d -t chataltul-ui)
   ( sleep 180; pkill -f "$APP/Contents/MacOS/Chataltul" ) 2>/dev/null &
@@ -49,9 +57,48 @@ ui() {
   grep -q "SELFTEST passed" $OUT/ui.log
 }
 
+# signing in and syncing, and the recordings, against a sandbox copy of the web server on this Mac
+sync() {
+  local WEB=${KAVANA_REPO:-}
+  for d in "$WEB" "${PWD:h:h}/kavana-web" "${PWD:h:h}/kavana"; do [[ -n $d && -f $d/server.js ]] && { WEB=$d; break; }; done
+  [[ -f $WEB/server.js ]] || { echo "SKIP sync: no clone of the web repo here (set KAVANA_REPO)"; return 0; }
+  command -v node >/dev/null || { echo "node is needed to run the sandbox server" >&2; exit 2; }
+  local APP=$OUT/ui/Chataltul.app
+  build_ui
+  local PORT; PORT=$(python3 -c "import socket; s=socket.socket(); s.bind(('127.0.0.1', 0)); print(s.getsockname()[1])")
+  STATE=$(mktemp -d -t chataltul-sandbox)
+  FOLDER=$(mktemp -d -t chataltul-sync)
+  (cd "$WEB" && exec env KAVANA_STATE=$STATE KAVANA_PORT=$PORT KAVANA_MAIL=outbox node server.js) >$OUT/sandbox.log 2>&1 &
+  SERVER=$!
+  trap 'kill $SERVER 2>/dev/null || true; rm -rf "$STATE" "$FOLDER"' EXIT
+  for i in {1..50}; do curl -sf http://127.0.0.1:$PORT/api/config >/dev/null && break; sleep 0.2; done
+  # the server answering there must be this one, on this Mac
+  lsof -nP -iTCP:$PORT -sTCP:LISTEN -t | grep -qx $SERVER || { echo "the sandbox server didn't start on :$PORT" >&2; cat $OUT/sandbox.log >&2; exit 1; }
+  ( sleep 240; pkill -f "$APP/Contents/MacOS/Chataltul" ) 2>/dev/null &
+  local watchdog=$!
+  CHATALTUL_OFFSCREEN=1 CHATALTUL_NO_NOTIFY=1 CHATALTUL_NO_WATCH=1 CHATALTUL_MUTE=1 CHATALTUL_FOLDER=$FOLDER CHATALTUL_FILE_SESSION=1 \
+      "$APP/Contents/MacOS/Chataltul" -SelfTestSync http://127.0.0.1:$PORT/ -SelfTestOutbox "$STATE/outbox.jsonl" -ApplePersistenceIgnoreState YES >$OUT/sync.log 2>&1 || true
+  kill $watchdog 2>/dev/null || true
+  grep -E "^(PASS|FAIL|  said|  \(gave|[0-9]+ passed|SELFTEST|UNCAUGHT|SIGNAL)" $OUT/sync.log || { echo "no result; see build/selftest/sync.log" >&2; tail -20 $OUT/sync.log; exit 1; }
+  grep -q "SELFTEST passed" $OUT/sync.log
+}
+
+# the app as it ships (no test code), started and left again: it must not crash on its way up
+launch() {
+  CHATALTUL_BUNDLE_ID=xyz.tiresia.chataltul.selftest CHATALTUL_OUT=$OUT/launch CHATALTUL_SIGN=- CHATALTUL_OPT=${CHATALTUL_OPT:--Onone} ./build.sh >$OUT/launch-build.log 2>&1 || { grep -E "error" $OUT/launch-build.log | head; exit 1; }
+  local FOLDER; FOLDER=$(mktemp -d -t chataltul-launch)
+  CHATALTUL_OFFSCREEN=1 CHATALTUL_QUIET_EXIT=1 CHATALTUL_QUIT_AFTER=4 CHATALTUL_MUTE=1 CHATALTUL_NO_WATCH=1 CHATALTUL_FOLDER=$FOLDER CHATALTUL_FILE_SESSION=1 \
+      $OUT/launch/Chataltul.app/Contents/MacOS/Chataltul -ApplePersistenceIgnoreState YES >$OUT/launch.log 2>&1 || true
+  rm -rf "$FOLDER"
+  grep -E "LAUNCH|UNCAUGHT|SIGNAL" $OUT/launch.log || { echo "the shipped app didn't start; see build/selftest/launch.log" >&2; tail -20 $OUT/launch.log; exit 1; }
+  grep -q "LAUNCH ok" $OUT/launch.log
+}
+
 case $MODE in
   core) core ;;
+  sync) sync ;;
+  launch) launch ;;
   ui) ui ;;
-  all) core; ui ;;
+  all) core; ui; sync; launch ;;
   *) echo "unknown mode $MODE" >&2; exit 2 ;;
 esac

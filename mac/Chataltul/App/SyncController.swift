@@ -156,7 +156,12 @@ final class SyncController: ObservableObject {
         refreshClient()
         guard emailOn == nil else { return }
         Task {
-            if let r = try? await client.api("GET", "api/config") { await main { self.emailOn = (r["email"] as? Bool) == true } }
+            do {
+                if let r = try await client.api("GET", "api/config") { await main { self.emailOn = (r["email"] as? Bool) == true } }
+            } catch {
+                await main { self.message = "Can't reach the server." }
+                NSLog("config: \(error)")
+            }
         }
     }
 
@@ -173,7 +178,7 @@ final class SyncController: ObservableObject {
     func signIn(email: String, code: String) {
         let e = email.trimmingCharacters(in: .whitespacesAndNewlines)
         let c = code.trimmingCharacters(in: .whitespacesAndNewlines)
-        run {
+        run(asking: "code") {
             let r = try await self.client.api("POST", "api/email/signin", ["email": e, "code": c])
             let created = (r?["created"] as? Bool) == true
             await self.joined(r ?? [:], existing: !created)
@@ -183,7 +188,7 @@ final class SyncController: ObservableObject {
 
     /// kind "signup" or "login" (a name or an email, and the password).
     func signIn(kind: String, name: String, password: String) {
-        run {
+        run(asking: "password") {
             let r = try await self.client.api("POST", kind == "signup" ? "api/signup" : "api/login", ["name": name, "password": password])
             await self.joined(r ?? [:], existing: kind == "login")
         }
@@ -235,26 +240,27 @@ final class SyncController: ObservableObject {
 
     // ---------------------------------------------------------------- plumbing
 
-    private func run(_ body: @escaping () async throws -> Void) {
+    /// `asking`: what the person was doing, so a refusal can be put in the right words ("code" or "password").
+    private func run(asking: String = "", _ body: @escaping () async throws -> Void) {
         refreshClient()
         busy = true
         message = nil
         Task {
             do { try await body() }
-            catch let e as ApiError { await main { self.message = Self.words(for: e) } }
+            catch let e as ApiError { await main { self.message = Self.words(for: e, asking: asking) } }
             catch { await main { self.message = "Can't reach the server." } }
             await main { self.busy = false }
         }
     }
 
-    static func words(for e: ApiError) -> String {
+    static func words(for e: ApiError, asking: String = "") -> String {
+        let m = (e.error ?? "").lowercased()
         switch e.status {
         case 429: return "Too many tries. Wait a few minutes."
-        case 401, 400, 403:
-            let m = (e.error ?? "").lowercased()
-            if m.contains("code") { return "That code didn't work. Ask for a new one." }
-            if m.contains("password") || m.contains("name") { return "That name or password didn't work." }
-            return e.error.map { $0.prefix(1).uppercased() + $0.dropFirst() + "." } ?? "That didn't work."
+        case 401 where asking == "code": return "That code didn't work. Ask for a new one."
+        case 401 where asking == "password": return "That name or password didn't work."
+        case 400 where m == "email": return "That doesn't look like an email address."
+        case 404 where m == "no email": return "This server doesn't send email. Use a name and a password."
         default: return e.error.map { $0.prefix(1).uppercased() + $0.dropFirst() + "." } ?? "The server had a problem (\(e.status))."
         }
     }

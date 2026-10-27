@@ -6,24 +6,10 @@ import SwiftUI
 // builds this in place of App/Main.swift, runs it as xyz.tiresia.chataltul.selftest in a folder of its own,
 // and reads the PASS/FAIL lines.
 
-private var failed = 0
-private var passed = 0
+var failed = 0
+var passed = 0
 func check(_ name: String, _ cond: Bool) {
     if cond { passed += 1; print("PASS \(name)") } else { failed += 1; print("FAIL \(name)") }
-}
-
-/// A crash must not pop a dialog on the screen of whoever is working: log it and leave quietly.
-func installQuietExit() {
-    NSSetUncaughtExceptionHandler { e in
-        FileHandle.standardError.write(Data("UNCAUGHT \(e.name.rawValue): \(e.reason ?? "")\n\(e.callStackSymbols.joined(separator: "\n"))\n".utf8))
-        _exit(70)
-    }
-    for s in [SIGSEGV, SIGABRT, SIGILL, SIGBUS, SIGTRAP] {
-        signal(s) { n in
-            FileHandle.standardError.write(Data("SIGNAL \(n)\n".utf8))
-            _exit(70)
-        }
-    }
 }
 
 let outDir = URL(fileURLWithPath: UserDefaults.standard.string(forKey: "SelfTestOut") ?? NSTemporaryDirectory()).appendingPathComponent("shots", isDirectory: true)
@@ -43,14 +29,22 @@ enum SelfTestMain {
 
 final class SelfTestDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ n: Notification) {
-        DispatchQueue.main.async {
-            do { try UIScenarios.run() } catch { print("FAIL scenarios: \(error)"); failed += 1 }
-            do { try LiveScenarios.run() } catch { print("FAIL live scenarios: \(error)"); failed += 1 }
+        // from a timer, not the main queue: a block on the main queue would keep the main queue from
+        // running the blocks the app's own async code needs while these tests wait on it
+        let t = Timer(timeInterval: 0.05, repeats: false) { _ in
+            if let base = UserDefaults.standard.string(forKey: "SelfTestSync") {
+                // against a sandbox copy of the web server on this Mac, never the real one
+                do { try SyncScenarios.run(base: base, outbox: URL(fileURLWithPath: UserDefaults.standard.string(forKey: "SelfTestOutbox") ?? "/nonexistent")) } catch { print("FAIL sync scenarios: \(error)"); failed += 1 }
+            } else {
+                do { try UIScenarios.run() } catch { print("FAIL scenarios: \(error)"); failed += 1 }
+                do { try LiveScenarios.run() } catch { print("FAIL live scenarios: \(error)"); failed += 1 }
+            }
             print("\(passed) passed, \(failed) failed")
             print(failed == 0 ? "SELFTEST passed" : "SELFTEST FAILED")
             fflush(stdout)
             _exit(failed == 0 ? 0 : 1)
         }
+        RunLoop.main.add(t, forMode: .common)
     }
 }
 

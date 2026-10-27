@@ -30,6 +30,7 @@ final class SoundPlayer {
         self.store = store
         lastState = store.state
         try? FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        if ProcessInfo.processInfo.environment["CHATALTUL_MUTE"] != nil { engine.mainMixerNode.outputVolume = 0 }   // tests play nothing out loud
     }
 
     /// Sounds are for a running block: they play while it runs and stop on a pause, a stop or the end.
