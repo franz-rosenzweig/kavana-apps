@@ -1,0 +1,24 @@
+--- a/web/engine.js
++++ b/web/engine.js
+@@ -806,6 +806,21 @@
+   touch(doc, b, now);
+ };
+ 
++// The Mac sat idle from `from` to `to` inside the running block, and the person says those minutes don't
++// count (the Mac app asks when they're back, and being away isn't drifting, so the kitten stays). It works
++// like a pause that lasted that long, found out afterwards: the end and every ping still to come move later
++// by it, and it's left out of the time on the block.
++E.takeOff = (doc, from, to, now) => {
++  const b = E.running(doc);
++  const d = Math.round(Number(to) - Number(from));
++  if (!b || b.paused || !(d > 0) || Number(from) < b.start || Number(to) > now) bad('takeOff');
++  b.end += d;
++  for (const p of b.plan) p.at += d;
++  b.pausedTotal = (b.pausedTotal || 0) + d;
++  touch(doc, b, now);
++  return b;
++};
++
+ E.extend = (doc, id, more, now) => {
+   const b = E.awaiting(doc);
+   if (!b || b.id !== id || !E.MORE.includes(Number(more)) || E.running(doc)) bad('extend');
