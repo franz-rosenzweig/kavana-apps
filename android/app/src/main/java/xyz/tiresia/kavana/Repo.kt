@@ -111,6 +111,7 @@ class Repo(private val app: Context) {
         if ((a == null || a.paused != null) && !SoundMix.breathing) Sound.stop()
         Alarms.daily(app, st.view.settings.daily)
         FocusService.sync(app, st)
+        xyz.tiresia.kavana.widget.WidgetUpdater.onState(app, st) // the home-screen widgets draw from a snapshot of this
         // Pings whose time came are shown by whatever noticed it: the alarm, the open screen's own
         // timer, a button. (If only the alarm showed them, the screen's timer, which keeps running
         // while Kavana is in the background, could move a check-in along first and it was never seen.)

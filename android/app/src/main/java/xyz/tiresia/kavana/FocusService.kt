@@ -54,6 +54,7 @@ class FocusService : Service() {
                     val a = repo.state.value?.view?.active
                     if (a?.pauseEnds != null && a.pauseEnds <= System.currentTimeMillis()) repo.act(op("tick"))
                     refresh(repo.state.value) // the progress bar
+                    xyz.tiresia.kavana.widget.WidgetUpdater.refresh(this@FocusService) // the widgets' ring, and the kitten's stage
                 }
             }
         }

@@ -7,4 +7,12 @@
         <item name="android:windowSplashScreenBackground">@color/ic_launcher_background</item>
         <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
     </style>
+    <!-- A window with nothing in it, for a dialog that floats over another app (ParkActivity) -->
+    <style name="Theme.Kavana.Transparent" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
 </resources>

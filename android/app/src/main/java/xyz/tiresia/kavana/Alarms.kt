@@ -84,6 +84,11 @@ class BootReceiver : BroadcastReceiver() {
 class ActionReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) = async {
         val repo = KavanaApp.repo
+        // Pause and Resume on the countdown have no block of their own: they're for the one that's running
+        when (intent.action) {
+            PAUSE -> { repo.act(op("pause")); return@async }
+            RESUME -> { repo.act(op("resume")); return@async }
+        }
         val id = intent.getStringExtra("block") ?: return@async
         when (intent.action) {
             ANSWER -> repo.act(op("answer", "id" to id, "n" to intent.getIntExtra("n", 0), "answer" to intent.getStringExtra("answer")))
@@ -95,5 +100,7 @@ class ActionReceiver : BroadcastReceiver() {
     companion object {
         const val ANSWER = "xyz.tiresia.kavana.ANSWER"
         const val OUTCOME = "xyz.tiresia.kavana.OUTCOME"
+        const val PAUSE = "xyz.tiresia.kavana.PAUSE"
+        const val RESUME = "xyz.tiresia.kavana.RESUME"
     }
 }

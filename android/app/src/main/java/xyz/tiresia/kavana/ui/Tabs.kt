@@ -151,6 +151,22 @@ fun SettingsTab(s: UiState, act: MainActivity, onTab: (Tab) -> Unit) {
                 }) { Text("Test") }
             }
         }
+        Group("Widgets", foot = "Or press and hold on your home screen, tap Widgets, and look for Chataltul. Titles show on the home screen; with this on they don't, and the lock screen never shows them.") {
+            xyz.tiresia.kavana.widget.WidgetPins.KINDS.forEach { w ->
+                Item(w.name, Icons.Rounded.Widgets, k.mint, sub = w.about, onClick = { xyz.tiresia.kavana.widget.WidgetPins.request(ctx, w) }) {
+                    Text("Add", color = MaterialTheme.colorScheme.primary)
+                }
+                GroupDivider()
+            }
+            Item("Quick Settings tiles", Icons.Rounded.Dashboard, k.indigo, sub = "Start, Park a thought and Focus sound", onClick = { xyz.tiresia.kavana.widget.Tiles.requestAdd(ctx) }) {
+                Text("Add", color = MaterialTheme.colorScheme.primary)
+            }
+            GroupDivider()
+            var hide by remember { mutableStateOf(xyz.tiresia.kavana.widget.WidgetPins.hideTitles) }
+            Item("Hide block titles", Icons.Rounded.VisibilityOff, k.gray, sub = "On widgets and the lock screen") {
+                Switch(hide, { hide = it; xyz.tiresia.kavana.widget.WidgetPins.hideTitles = it })
+            }
+        }
         Group("During a block") {
             Item("Keep the screen on", Icons.Rounded.LightMode, k.orange) {
                 Switch(awake, { awake = it; repo.prefs.edit().putBoolean("awake", it).apply() })

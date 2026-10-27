@@ -33,10 +33,21 @@ object SoundMix {
     fun set(m: List<Pair<String, Float>>) {
         mix = m.take(2)
         KavanaApp.repo.prefs.edit().putString("mix", mix.joinToString(",") { "${it.first}:${"%.2f".format(java.util.Locale.ROOT, it.second)}" }).apply()
+        xyz.tiresia.kavana.widget.WidgetUpdater.changed(KavanaApp.app)
     }
 
-    /** What's in the mix that you can play (free, or bought in the shop). */
-    fun playable(s: UiState) = mix.filter { owned(s, it.first) }
+    /** The widget's pause: the mix stays as it is, but nothing plays until it's played again. */
+    private var mutedState by mutableStateOf(KavanaApp.repo.prefs.getBoolean("soundMuted", false))
+    var muted: Boolean
+        get() = mutedState
+        set(v) {
+            mutedState = v
+            KavanaApp.repo.prefs.edit().putBoolean("soundMuted", v).apply()
+            xyz.tiresia.kavana.widget.WidgetUpdater.changed(KavanaApp.app)
+        }
+
+    /** What's in the mix that you can play (free, or bought in the shop), unless the widget's pause has it muted. */
+    fun playable(s: UiState) = if (muted) emptyList() else mix.filter { owned(s, it.first) }
     fun owned(s: UiState, id: String) = Sound.byId(id)?.free == true || s.owns("sound-$id")
     fun label(s: UiState) = playable(s).joinToString(" + ") { Sound.byId(it.first)?.name ?: it.first }.ifEmpty { "Sound" }
 }

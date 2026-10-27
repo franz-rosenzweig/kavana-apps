@@ -84,5 +84,7 @@ dependencies {
     implementation("androidx.concurrent:concurrent-futures-ktx:1.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    // The home-screen widgets (stable; 1.3 is still alpha)
+    implementation("androidx.glance:glance-appwidget:1.2.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
