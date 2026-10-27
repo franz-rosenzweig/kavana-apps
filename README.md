@@ -1,6 +1,6 @@
 # Chataltul apps
 
-These are the native apps for Chataltul (חתלתול, Hebrew for kitten), my focus app. It used to be called Kavana, which is why the repos and the web address still say kavana. The web version lives at https://stuffs.tiresia.xyz/kavana/ (code in franz-rosenzweig/kavana), and this repo is the phone side of it.
+These are the native apps for Chataltul (חתלתול, Hebrew for kitten), my focus app. It used to be called Kavana, which is why the repos and the web address still say kavana. The web version lives at https://stuffs.tiresia.xyz/kavana/ (code in franz-rosenzweig/kavana), and this repo is the native side of it: Android, and now the Mac.
 
 ## Android (android/)
 
@@ -42,6 +42,45 @@ adb install -r Chataltul-<version>.apk
 ```
 
 The engine files and pictures come from the web repo with `tools/sync-web.sh` (it records the commit in `assets/js/WEB_COMMIT`; `KAVANA_REPO=<clone>` syncs from a clone on the Mac), and `node tools/test-bridge.js` runs them the way the phone does, with no Android needed.
+
+## Mac (mac/)
+
+![Chataltul for Mac: the popover when it's ready, while focusing, when the kitten came home, and when I came back after being away](docs/mac-popover.webp)
+
+Chataltul for Mac is a native Mac app, written in SwiftUI and AppKit. It keeps me focused while I work on the Mac: a kitten in the menu bar, a timer, check-ins, and a cat that walks over the apps and sites that distract me. Like the Android app it runs the web app's own `engine.js` (here in the Mac's JavaScriptCore) and draws everything itself, so the kittens, the treats and the check-ins follow the same rules on the Mac, the phone and the web. This is version 0.1, the part that keeps me focused. The app window with Today and the month, the full Blocklist, the soft full-screen breaks and the reports come next.
+
+What it does:
+- **The menu bar item** is the kitten, and while a block runs, a ring that empties with the time next to it. It has a state for ready, focusing, a check-in waiting (an orange dot), paused, on a break and came home.
+- **The popover** is one card: the round window with the kitten growing in it, the clock, an optional title, Focus, Break and Long, and Start. While a block runs it has Pause (five minutes at most), park a thought and Stop (inside the first ten seconds it takes the block back instead). When the kitten comes home it asks how it went, with a note, and offers the break.
+- **Check-ins are the cat peeking up in the corner of the screen** with Yes and Drifted, on top of whatever I'm doing, without taking the keyboard from it. ⌃⌥Y and ⌃⌥D answer them from anywhere, and only while one is waiting, so those keys are free the rest of the time. If the cat is off, or I don't answer, it's an ordinary notification.
+- **The speed bump.** While a block runs and I open an app on my list, or a site on my list in Safari, Chrome, Brave, Arc or Edge, the cat walks over it: "Boo! You're focusing.", 15 seconds to come back, and a big "Back to work" that takes me back to the app I was in. "Leave anyway" has to be held for two seconds, and then the kitten wanders off and the block goes on without it. There is no pause, snooze or close button on it. If I do nothing, the 15 seconds run out and the kitten wanders off the same way. Once it has gone, the cat doesn't come up again for that block.
+- **Park a thought** with ⌃⌥P, from any app: a small field opens, and the thought goes to Later and onto the block.
+- **Start a block from anywhere** with ⌃⌥Space: it opens the popover with the cursor in the title, and pressing it again starts the block.
+- **Away from the Mac.** More than two minutes without a key or a click in the middle of a block (or the Mac asleep or locked that long) asks "count them?" when I'm back. Being away is not drifting, so the kitten stays. "Take them off" needs a small change in the web engine that isn't there yet, so for now that button is hidden and the minutes simply count (`mac/docs/engine-takeoff.md`).
+- **Sounds** are the web's own 39, up to two at once. All but brown and white noise are recordings, each downloaded the first time it's picked and kept in the app's folder. The list of sounds is read out of the web repo's `sounds.js` and never typed in here. A kitten that comes home says hello with a meow.
+- **Sign in by email code and sync with the web**, the same API as the Android app. "Open the café" opens the web app, which shows the same data once I'm signed in. Without an account nothing leaves the Mac.
+- **Settings**: General, Blocks and check-ins, Shortcuts, Blocklist, and Account and sync. Open at login is a switch in General.
+
+![The cat in the corner with a check-in, the end of a block, the speed bump over a site, and the park field](docs/mac-cat.webp)
+
+![The menu bar item in each state, in light and dark](docs/mac-menubar.webp)
+
+![Settings: the Blocklist in dark, and the Shortcuts in light](docs/mac-settings.webp)
+
+These pictures are the app's own windows, drawn by the self-test from the real views and the real engine.
+
+What it doesn't do yet: the app window (Today, the month, the café in 3D), the full Blocklist (wait it out, locked, schedules, a daily allowance), full-screen and eye breaks, where each block went app by app, the week in review and export. The painted cats are still pictures that breathe a little on the cat's cards; they don't blink or swish their tails yet, which needs the living-cat rig and comes later. "Napping together" and friends are not here either, as on Android.
+
+**What it asks for.** Only two things, and only when it needs them. Notifications, the first time a block starts. And, the first time a browser with sites on my list is in front during a block, my OK to read the address of its front tab: macOS asks once for each browser (Automation), and the cat says plainly what it is about to ask first. If I say no, Chataltul just doesn't watch that browser and carries on with the app list. Firefox and Zen can't be read this way, so their sites aren't watched; I can list the Firefox or Zen app itself instead.
+
+### Building it
+
+```
+cd mac
+./build.sh && open build/Chataltul.app        # builds with the Command Line Tools, signed with a development identity if there is one
+```
+
+It needs macOS 14 or newer, Xcode's command line tools and `brew install xcodegen`. `project.yml` is the XcodeGen spec for Xcode, and `build.sh` reads the same settings. The engine files, the paintings and the sound list come from the web repo with `mac/tools/sync-web.sh` (it records the commit in `Resources/js/WEB_COMMIT`): never edit the copies. `mac/selftest.sh` tests everything without me at the keyboard: `core` (the engine, its pings, the cat names in them, the away op, the speed bump's rules, the sound list), `ui` (every screen drawn to a PNG, and the real app wired up with its windows far off the screen), `sync` (signing in and syncing against a sandbox copy of the web server on this Mac, never the real one), and `launch`. More in [mac/README.md](mac/README.md).
 
 ## Living cats (motion/)
 

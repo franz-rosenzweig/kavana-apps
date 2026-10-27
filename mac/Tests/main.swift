@@ -319,6 +319,24 @@ equal("old files without new keys still load", try JSONDecoder().decode(MacSetti
 equal("the server defaults to the web app's own", MacSettings().serverURL, "https://stuffs.tiresia.xyz/kavana/")
 equal("the cycle: a long break after 4", [Cycle().isLong(afterBlocks: 3), Cycle().isLong(afterBlocks: 4), Cycle().isLong(afterBlocks: 8)], [false, true, true])
 
+// ---------------------------------------------------------------- with the engine change we asked for
+if args.count > 2 {
+    section("with E.takeOff in the engine (docs/engine-takeoff.patch)")
+    let patched = try EngineHost(js: URL(fileURLWithPath: args[2]))
+    try patched.load(nil)
+    let t0 = Int(Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 27, hour: 10))!.timeIntervalSince1970 * 1000)
+    var pr = try patched.run("tick", now: t0)
+    equal("the engine says it can take minutes off", pr.state.canTakeOff, true)
+    pr = try patched.run("start", ["intention": "Away", "minutes": 25, "style": "ask"], now: t0)
+    let end0 = pr.state.view.active?.end ?? 0
+    pr = try patched.run("takeOff", ["from": t0 + 3 * MIN, "to": t0 + 9 * MIN], now: t0 + 10 * MIN)
+    equal("takeOff has no error", pr.error, nil)
+    equal("the end moved later by 6 minutes", pr.state.view.active?.end, end0 + 6 * MIN)
+    equal("the end ping moved with it", pr.state.pings.first { $0.kind == "end" }?.at, end0 + 6 * MIN)
+    equal("the kitten is still growing", pr.state.view.active?.kitten, "growing")
+    equal("a gap in the future is refused", try patched.run("takeOff", ["from": t0 + 8 * MIN, "to": t0 + 30 * MIN], now: t0 + 11 * MIN).error, "takeOff")
+}
+
 print("")
 print("\(passed) passed, \(failed) failed")
 if failed == 0 { print("SELFTEST passed"); exit(0) } else { print("SELFTEST FAILED"); exit(1) }

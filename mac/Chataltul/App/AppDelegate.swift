@@ -232,11 +232,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func second(_ now: Int) {
         seconds += 1
         status.refresh(now: now)
-        if store.running, seconds % 2 == 0 { away.sample(now: now) }
-        else if !store.running { away.sample(now: now) }
+        if seconds % 2 == 0 { away.sample(now: now) }
         if bumpable { watcher.look() }
         apply(speed.tick(block: bumpBlock(), now: now))
-        if let t = store.toast { _ = t }
     }
 
     // ---------------------------------------------------------------- the speed bump

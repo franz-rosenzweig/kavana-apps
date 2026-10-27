@@ -61,6 +61,7 @@ struct CatCardView: View {
                             }.frame(maxWidth: .infinity)
                         }
                         .buttonStyle(Chip(fill: b.primary ? Palette.accent : Palette.soft, text: b.primary ? Palette.onAccent : Palette.ink, size: 14, radius: 12, padding: EdgeInsets(top: 11, leading: 10, bottom: 11, trailing: 10)))
+                        .probe("cat.\(b.label)")
                     }
                 }
             }
@@ -158,6 +159,7 @@ struct SpeedBumpView: View {
                 .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.soft))
                 Button(action: model.backToWork) { Text("Back to work").frame(maxWidth: .infinity) }
                     .buttonStyle(Chip(fill: Palette.accent, text: Palette.onAccent, size: 17, radius: 14, padding: EdgeInsets(top: 15, leading: 12, bottom: 15, trailing: 12)))
+                    .probe("back")
                 holdButton
                 Text("Hold for 2 seconds. \(c.catName) wanders off, and the block keeps going without \(c.catName).")
                     .font(.system(size: 12)).foregroundStyle(Palette.muted).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).padding(.top, -4)
@@ -203,6 +205,7 @@ struct SpeedBumpView: View {
         .accessibilityElement()
         .accessibilityLabel("Leave anyway. Hold for two seconds.")
         .accessibilityAddTraits(.isButton)
+        .probe("hold")
     }
 }
 

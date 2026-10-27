@@ -158,3 +158,22 @@ enum Symbol {
     static func check() -> some View { Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)) }
     static func drift() -> some View { Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 14, weight: .semibold)) }
 }
+
+/// Where a control is, for the live tests that press it with a real mouse event. It only records anything in
+/// a test run (when windows are kept off the screen), and costs nothing otherwise.
+enum Probe {
+    static var frames: [String: CGRect] = [:]
+    static let on = ProcessInfo.processInfo.environment["CHATALTUL_OFFSCREEN"] != nil
+}
+
+extension View {
+    @ViewBuilder func probe(_ name: String) -> some View {
+        if Probe.on {
+            background(GeometryReader { g in
+                Color.clear
+                    .onAppear { Probe.frames[name] = g.frame(in: .global) }
+                    .onChange(of: g.frame(in: .global)) { f in Probe.frames[name] = f }
+            })
+        } else { self }
+    }
+}

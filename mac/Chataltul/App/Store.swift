@@ -18,8 +18,6 @@ final class Store: ObservableObject {
     @Published var settings: MacSettings { didSet { if settings != oldValue { settingsStore.write(settings) } } }
     /// "You were away from the Mac": waiting for Count them or Take them off.
     @Published var awayPrompt: AwayReturn?
-    /// A short line that says what just happened ("Miso wandered off while you were away").
-    @Published var toast: String?
 
     private var tracker = PingTracker()
     /// Pings that came due, for whoever shows them (the cat, a notification).

@@ -66,6 +66,7 @@ final class PopoverController {
     func toggle() { isShown ? hide() : show(key: true) }
 
     func show(key: Bool) {
+        if panel.isVisible { if key { panel.makeKey() }; return }
         guard let a = anchor() else { return }
         midX = a.midX
         top = a.minY - 4

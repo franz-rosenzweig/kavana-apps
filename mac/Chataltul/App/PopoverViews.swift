@@ -160,7 +160,7 @@ private struct OfferedBreak: View {
             CatImage(path: Art.nap(store.state.companion)).frame(width: 34, height: 34)
             VStack(alignment: .leading, spacing: 1) {
                 Text(long ? "Long break · \(mins) min" : "Break · \(mins) min").font(.system(size: 13, weight: .bold)).foregroundStyle(Palette.ink)
-                Text("Stand up, stretch, get some water.").font(.system(size: 12)).foregroundStyle(Palette.muted).lineLimit(1)
+                Text("Stand up and stretch.").font(.system(size: 12)).foregroundStyle(Palette.muted).lineLimit(1)
             }
             Spacer(minLength: 0)
             Button("Start") { store.startBreak(mins) }
@@ -364,7 +364,7 @@ struct HomePane: View {
             CatImage(path: Art.nap(block.cat)).frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 1) {
                 Text(long ? "Long break · \(mins) min" : "Break · \(mins) min").font(.system(size: 13, weight: .bold)).foregroundStyle(Palette.ink)
-                Text("Stand up, stretch, get some water.").font(.system(size: 12)).foregroundStyle(Palette.muted).lineLimit(1)
+                Text("Stand up and stretch.").font(.system(size: 12)).foregroundStyle(Palette.muted).lineLimit(1)
             }
             Spacer(minLength: 0)
             Button("Start") { file(nil); store.startBreak(mins) }
@@ -441,7 +441,7 @@ struct BreakPane: View {
                     Text(fmtClock(left)).font(clockFont(46)).foregroundStyle(Palette.ink)
                     Label11(text: "BREAK", color: Palette.accent, spacing: 1.6)
                 }
-                Text("Stand up, stretch, get some water.").font(.system(size: 13)).foregroundStyle(Palette.muted)
+                Text("Stand up and stretch.").font(.system(size: 13)).foregroundStyle(Palette.muted)
                 Button { store.stopBreak() } label: { Text("End break").frame(maxWidth: .infinity) }
                     .buttonStyle(Chip(size: 14, radius: 11, padding: EdgeInsets(top: 11, leading: 12, bottom: 11, trailing: 12)))
                 Footer(left: store.todayLine, actions: actions)

@@ -7,6 +7,23 @@ import SwiftUI
 enum LiveScenarios {
     static let MIN = 60_000
 
+    /// A real mouse press on a control of a panel, held for `seconds` (the runloop keeps running while it is
+    /// held, and the window's own gesture sees it). `name` is what the view called itself with .probe().
+    @discardableResult
+    static func press(_ panel: NSWindow?, _ name: String, hold seconds: Double = 0.05) -> Bool {
+        guard let panel, let view = panel.contentView, let f = Probe.frames[name] else { print("  (no control called \"\(name)\" found)"); return false }
+        // the view lays out from the top left; the window's points count up from the bottom
+        let p = NSPoint(x: f.midX, y: view.bounds.height - f.midY)
+        func event(_ type: NSEvent.EventType) -> NSEvent? {
+            NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: panel.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1)
+        }
+        if let e = event(.leftMouseDown) { panel.sendEvent(e) }
+        spin(seconds)
+        if let e = event(.leftMouseUp) { panel.sendEvent(e) }
+        spin(0.1)
+        return true
+    }
+
     static func spin(_ s: Double = 0.15) { RunLoop.current.run(until: Date().addingTimeInterval(s)) }
 
     static func run() throws {
@@ -44,7 +61,9 @@ enum LiveScenarios {
         check("speed bump: the card comes up over a listed app", app.bump.isShown && app.bump.model.card?.catName == "Miso")
         check("speed bump: it counts 15 seconds", app.bump.model.graceMs == 15_000)
         Shot.renderPanel(app.bump.panel, name: "live-speedbump", dark: false)
-        app.bump.model.leaveHeld()
+        check("a plain tap on Leave anyway doesn't send the kitten off", press(app.bump.panel, "hold", hold: 0.15) && store.active?.kitten == "growing" && app.bump.isShown)
+        check("holding it for a second and a half doesn't either", press(app.bump.panel, "hold", hold: 1.5) && store.active?.kitten == "growing" && app.bump.isShown)
+        check("held for two seconds, with a real press, it does", press(app.bump.panel, "hold", hold: 2.4))
         spin()
         check("leave anyway: the kitten wandered off", store.active?.kitten == "gone" && store.active?.goneWhy == "away")
         check("leave anyway: the block keeps going", store.active != nil)
@@ -81,7 +100,7 @@ enum LiveScenarios {
         app.looked(.app(fake), "test.fake.app")
         spin()
         check("back to work: the card is up", app.bump.isShown)
-        app.bump.model.backToWork()
+        check("back to work: a real click on the button", press(app.bump.panel, "back"))
         spin()
         check("back to work: the card goes, the kitten stays", !app.bump.isShown && store.active?.kitten == "growing")
         check("back to work: it remembers where they were", app.speed.previous == "test.writer")
@@ -110,7 +129,7 @@ enum LiveScenarios {
         check("check-in: the cat comes up", app.cat.kind == "checkin")
         check("check-in: Yes and Drifted are claimed while it waits", app.hotkeys.isSet("yes") && app.hotkeys.isSet("drifted"))
         Shot.renderPanel(app.cat.panel, name: "live-checkin", dark: true)
-        app.answer("yes")
+        check("check-in: a real click on Yes", press(app.cat.panel, "cat.Yes"))
         spin()
         check("check-in: Yes is answered", store.active?.pending == nil)
         check("check-in: the cat goes and the keys are free again", app.cat.kind == nil && !app.hotkeys.isSet("yes") && !app.hotkeys.isSet("drifted"))

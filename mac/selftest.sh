@@ -26,11 +26,16 @@ core() {
   swiftc -O -sdk "$(xcrun --show-sdk-path)" -target "$(uname -m)-apple-macos$MACOS" -swift-version 5 \
       Chataltul/Core/*.swift Tests/main.swift -o $OUT/core-tests 2>&1 | grep -E "error|warning: unre" || true
   [[ -x $OUT/core-tests ]] || { echo "the core tests didn't build" >&2; exit 1; }
-  $OUT/core-tests Chataltul/Resources | tee $OUT/core.log | grep -E "^(FAIL|---|[0-9]+ passed|SELFTEST)"
+  # the engine with the change we ask the web repo for (docs/engine-takeoff.patch), in a copy
+  rm -rf $OUT/js-takeoff && cp -R Chataltul/Resources/js $OUT/js-takeoff
+  mkdir -p $OUT/js-takeoff/web && cp $OUT/js-takeoff/engine.js $OUT/js-takeoff/web/engine.js
+  (cd $OUT/js-takeoff && patch -s -p1 -i ../../../docs/engine-takeoff.patch && cp web/engine.js engine.js && rm -r web)
+  $OUT/core-tests Chataltul/Resources $OUT/js-takeoff | tee $OUT/core.log | grep -E "^(FAIL|---|[0-9]+ passed|SELFTEST)"
   grep -q "SELFTEST passed" $OUT/core.log
 
   # the web's own checks: the engine files are the web's, and so is the sound list
   node tools/check-web.js
+  node tools/test-takeoff.js | tail -1
 }
 
 # the self-test copy: the app with SelfTest/ in place of Main.swift, built once per run
