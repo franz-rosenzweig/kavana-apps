@@ -46,6 +46,9 @@ public struct UiState: Decodable {
     public var canPause: Bool
     public var owned: [String]
     public var prices: [String: Int]
+    /// The things for the café (cats.js ITEMS) that this account owns, with their side and back paintings.
+    public var things: [CafeThing]
+    public var theme: String
     public var tally: [String: Int]
     /// What this engine can do beyond the web's (bridge.js, marked MAC).
     public var canTakeOff: Bool
@@ -64,6 +67,8 @@ public struct UiState: Decodable {
         let shop = (c.o("shop") as ShopInfo?)
         owned = shop?.owned ?? []
         prices = shop?.prices ?? [:]
+        things = (shop?.items ?? []).filter { i in shop?.owned.contains(i.id) ?? false }
+        theme = view.settings.theme
         tally = c.v("tally", [:])
         canTakeOff = (c.o("caps") as Caps?)?.takeOff ?? false
     }
@@ -79,9 +84,24 @@ public struct UiState: Decodable {
 struct ShopInfo: Decodable {
     var owned: [String]
     var prices: [String: Int]
+    var items: [CafeThing]
     init(from decoder: Decoder) throws {
         let c = try decoder.keyed()
-        owned = c.v("owned", []); prices = c.v("prices", [:])
+        owned = c.v("owned", []); prices = c.v("prices", [:]); items = c.v("items", [])
+    }
+}
+
+/// A thing for the café: its id and, where painted, its side and back.
+public struct CafeThing: Decodable, Equatable {
+    public var id: String
+    public var name: String
+    public var side: String?
+    public var back: String?
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.keyed()
+        id = c.v("id", ""); name = c.v("name", "")
+        let v: [String: String]? = c.o("views")
+        side = v?["side"]; back = v?["back"]
     }
 }
 
@@ -126,14 +146,16 @@ public struct Settings: Decodable {
     public var pause: String
     public var overtime: Bool
     public var closeCounts: Bool
+    public var theme: String
 
-    public init() { interval = 15; style = "ask"; goal = 0; cat = true; companion = "miso"; tags = []; tag = ""; mode = "timer"; pause = "five"; overtime = false; closeCounts = true }
+    public init() { interval = 15; style = "ask"; goal = 0; cat = true; companion = "miso"; tags = []; tag = ""; mode = "timer"; pause = "five"; overtime = false; closeCounts = true; theme = "classic" }
     public init(from decoder: Decoder) throws {
         let c = try decoder.keyed()
         interval = c.v("interval", 15); style = c.v("style", "ask"); goal = c.v("goal", 0)
         cat = c.v("cat", true); companion = c.v("companion", "miso")
         tags = c.v("tags", []); tag = c.v("tag", ""); mode = c.v("mode", "timer")
         pause = c.v("pause", "five"); overtime = c.v("overtime", false); closeCounts = c.v("closeCounts", true)
+        theme = c.v("theme", "classic")
     }
 }
 
@@ -178,10 +200,11 @@ public struct Block: Decodable {
     public var title: String { titleOf(intention, tag) }
 }
 
-public struct Brk: Decodable {
+public struct Brk: Decodable, Equatable {
     public var minutes: Int
     public var start: Int
     public var end: Int
+    public init(minutes: Int, start: Int, end: Int) { self.minutes = minutes; self.start = start; self.end = end }
     public init(from decoder: Decoder) throws {
         let c = try decoder.keyed()
         minutes = c.v("minutes", 0); start = c.v("start", 0); end = c.v("end", 0)
@@ -219,9 +242,14 @@ public struct Hist: Decodable {
     public var kitten: String
     public var treats: Int
     public var tag: String?
+    public var mode: String
+    public var note: String
+    /// What pulled the person away at each Drifted check-in that was given a reason (engine ids: phone, web, ...).
+    public var whys: [String]
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.keyed()
+        mode = c.v("mode", "timer"); note = c.v("note", ""); whys = c.v("whys", [])
         id = c.v("id", ""); start = c.v("start", 0); intention = c.v("intention", ""); minutes = c.v("minutes", 0)
         actual = c.v("actual", 1); stopped = c.v("stopped", false); outcome = c.o("outcome"); drifts = c.v("drifts", 0)
         cat = c.v("cat", "miso"); kitten = c.v("kitten", "home"); treats = c.v("treats", 0); tag = c.o("tag")
@@ -264,13 +292,15 @@ public struct CatInfo: Decodable {
     public var portrait: String?
     public var kitten: String?
     public var nap: String?
+    /// walk, loaf, stretch, wash, back: paintings some cats have, for the café and the break.
+    public var poses: [String: String]?
 
-    public init(id: String, name: String) { self.id = id; self.name = name; about = ""; met = true; adopt = false; portrait = nil; kitten = nil; nap = nil }
+    public init(id: String, name: String) { self.id = id; self.name = name; about = ""; met = true; adopt = false; portrait = nil; kitten = nil; nap = nil; poses = nil }
     public init(from decoder: Decoder) throws {
         let c = try decoder.keyed()
         id = c.v("id", "miso"); name = c.v("name", "Miso"); about = c.v("about", "")
         met = c.v("met", false); adopt = c.v("adopt", false)
-        portrait = c.o("portrait"); kitten = c.o("kitten"); nap = c.o("nap")
+        portrait = c.o("portrait"); kitten = c.o("kitten"); nap = c.o("nap"); poses = c.o("poses")
     }
 }
 

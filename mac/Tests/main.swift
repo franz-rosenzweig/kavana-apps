@@ -319,6 +319,280 @@ equal("old files without new keys still load", try JSONDecoder().decode(MacSetti
 equal("the server defaults to the web app's own", MacSettings().serverURL, "https://stuffs.tiresia.xyz/kavana/")
 equal("the cycle: a long break after 4", [Cycle().isLong(afterBlocks: 3), Cycle().isLong(afterBlocks: 4), Cycle().isLong(afterBlocks: 8)], [false, true, true])
 
+// ---------------------------------------------------------------- stage 2: lists, modes, schedules
+var utc = Calendar(identifier: .gregorian)
+utc.timeZone = TimeZone(identifier: "UTC")!
+func day(_ y: Int, _ m: Int, _ d: Int, _ h: Int = 10, _ min: Int = 0) -> Date { utc.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: min))! }
+func ms(_ d: Date) -> Int { Int(d.timeIntervalSince1970 * 1000) }
+
+section("lists and the first version's shape")
+let oldShape = try JSONDecoder().decode(Blocklist.self, from: Data("{\"apps\":[{\"bundleID\":\"a.b\",\"name\":\"AB\"}],\"sites\":[\"x.com\"]}".utf8))
+equal("the first version's two lists become one", oldShape.lists.count, 1)
+equal("with its apps and sites", [oldShape.apps.count, oldShape.sites.count], [1, 1])
+equal("called Distractions", oldShape.lists[0].name, "Distractions")
+var multi = Blocklist(lists: [
+    GuardList(id: "d", name: "Distractions", apps: [ListedApp(bundleID: "com.apple.MobileSMS", name: "Messages")], sites: ["youtube.com"], mode: .speedBump),
+    GuardList(id: "n", name: "News", sites: ["news.ycombinator.com", "bbc.co.uk"], mode: .waitItOut, when: GuardWhen(.weekdays), allowanceMin: 15),
+    GuardList(id: "m", name: "Messages", apps: [ListedApp(bundleID: "net.whatsapp.WhatsApp", name: "WhatsApp")], mode: .locked, when: GuardWhen(.always)),
+])
+equal("a site is found in the list that has it", multi.hit(url: "https://www.bbc.co.uk/news", browser: "Safari")?.list.id, "n")
+equal("an app is found in its list", multi.hit(bundleID: "net.whatsapp.WhatsApp")?.list.id, "m")
+equal("a subdomain is covered", multi.hit(url: "https://m.youtube.com/", browser: "Chrome")?.list.id, "d")
+equal("something not listed isn't", multi.hit(url: "https://example.org/", browser: "Chrome") == nil, true)
+equal("adding to a chosen list", { _ = multi.add(site: "lobste.rs", to: "n"); return multi.lists[1].sites.last ?? "" }(), "lobste.rs")
+let roundTrip = try JSONDecoder().decode(Blocklist.self, from: JSONEncoder().encode(multi))
+equal("lists survive a round trip", roundTrip, multi)
+
+section("what a list asks for, and when")
+let mon10 = day(2026, 10, 26, 10), mon18 = day(2026, 10, 26, 18), sat10 = day(2026, 10, 31, 10)
+let blockEnd = ms(day(2026, 10, 26, 10, 25))
+let dist = multi.lists[0], news = multi.lists[1], chat = multi.lists[2]
+equal("a block: the list's own mode, until the block ends", GuardPolicy.enforcement(for: dist, now: mon10, blockEnd: blockEnd, usedMs: 0, calendar: utc)?.mode, .speedBump)
+equal("a block: and until when", GuardPolicy.enforcement(for: dist, now: mon10, blockEnd: blockEnd, usedMs: 0, calendar: utc)?.until, blockEnd)
+equal("no block, 'during blocks' only: nothing", GuardPolicy.enforcement(for: dist, now: mon10, blockEnd: nil, usedMs: 0, calendar: utc) == nil, true)
+equal("a weekday inside 9 to 5, with an allowance left: free", GuardPolicy.enforcement(for: news, now: mon10, blockEnd: nil, usedMs: 6 * 60_000, calendar: utc) == nil, true)
+let used = GuardPolicy.enforcement(for: news, now: mon10, blockEnd: nil, usedMs: 15 * 60_000, calendar: utc)
+equal("allowance used up: it asks for the wait", used?.mode, .waitItOut)
+equal("and says why", used?.reason, .allowanceUsed)
+equal("and until 5 PM", used?.until, ms(day(2026, 10, 26, 17)))
+equal("after 5 PM: nothing", GuardPolicy.enforcement(for: news, now: mon18, blockEnd: nil, usedMs: 99 * 60_000, calendar: utc) == nil, true)
+equal("on Saturday: nothing", GuardPolicy.enforcement(for: news, now: sat10, blockEnd: nil, usedMs: 99 * 60_000, calendar: utc) == nil, true)
+equal("always: locked outside a block too", GuardPolicy.enforcement(for: chat, now: sat10, blockEnd: nil, usedMs: 0, calendar: utc)?.mode, .locked)
+equal("the allowance counts only outside blocks, inside the window", [
+    GuardPolicy.countsUsage(for: news, now: mon10, blockEnd: nil, usedMs: 0, calendar: utc),
+    GuardPolicy.countsUsage(for: news, now: mon10, blockEnd: blockEnd, usedMs: 0, calendar: utc),
+    GuardPolicy.countsUsage(for: news, now: mon18, blockEnd: nil, usedMs: 0, calendar: utc),
+    GuardPolicy.countsUsage(for: news, now: mon10, blockEnd: nil, usedMs: 15 * 60_000, calendar: utc),
+], [true, false, false, false])
+equal("a locked list locks the block", GuardPolicy.locksTheBlock(multi), true)
+equal("no locked list, no lock", GuardPolicy.locksTheBlock(Blocklist.starter), false)
+
+section("a day's usage")
+var usage = DayUsage(day: DayUsage.key(day(2026, 10, 26), calendar: utc))
+usage.add("n", ms: 6 * 60_000, at: day(2026, 10, 26, 11))
+equal("it adds up", usage.used("n", at: day(2026, 10, 26, 12)), 6 * 60_000)
+equal("and starts again on a new day", usage.used("n", at: day(2026, 10, 27, 9)), 0)
+
+section("wait it out")
+let mHit = GuardHit(list: chat, target: .app(ListedApp(bundleID: "net.whatsapp.WhatsApp", name: "WhatsApp")))
+let waitEnf = Enforcement(mode: .waitItOut, reason: .block, listName: "News", until: blockEnd)
+var other = OtherGuard()
+var oa = other.front(hit: nil, enforcement: nil, bundleID: "com.apple.TextEdit", cat: "miso", catName: "Miso", now: t)
+equal("nothing listed: nothing", oa, [])
+oa = other.front(hit: mHit, enforcement: waitEnf, bundleID: "net.whatsapp.WhatsApp", cat: "miso", catName: "Miso", now: t)
+guard case .show(let wcard)? = oa.first else { print("FAIL wait card"); exit(1) }
+equal("a listed app brings the wait", wcard.kind, .waitItOut)
+equal("30 seconds long", wcard.waitMs, 30_000)
+equal("it counts down", wcard.line(now: t + 7_000), "WhatsApp opens in 23 seconds. Most urges pass by then.")
+equal("not over at 29 seconds", other.tick(now: t + 29_000), [])
+equal("over at 30: the card goes", other.tick(now: t + 30_000), [.hide])
+equal("and the visit may stay", other.front(hit: mHit, enforcement: waitEnf, bundleID: "net.whatsapp.WhatsApp", cat: "miso", catName: "Miso", now: t + 31_000), [])
+_ = other.front(hit: nil, enforcement: nil, bundleID: "com.apple.TextEdit", cat: "miso", catName: "Miso", now: t + 40_000)
+equal("leaving for 2 seconds and coming back is the same visit", other.front(hit: mHit, enforcement: waitEnf, bundleID: "net.whatsapp.WhatsApp", cat: "miso", catName: "Miso", now: t + 42_000), [])
+_ = other.front(hit: nil, enforcement: nil, bundleID: "com.apple.TextEdit", cat: "miso", catName: "Miso", now: t + 50_000)
+var nextVisit = other.front(hit: mHit, enforcement: waitEnf, bundleID: "net.whatsapp.WhatsApp", cat: "miso", catName: "Miso", now: t + 60_000)
+equal("leaving for 10 seconds, it waits again, every time", nextVisit.count == 1 && { if case .show = nextVisit[0] { return true } else { return false } }(), true)
+oa = other.front(hit: nil, enforcement: nil, bundleID: "com.apple.TextEdit", cat: "miso", catName: "Miso", now: t + 65_000)
+equal("leaving during the wait takes the card away", oa, [.hide])
+equal("Back to work with no card does nothing", other.backToWork(), [])
+other = OtherGuard()
+_ = other.front(hit: nil, enforcement: nil, bundleID: "com.apple.TextEdit", cat: "miso", catName: "Miso", now: t)
+_ = other.front(hit: mHit, enforcement: waitEnf, bundleID: "net.whatsapp.WhatsApp", cat: "miso", catName: "Miso", now: t + 1000)
+equal("back to work goes to where they were", other.backToWork(), [.hide, .activate("com.apple.TextEdit")])
+equal("and the same app in front doesn't bring it straight back", other.front(hit: mHit, enforcement: waitEnf, bundleID: "net.whatsapp.WhatsApp", cat: "miso", catName: "Miso", now: t + 2000), [])
+
+section("locked, and used up")
+let lockEnf = Enforcement(mode: .locked, reason: .block, listName: "Messages", until: blockEnd)
+other = OtherGuard()
+oa = other.front(hit: mHit, enforcement: lockEnf, bundleID: "net.whatsapp.WhatsApp", cat: "miso", catName: "Miso", now: t)
+guard case .show(let lcard)? = oa.first else { print("FAIL lock card"); exit(1) }
+equal("a locked app brings the lock", lcard.kind, .locked)
+equal("it says until when", lcard.title, "Locked until \(clockTime(blockEnd)).")
+equal("and it never opens by itself", other.tick(now: t + 10 * MIN), [])
+let usedEnf = Enforcement(mode: .waitItOut, reason: .allowanceUsed, listName: "News", until: ms(day(2026, 10, 26, 17)))
+other = OtherGuard()
+oa = other.front(hit: GuardHit(list: news, target: .site(domain: "bbc.co.uk", browser: "Safari")), enforcement: usedEnf, bundleID: "com.apple.Safari", cat: "miso", catName: "Miso", now: t)
+if case .show(let ucard)? = oa.first { equal("used up says so", ucard.kind, .usedUp) } else { check("used up card", false) }
+equal("a speed bump isn't this guard's", other.front(hit: GuardHit(list: dist, target: .site(domain: "youtube.com", browser: "Chrome")), enforcement: Enforcement(mode: .speedBump, reason: .block, listName: "Distractions", until: blockEnd), bundleID: "com.google.Chrome", cat: "miso", catName: "Miso", now: t + 1000), [.hide])
+
+// ---------------------------------------------------------------- breaks
+section("breaks")
+equal("Pomodoro is 25 and 5", [CyclePreset.pomodoro.minutes!.focus, CyclePreset.pomodoro.minutes!.rest], [25, 5])
+equal("52 / 17", [CyclePreset.fiftyTwo.minutes!.focus, CyclePreset.fiftyTwo.minutes!.rest], [52, 17])
+equal("Deep work is 90 and 20", [CyclePreset.deep.minutes!.focus, CyclePreset.deep.minutes!.rest], [90, 20])
+equal("Flowtime is a stopwatch", CyclePreset.flow.stopwatch && CyclePreset.flow.minutes == nil, true)
+equal("a flow break is a fifth of the stretch, 5 to 25", [CyclePreset.flowBreak(focusedMinutes: 20), CyclePreset.flowBreak(focusedMinutes: 70), CyclePreset.flowBreak(focusedMinutes: 180)], [5, 14, 25])
+let bs = BreakSettings()
+equal("the ideas are the mockup's", bs.ideas.prefix(3).map { $0 }, ["Stand up and stretch", "Get some water", "Look out of a window"])
+equal("an idea and others to turn to", [bs.ideaFor(0).main, bs.ideaFor(0).others.first ?? ""], ["Stand up and stretch", "Get some water"])
+equal("ideas wrap round", bs.ideaFor(6).main, "Stand up and stretch")
+equal("no ideas still says something", try JSONDecoder().decode(BreakSettings.self, from: Data("{\"ideas\":[]}".utf8)).ideaFor(0).main, "Take a breath.")
+
+section("eye breaks")
+var eye = EyeBreakTimer(everyMin: 20, seconds: 20)
+equal("none before a block", eye.check(now: t, running: true, busy: false), false)
+eye.blockStarted(at: t)
+equal("none in the first 19 minutes", eye.check(now: t + 19 * MIN, running: true, busy: false), false)
+equal("it waits while a call is on", eye.check(now: t + 20 * MIN, running: true, busy: true), false)
+equal("and comes when the call is over", eye.check(now: t + 22 * MIN, running: true, busy: false), true)
+equal("once", eye.check(now: t + 22 * MIN + 1000, running: true, busy: false), false)
+eye.finish(at: t + 22 * MIN + 20_000)
+equal("the next is a full 20 minutes later", eye.nextAt, t + 22 * MIN + 20_000 + 20 * MIN)
+equal("a pause is no time on the block", eye.check(now: t + 50 * MIN, running: false, busy: false), false)
+equal("away for 30 seconds counts as one", eye.awayFor(ms: 30_000, now: t + 60 * MIN), true)
+equal("away for 5 seconds doesn't", eye.awayFor(ms: 5_000, now: t + 61 * MIN), false)
+equal("so the next one moved", eye.nextAt, t + 80 * MIN)
+eye.blockEnded()
+equal("no block, no eye breaks", eye.nextAt == nil && !eye.check(now: t + 200 * MIN, running: true, busy: false), true)
+
+// ---------------------------------------------------------------- insights
+section("insights")
+func hist(_ date: Date, _ min: Int, tag: String? = nil, kitten: String = "home", outcome: String? = "done", drifts: Int = 0) -> Hist {
+    var o = ["id": "\(ms(date))", "start": ms(date), "actual": min, "minutes": min, "kitten": kitten, "drifts": drifts] as [String: Any]
+    if let tag { o["tag"] = tag }
+    if let outcome { o["outcome"] = outcome }
+    return try! JSONDecoder().decode(Hist.self, from: JSONSerialization.data(withJSONObject: o))
+}
+let hs = [hist(day(2026, 10, 26, 9, 30), 50, tag: "Writing"), hist(day(2026, 10, 26, 10, 30), 40, tag: "Reading"), hist(day(2026, 10, 26, 11, 40), 9, tag: "Study", kitten: "gone", outcome: nil, drifts: 1),
+          hist(day(2026, 10, 25, 14), 30, tag: "Writing"), hist(day(2026, 10, 24, 14), 30), hist(day(2026, 9, 30, 14), 60, tag: "Work")]
+let today = Insights.period(.day, containing: day(2026, 10, 26, 12), calendar: utc)
+let todayBlocks = Insights.blocks(hs, in: today)
+equal("today's blocks", todayBlocks.count, 3)
+equal("today's minutes", Insights.minutes(todayBlocks), 99)
+equal("cats home, cats gone", [Insights.home(todayBlocks), Insights.wandered(todayBlocks)], [2, 1])
+equal("outcomes", [Insights.outcomes(todayBlocks).done, Insights.outcomes(todayBlocks).partly], [2, 0])
+equal("drifts", Insights.drifts(todayBlocks), 1)
+let week = Insights.period(.week, containing: day(2026, 10, 28), calendar: utc)
+equal("the week starts on Monday", utc.component(.weekday, from: week.start), 2)
+equal("a week of seven days", (week.to - week.from) / 86_400_000, 7)
+equal("this week's minutes", Insights.minutes(Insights.blocks(hs, in: week)), 99)
+equal("by day, Monday first", Insights.slots(Insights.blocks(hs, in: week), in: week, calendar: utc).prefix(2).map { $0 }, [99, 0])
+let oct = Insights.period(.month, containing: day(2026, 10, 15), calendar: utc)
+equal("October has 31 slots", Insights.slots([], in: oct, calendar: utc).count, 31)
+equal("October's minutes", Insights.minutes(Insights.blocks(hs, in: oct)), 159)
+let sept = Insights.before(oct, calendar: utc)
+equal("the month before is September", utc.component(.month, from: sept.start), 9)
+equal("compared with it", Insights.compare(159, Insights.minutes(Insights.blocks(hs, in: sept))), "+1 h 39 min")
+equal("by hour, today", Insights.slots(todayBlocks, in: today, calendar: utc)[9] + Insights.slots(todayBlocks, in: today, calendar: utc)[10], 50 - 0 + 30 + 0 + 0 == 80 ? 80 : 80)
+equal("by tag, biggest first", Insights.byTag(todayBlocks).map { $0.tag }, ["Writing", "Reading", "Study"])
+equal("the busiest hour is 10", Insights.byHour(todayBlocks, calendar: utc).enumerated().max { $0.element < $1.element }?.offset, 10)
+equal("days in a row", Insights.streak(hs, today: day(2026, 10, 26, 12), calendar: utc), 3)
+equal("yesterday still counts until today ends", Insights.streak(Array(hs.dropFirst(3)), today: day(2026, 10, 26, 8), calendar: utc), 2)
+equal("a year has twelve slots", Insights.slots([], in: Insights.period(.year, containing: day(2026, 5, 5), calendar: utc), calendar: utc).count, 12)
+
+section("settings: breaks and the cycle")
+let ms2 = MacSettings()
+equal("full-screen breaks are on, strict is off", [ms2.breaks.fullScreen, ms2.breaks.strict], [true, false])
+equal("eye breaks every 20 minutes for 20 seconds", [ms2.breaks.eyeEveryMin, ms2.breaks.eyeSeconds], [20, 20])
+equal("breaks are offered, not started", ms2.breaks.start, .offer)
+let bsRound = try JSONDecoder().decode(MacSettings.self, from: JSONEncoder().encode(ms2))
+equal("break settings survive a round trip", bsRound, ms2)
+
+// ---------------------------------------------------------------- stage 3: where it went, streaks, the week in words, export
+section("where it went")
+var log = TimingLog()
+for _ in 0..<41 { log.add(block: "b1", start: t, bundleID: "com.apple.TextEdit", name: "Writer", ms: 60_000) }
+for _ in 0..<4 { log.add(block: "b1", start: t, bundleID: "com.apple.Safari", name: "Safari", ms: 60_000, site: ("youtube.com", "Safari")) }
+for _ in 0..<2 { log.add(block: "b1", start: t, bundleID: "com.apple.Safari", name: "Safari", ms: 60_000, site: ("library.example", "Safari")) }
+for _ in 0..<3 { log.add(block: "b1", start: t, bundleID: "com.apple.mail", name: "Mail", ms: 60_000) }
+equal("a block's time adds up by app", log.blocks["b1"]?.totalMs, 50 * 60_000)
+equal("and by site", log.blocks["b1"]?.sites["youtube.com"]?.ms, 4 * 60_000)
+let wrows = Went.rows(log.timings(for: ["b1", "nope"]), blocklist: Blocklist(apps: [ListedApp(bundleID: "com.apple.mail", name: "Mail")], sites: ["youtube.com"]))
+equal("the biggest is first", wrows.first?.name, "Writer")
+equal("the shares add up to the whole", Int((wrows.reduce(0) { $0 + $1.share } * 100).rounded()), 100)
+equal("a browser's line names its sites", wrows.first { $0.name == "Safari" }?.label, "Safari: youtube.com, library.example")
+equal("what is on a list is marked", wrows.filter { $0.distraction }.map { $0.name }.sorted(), ["Mail", "Safari"])
+equal("a block with no record has no rows", Went.rows([]).count, 0)
+var many = TimingLog()
+for (i, ms) in [50, 40, 30, 20, 10, 5, 3, 2].enumerated() { many.add(block: "m", start: t, bundleID: "a\(i)", name: "App \(i)", ms: ms * 60_000) }
+let folded = Went.rows(many.timings(for: ["m"]), limit: 4)
+equal("more than the limit folds the rest into one line", folded.count, 4)
+equal("called Other", folded.last?.name, "Other")
+log.prune(before: t + 1)
+equal("old blocks are pruned", log.isEmpty, true)
+let tStore = TimingStore(folder: FileManager.default.temporaryDirectory.appendingPathComponent("ct-\(UUID().uuidString)"))
+try? FileManager.default.createDirectory(at: tStore.file.deletingLastPathComponent(), withIntermediateDirectories: true)
+var tl = TimingLog(); tl.add(block: "z", start: t, bundleID: "x", name: "X", ms: 5000)
+tStore.write(tl)
+equal("it survives the file", tStore.read(), tl)
+tStore.erase()
+equal("and can be erased", tStore.read().isEmpty, true)
+
+section("streaks with a pause")
+func dayHist(_ y: Int, _ m: Int, _ d: Int) -> Hist { hist(day(y, m, d, 10), 30) }
+// Mon 26 Oct 2026 is a Monday
+let fri = day(2026, 10, 30, 12), sun = day(2026, 11, 1, 12)
+var st = Streaks.withPause([dayHist(2026, 10, 26), dayHist(2026, 10, 27), dayHist(2026, 10, 28), dayHist(2026, 10, 29), dayHist(2026, 10, 30)], today: fri, calendar: utc)
+equal("Monday to Friday is five in a row", st.days, 5)
+equal("with the week's pause still there", st.pausesLeft, 1)
+st = Streaks.withPause([dayHist(2026, 10, 26), dayHist(2026, 10, 27), dayHist(2026, 10, 28), dayHist(2026, 10, 29), dayHist(2026, 10, 30), dayHist(2026, 11, 1)], today: sun, calendar: utc)
+equal("a missed Saturday is carried over", st.days, 6)
+equal("by the week's pause", [st.pausedDays.count, st.pausesLeft], [1, 0])
+equal("which was Saturday", utc.component(.weekday, from: st.pausedDays[0]), 7)
+st = Streaks.withPause([dayHist(2026, 10, 26), dayHist(2026, 10, 28), dayHist(2026, 10, 30)], today: fri, calendar: utc)
+equal("only one pause a week: the second miss ends it", st.days, 2)
+st = Streaks.withPause([dayHist(2026, 10, 26), dayHist(2026, 10, 27), dayHist(2026, 10, 30)], today: fri, calendar: utc)
+equal("two missed days in a row end it", st.days, 1)
+st = Streaks.withPause([dayHist(2026, 10, 28), dayHist(2026, 10, 29)], today: day(2026, 10, 30, 8), calendar: utc)
+equal("today isn't over: yesterday still counts, no pause used", [st.days, st.pausesLeft], [2, 1])
+st = Streaks.withPause([dayHist(2026, 10, 22), dayHist(2026, 10, 23), dayHist(2026, 10, 25), dayHist(2026, 10, 26)], today: day(2026, 10, 26, 12), calendar: utc)
+equal("a pause in last week is that week's, and this week's is still there", [st.days, st.pausedDays.count, st.pausesLeft], [4, 1, 1])
+equal("no blocks, no streak", Streaks.withPause([], today: fri, calendar: utc).days, 0)
+
+section("the week in words")
+let wkPeriod = Insights.period(.week, containing: day(2026, 10, 28), calendar: utc)
+func wh(_ d: Date, _ min: Int, tag: String?, drifts: Int = 0, whys: [String] = [], outcome: String? = "done") -> Hist {
+    var o = ["id": "\(ms(d))", "start": ms(d), "actual": min, "minutes": min, "kitten": "home", "drifts": drifts, "whys": whys] as [String: Any]
+    if let tag { o["tag"] = tag }
+    if let outcome { o["outcome"] = outcome }
+    return try! JSONDecoder().decode(Hist.self, from: JSONSerialization.data(withJSONObject: o))
+}
+let weekBlocks = [wh(day(2026, 10, 26, 10), 120, tag: "Writing"), wh(day(2026, 10, 27, 10), 150, tag: "Writing"), wh(day(2026, 10, 27, 16), 40, tag: "Work", drifts: 1, whys: ["web"]),
+                  wh(day(2026, 10, 28, 16), 60, tag: "Reading", drifts: 2, whys: ["web", "phone"]), wh(day(2026, 10, 29, 15), 60, tag: "Writing", drifts: 1, whys: ["web"], outcome: "partly"), wh(day(2026, 10, 30, 11), 90, tag: "Writing")]
+let wf = Review.facts(blocks: weekBlocks, period: wkPeriod, goalMin: 120, streak: StreakInfo(days: 5, pausedDays: [], pausesLeft: 1), calendar: utc)
+equal("the week's minutes", wf.minutes, 520)
+equal("best on Tuesday", wf.bestDay?.name, "Tuesday")
+equal("Writing took most", wf.topTag, "Writing")
+equal("the web pulled most", wf.reasons.first?.id, "web")
+equal("and 3 times", wf.reasons.first?.times, 3)
+equal("the drifts were late in the day", wf.lateDrifts, true)
+equal("days that met the goal", wf.daysMet, 2)
+let said = Review.summary(wf)
+check("the summary starts with a verdict and the numbers", said.hasPrefix("An uneven week: 8 h 40 min over 6 blocks, best on Tuesday."))
+check("and names the tag", said.contains("Writing took most of it."))
+check("and what pulled away, and when", said.contains("usually the web, mostly in blocks that began after 3 PM"))
+check("and suggests the speed bump", said.contains("might want the speed bump on"))
+equal("a week with no blocks says so", Review.summary(WeekFacts()).hasPrefix("No blocks yet"), true)
+equal("a phone drift is out of reach", Review.summary(Review.facts(blocks: [wh(day(2026, 10, 26, 10), 60, tag: nil, drifts: 1, whys: ["phone"])], period: wkPeriod, goalMin: 0, streak: wf.streak, calendar: utc)).contains("out of Chataltul's reach"), true)
+equal("best day question", Review.answer("which day was my best day?", wf), "Your best day was Tuesday, with 3 h 10 min.")
+equal("total question", Review.answer("How much did I do?", wf), "8 h 40 min over 6 blocks.")
+check("distraction question", Review.answer("what distracted me", wf).hasPrefix("What pulled you away: the web 3 times"))
+check("tag question", Review.answer("what did I work on most", wf).contains("Writing"))
+check("streak question", Review.answer("what's my streak", wf).contains("5 days in a row"))
+check("a question it can't answer says what it can", Review.answer("why is the sky blue", wf).contains("I can answer"))
+check("facts for a model", Review.factsText(wf, title: "This week").contains("Best day: Tuesday"))
+equal("reasons have words", [Reason.label("web"), Reason.label("hungry")], ["The web", "Hunger"])
+
+let stacked = Insights.slotsByTag(weekBlocks, in: wkPeriod, calendar: utc)
+equal("stacked by tag: Tuesday has Writing and Work", [stacked[1]["Writing"] ?? 0, stacked[1]["Work"] ?? 0], [150, 40])
+equal("and each day adds up to the day", stacked[1].values.reduce(0, +), Insights.slots(weekBlocks, in: wkPeriod, calendar: utc)[1])
+
+section("export")
+equal("a plain field is left alone", Export.field("hello"), "hello")
+equal("a comma gets quotes", Export.field("a, b"), "\"a, b\"")
+equal("a quote is doubled", Export.field("say \"hi\""), "\"say \"\"hi\"\"\"")
+let csvText = Export.blocksCSV(weekBlocks, catName: { $0 == "miso" ? "Miso" : $0 }, calendar: utc)
+equal("a header and a row for each block", csvText.split(separator: "\n").count, 7)
+check("the header names the columns", csvText.hasPrefix("start,minutes,title,tag,how it went,drifts,what pulled away,cat,the kitten,note\n"))
+check("a row has the time, the length and the tag", csvText.contains("2026-10-27T10:00:00Z,150,Writing,Writing,done,0,,Miso,came home,"))
+check("the reasons are in words", csvText.contains("The web; Phone"))
+equal("where it went as CSV", Export.wentCSV([WentRow(name: "Writer", ms: 41 * 60_000, share: 0.82, sites: [], distraction: false)]), "app,minutes,share\nWriter,41,82%\n")
+let md = Export.reviewMarkdown(title: "This week", range: "26 to 1 November", summary: said, f: wf, went: [WentRow(name: "Writer", ms: 41 * 60_000, share: 0.82, sites: [], distraction: false)])
+check("the review as Markdown", md.hasPrefix("# This week\n") && md.contains("## What pulled you away") && md.contains("Kept only on this Mac"))
+
+section("settings: timing")
+equal("remembering is on, and the shortcuts are empty", [MacSettings().recordTiming, MacSettings().shortcutStart.isEmpty, MacSettings().shortcutEnd.isEmpty], [true, true, true])
+
 // ---------------------------------------------------------------- with the engine change we asked for
 if args.count > 2 {
     section("with E.takeOff in the engine (docs/engine-takeoff.patch)")

@@ -8,6 +8,9 @@ struct PopoverActions {
     var park: () -> Void = {}
     var quit: () -> Void = {}
     var allowBrowsers: () -> Void = {}
+    /// Yes or Drifted, through the app (Drifted asks what pulled the person away).
+    var answer: (String) -> Void = { _ in }
+    var openWeek: () -> Void = {}
 }
 
 enum BlockKind: String { case focus, short, long }
@@ -30,12 +33,12 @@ struct PopoverRoot: View {
             SoundsPane(store: store, done: { sounds = false })
         } else if let away = store.awayPrompt, store.active != nil {
             AwayPane(store: store, away: away)
+        } else if let brk = store.onBreak, store.active == nil {
+            BreakPane(store: store, actions: actions, brk: brk)
         } else if let b = store.awaiting {
             HomePane(store: store, actions: actions, block: b)
         } else if store.active != nil {
             FocusPane(store: store, actions: actions, sounds: { sounds = true })
-        } else if let brk = store.onBreak {
-            BreakPane(store: store, actions: actions, brk: brk)
         } else {
             ReadyPane(store: store, actions: actions, sounds: { sounds = true })
         }
@@ -49,7 +52,8 @@ private struct Header: View {
     var actions: PopoverActions
     var body: some View {
         HStack {
-            Color.clear.frame(width: 30, height: 30)
+            Button { actions.openWeek() } label: { Image(systemName: "chart.bar").font(.system(size: 14, weight: .medium)) }
+                .buttonStyle(IconButton()).accessibilityLabel("Your week")
             Spacer()
             Text(center).font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.muted)
             Spacer()
@@ -95,7 +99,7 @@ struct ReadyPane: View {
 
     private var minutes: Int {
         switch kind {
-        case .focus: return store.settings.focusMinutes
+        case .focus: return store.preset.stopwatch ? 0 : store.settings.focusMinutes
         case .short: return store.settings.cycle.shortBreak
         case .long: return store.settings.cycle.longBreak
         }
@@ -137,12 +141,12 @@ struct ReadyPane: View {
     private var summary: String {
         let s = store.engineSettings
         let check = s.style == "ask" ? "check in every \(s.interval) min" : "nudges every \(s.interval) min"
-        return "Pomodoro · \(check) · \(store.mixLabel)"
+        return "\(store.preset.title) · \(check) · \(store.mixLabel)"
     }
 
     private func start() {
         switch kind {
-        case .focus: store.start(title: title.trimmingCharacters(in: .whitespacesAndNewlines)); title = ""
+        case .focus: store.start(title: title.trimmingCharacters(in: .whitespacesAndNewlines), stopwatch: store.preset.stopwatch); title = ""
         case .short: store.startBreak(store.settings.cycle.shortBreak)
         case .long: store.startBreak(store.settings.cycle.longBreak)
         }
@@ -154,8 +158,8 @@ private struct OfferedBreak: View {
     @ObservedObject var store: Store
     var minutes: Int
     var body: some View {
-        let long = store.settings.cycle.isLong(afterBlocks: store.blocksToday)
-        let mins = long ? store.settings.cycle.longBreak : minutes
+        let long = store.preset != .flow && store.settings.cycle.isLong(afterBlocks: store.blocksToday)
+        let mins = store.breakAfter(nil) == 0 ? minutes : store.breakAfter(nil)
         HStack(spacing: 10) {
             CatImage(path: Art.nap(store.state.companion)).frame(width: 34, height: 34)
             VStack(alignment: .leading, spacing: 1) {
@@ -175,11 +179,11 @@ private struct OfferedBreak: View {
 private struct KindPicker: View {
     @Binding var kind: BlockKind
     @ObservedObject var store: Store
-    private let presets: [BlockKind: [Int]] = [.focus: [15, 20, 25, 30, 45, 50, 60, 90], .short: [3, 5, 10, 15], .long: [10, 15, 20, 30]]
+    private let presets: [BlockKind: [Int]] = [.focus: [15, 20, 25, 30, 45, 50, 52, 60, 90], .short: [5, 10, 15, 17, 20], .long: [10, 15, 20, 25, 30]]
 
     var body: some View {
         HStack(spacing: 2) {
-            tab(.focus, "Focus", store.settings.focusMinutes)
+            tab(.focus, "Focus", store.preset.stopwatch ? 0 : store.settings.focusMinutes)
             tab(.short, "Break", store.settings.cycle.shortBreak)
             tab(.long, "Long", store.settings.cycle.longBreak)
         }
@@ -191,7 +195,9 @@ private struct KindPicker: View {
         let on = kind == k
         return VStack(spacing: 0) {
             Text(name).font(.system(size: 13, weight: on ? .bold : .semibold))
-            if on {
+            if mins == 0 {
+                Text("stopwatch").font(.system(size: 12)).foregroundStyle(on ? Palette.accentText : Palette.muted)
+            } else if on {
                 Menu {
                     ForEach(presets[k] ?? [], id: \.self) { m in Button("\(m) min") { set(k, m) } }
                 } label: { Text("\(mins)m").font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.accentText) }
@@ -263,9 +269,9 @@ struct FocusPane: View {
                 Text("A check-in is waiting").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
             }
             HStack(spacing: 8) {
-                Button { store.answer("yes") } label: { HStack { Symbol.check(); Text("Yes") }.frame(maxWidth: .infinity) }
+                Button { actions.answer("yes") } label: { HStack { Symbol.check(); Text("Yes") }.frame(maxWidth: .infinity) }
                     .buttonStyle(Chip(fill: Palette.accent, text: Palette.onAccent, size: 14, radius: 10))
-                Button { store.answer("drifted") } label: { HStack { Symbol.drift(); Text("Drifted") }.frame(maxWidth: .infinity) }
+                Button { actions.answer("drifted") } label: { HStack { Symbol.drift(); Text("Drifted") }.frame(maxWidth: .infinity) }
                     .buttonStyle(Chip(size: 14, radius: 10))
             }
         }
@@ -293,19 +299,27 @@ struct FocusPane: View {
                     .buttonStyle(Chip(size: 15, radius: 11, padding: EdgeInsets(top: 11, leading: 12, bottom: 11, trailing: 12)))
             }
             Button { actions.park() } label: { Symbol.park() }.buttonStyle(IconButton(size: 42)).accessibilityLabel("Park a thought")
-            Button {
-                if now <= b.cancelUntil || sure { store.stop(); sure = false }
-                else { sure = true; DispatchQueue.main.asyncAfter(deadline: .now() + 3) { sure = false } }
-            } label: {
-                if sure { Text("Sure?").font(.system(size: 12, weight: .bold)) } else { Symbol.stop() }
+            if let until = store.lockedUntil {
+                // a locked list is on: the block can't be stopped, which would be the way round it
+                Image(systemName: "lock.fill").font(.system(size: 13)).foregroundStyle(Palette.muted)
+                    .frame(width: 42, height: 42).background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(Palette.soft))
+                    .help("Locked until \(clockTime(until))").accessibilityLabel("Locked until \(clockTime(until))")
+            } else {
+                Button {
+                    if now <= b.cancelUntil || sure { store.stop(); sure = false }
+                    else { sure = true; DispatchQueue.main.asyncAfter(deadline: .now() + 3) { sure = false } }
+                } label: {
+                    if sure { Text("Sure?").font(.system(size: 12, weight: .bold)) } else { Symbol.stop() }
+                }
+                .buttonStyle(IconButton(size: 42)).accessibilityLabel(now <= b.cancelUntil ? "Cancel" : "Stop")
             }
-            .buttonStyle(IconButton(size: 42)).accessibilityLabel(now <= b.cancelUntil ? "Cancel" : "Stop")
         }
     }
 
     private func guarding(_ b: Block) -> String {
         let n = store.settings.blocklist.count
-        guard store.settings.speedBump, n > 0, b.kitten == "growing" else { return store.mixLabel == "Sound" ? "" : store.mixLabel }
+        if let u = store.lockedUntil { return "Locked until \(clockTime(u))" }
+        guard store.settings.speedBump, n > 0 else { return store.mixLabel == "Sound" ? "" : store.mixLabel }
         return "Watching \(n) apps and sites until \(clockTime(b.end))"
     }
 }
@@ -345,7 +359,8 @@ struct HomePane: View {
                     }
                 }
             }
-            breakOffer(store.state.view.breakOffer?.minutes ?? store.settings.cycle.shortBreak)
+            WhereItWent(rows: store.settings.recordTiming ? store.wentRows(for: [block.id]) : [], limit: 3)
+            breakOffer(store.settings.cycle.shortBreak)
             Footer(left: "\(store.blocksToday) of \(store.perDay) blocks · \(fmtMin(store.state.stats.today)) today", actions: actions)
         }
         .padding(.init(top: 16, leading: 18, bottom: 14, trailing: 18))
@@ -358,8 +373,8 @@ struct HomePane: View {
     }
 
     private func breakOffer(_ minutes: Int) -> some View {
-        let long = store.settings.cycle.isLong(afterBlocks: store.blocksToday + (block.stopped ? 0 : 0))
-        let mins = long ? store.settings.cycle.longBreak : minutes
+        let long = store.preset != .flow && store.settings.cycle.isLong(afterBlocks: store.blocksToday)
+        let mins = store.breakAfter(block)
         return HStack(spacing: 10) {
             CatImage(path: Art.nap(block.cat)).frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 1) {
@@ -380,6 +395,46 @@ struct HomePane: View {
         if !n.isEmpty { store.note(block.id, n) }
         store.outcome(block.id, outcome)
         note = ""
+    }
+}
+
+/// "Where it went": the apps the block spent its time in, kept only on this Mac (screen 9).
+struct WhereItWent: View {
+    var rows: [WentRow]
+    var limit = 3
+    private let palette: [Color] = [Palette.tealLight, Color(hex: 0xFFCF8A), Color(hex: 0xA99BE8), Color(hex: 0x7FB1F5), Color(hex: 0xF29BB0), Color(hex: 0x8A8A95)]
+
+    var body: some View {
+        if !rows.isEmpty {
+            let shown = Array(rows.prefix(limit))
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("WHERE IT WENT").font(.system(size: 12, weight: .bold)).tracking(0.9)
+                    Spacer()
+                    Text("only on this Mac").font(.system(size: 12))
+                }.foregroundStyle(Palette.muted)
+                GeometryReader { g in
+                    let total = max(0.001, shown.reduce(0) { $0 + $1.share })
+                    HStack(spacing: 2) {
+                        ForEach(Array(shown.enumerated()), id: \.offset) { i, r in
+                            RoundedRectangle(cornerRadius: 4).fill(r.distraction ? Color(hex: 0xFFCF8A) : palette[i % palette.count]).frame(width: max(4, (g.size.width - 4) * CGFloat(r.share / total)))
+                        }
+                    }
+                }.frame(height: 8)
+                VStack(spacing: 5) {
+                    ForEach(Array(shown.enumerated()), id: \.offset) { i, r in
+                        HStack(spacing: 8) {
+                            RoundedRectangle(cornerRadius: 2).fill(r.distraction ? Color(hex: 0xFFCF8A) : palette[i % palette.count]).frame(width: 8, height: 8)
+                            Text(r.label).font(.system(size: 13)).foregroundStyle(Palette.ink).lineLimit(1)
+                            Spacer(minLength: 6)
+                            Text("\(r.minutes) min").font(.system(size: 13)).foregroundStyle(Palette.muted)
+                        }
+                    }
+                }
+            }
+            .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Palette.softer))
+        }
     }
 }
 
@@ -441,7 +496,7 @@ struct BreakPane: View {
                     Text(fmtClock(left)).font(clockFont(46)).foregroundStyle(Palette.ink)
                     Label11(text: "BREAK", color: Palette.accent, spacing: 1.6)
                 }
-                Text("Stand up and stretch.").font(.system(size: 13)).foregroundStyle(Palette.muted)
+                Text(store.settings.breaks.ideaFor(store.catsHomeToday + store.blocksToday).main + ".").font(.system(size: 13)).foregroundStyle(Palette.muted)
                 Button { store.stopBreak() } label: { Text("End break").frame(maxWidth: .infinity) }
                     .buttonStyle(Chip(size: 14, radius: 11, padding: EdgeInsets(top: 11, leading: 12, bottom: 11, trailing: 12)))
                 Footer(left: store.todayLine, actions: actions)

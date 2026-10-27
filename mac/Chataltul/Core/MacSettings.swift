@@ -46,12 +46,13 @@ public struct Cycle: Codable, Equatable {
     public var longAfter = 4
     /// The dashes in the popover: how many blocks make a day.
     public var perDay = 6
+    public var preset = CyclePreset.pomodoro
 
     public init() {}
     public init(from decoder: Decoder) throws {
         let c = try decoder.keyed()
         focus = c.v("focus", 25); shortBreak = c.v("shortBreak", 5); longBreak = c.v("longBreak", 15)
-        longAfter = c.v("longAfter", 4); perDay = c.v("perDay", 6)
+        longAfter = c.v("longAfter", 4); perDay = c.v("perDay", 6); preset = c.v("preset", CyclePreset.pomodoro)
     }
 
     /// Is the break after this many blocks today the long one?
@@ -77,6 +78,12 @@ public struct MacSettings: Codable, Equatable {
     public var yesKey = KeyCombo(code: 16, mods: KeyCombo.co)     // ⌃⌥Y
     public var driftedKey = KeyCombo(code: 2, mods: KeyCombo.co)  // ⌃⌥D
     public var mix: [MixEntry] = []
+    public var breaks = BreakSettings()
+    /// Remember which apps (and sites) a block's time went to. Kept in timing.json on this Mac, never sent anywhere.
+    public var recordTiming = true
+    /// The names of two Shortcuts to run when a block starts and when it ends (to turn a Focus on and off), or empty.
+    public var shortcutStart = ""
+    public var shortcutEnd = ""
     /// The cat peeks up in the corner of the screen; off, check-ins come as notifications only.
     public var catInCorner = true
     /// Which minutes the popover's Focus tab starts, remembered between launches.
@@ -94,7 +101,8 @@ public struct MacSettings: Codable, Equatable {
         cycle = c.v("cycle", Cycle())
         startKey = c.v("startKey", startKey); parkKey = c.v("parkKey", parkKey)
         yesKey = c.v("yesKey", yesKey); driftedKey = c.v("driftedKey", driftedKey)
-        mix = c.v("mix", []); catInCorner = c.v("catInCorner", true)
+        mix = c.v("mix", []); breaks = c.v("breaks", BreakSettings())
+        recordTiming = c.v("recordTiming", true); shortcutStart = c.v("shortcutStart", ""); shortcutEnd = c.v("shortcutEnd", ""); catInCorner = c.v("catInCorner", true)
         focusMinutes = c.v("focusMinutes", 25); server = c.v("server", ""); welcomed = c.v("welcomed", false)
     }
 

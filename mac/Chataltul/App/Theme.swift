@@ -33,6 +33,11 @@ enum Palette {
     static let orangeInk = dyn(0x3A2510, 0x3A2510)
     static let ringTrack = dyn(0x2B211A, 0xFFFFFF, lightAlpha: 0.09, darkAlpha: 0.10)
     static let rim = dyn(0xFFF8EE, 0x3A3340)
+    /// The app window: its sidebar, its page and its cards.
+    static let sidebar = dyn(0xF3EBE0, 0x252128)
+    static let page = dyn(0xFBF8F3, 0x1C1A1F)
+    static let tile = dyn(0xFFFFFF, 0x262229)
+    static let tileLine = dyn(0xEFE6DA, 0xFFFFFF, lightAlpha: 1, darkAlpha: 0.06)
 
     static let wallTop = dyn(0xFDF5E8, 0x2E2733)
     static let wallBottom = dyn(0xF5E4CB, 0x221D27)
