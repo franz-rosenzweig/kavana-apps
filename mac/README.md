@@ -61,3 +61,7 @@ The doc is `~/Library/Application Support/<bundle id>/doc.json`, written whole a
 ## What I could not check without a person
 
 The permission prompts (Notifications, and Automation for each browser), a real full-screen app with the cat over it, and the two-second hold with a real mouse. The code for each is there and its rules are tested; the system's side of them is not.
+
+## Releasing
+
+`mac/release.sh X.Y.Z` builds the app from a commit in a clean checkout, signs it with the shared identity the other apps use (in its own keychain; the script's settings are in `~/.config/chataltul-release.env`, outside the repository), checks it (the signature and who signed it, the version, the id, the hardened runtime, that no home folder's path, address or data is inside, and that it starts), zips it and writes the cask and the release notes into `mac/build/release/`. That is all it does by default. `--publish` makes the GitHub release (tagged `mac-vX.Y.Z`, so it isn't taken for one of the Android app's) and puts the cask in the tap, and only works from `origin/main`. The version is X.Y.Z and the build number is 10000·X + 100·Y + Z; nothing is committed for them. The signature is my own, not Apple's, so the cask removes the quarantine flag the way the other casks do.

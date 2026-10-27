@@ -8,6 +8,8 @@
 #   CHATALTUL_SIGN=-        ad hoc signing (tests); the default is an Apple Development identity if there is one
 #   CHATALTUL_OPT=-Onone    a quicker build for trying things
 #   CHATALTUL_SELFTEST=1    builds with SelfTest/ in place of Main.swift (selftest.sh does this)
+#   CHATALTUL_VERSION=X.Y.Z, CHATALTUL_BUILD=N   the version and build number (release.sh sets them; nothing is committed for them)
+#   CHATALTUL_KEYCHAIN=file the keychain that holds the signing identity (release.sh)
 set -euo pipefail
 cd "${0:A:h}"
 
@@ -16,8 +18,8 @@ command -v xcodegen >/dev/null || { echo "no xcodegen: run brew install xcodegen
 
 setting() { sed -n "s/^ *$1: *\"*\([^\"]*\)\"*$/\1/p" project.yml | head -1; }
 BUNDLE_ID=${CHATALTUL_BUNDLE_ID:-$(setting PRODUCT_BUNDLE_IDENTIFIER)}
-VERSION=$(setting MARKETING_VERSION)
-BUILD=$(setting CURRENT_PROJECT_VERSION)
+VERSION=${CHATALTUL_VERSION:-$(setting MARKETING_VERSION)}
+BUILD=${CHATALTUL_BUILD:-$(setting CURRENT_PROJECT_VERSION)}
 MACOS=$(setting macOS)
 OUT=${CHATALTUL_OUT:-build}
 APP=$OUT/Chataltul.app
@@ -52,6 +54,6 @@ cp $R/rig.json $R/sounds.json $APP/Contents/Resources/
 # which is enough to run it on this Mac.
 IDENTITY=${CHATALTUL_SIGN:-$(security find-identity -v -p codesigning | sed -n 's/^ *[0-9]*) \([0-9A-F]*\) "Apple Development.*/\1/p' | head -1)}
 [[ $IDENTITY == "-" ]] && IDENTITY=""
-codesign --force --options runtime --entitlements Chataltul/Chataltul.entitlements --sign "${IDENTITY:--}" $APP
+codesign --force --options runtime --entitlements Chataltul/Chataltul.entitlements ${CHATALTUL_KEYCHAIN:+--keychain "$CHATALTUL_KEYCHAIN"} --sign "${IDENTITY:--}" $APP
 [[ -n $IDENTITY ]] || echo "note: signed ad hoc; fine on this Mac"
 echo "built $APP"
