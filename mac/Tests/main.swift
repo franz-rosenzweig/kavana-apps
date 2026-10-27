@@ -573,6 +573,10 @@ check("a question it can't answer says what it can", Review.answer("why is the s
 check("facts for a model", Review.factsText(wf, title: "This week").contains("Best day: Tuesday"))
 equal("reasons have words", [Reason.label("web"), Reason.label("hungry")], ["The web", "Hunger"])
 
+let stacked = Insights.slotsByTag(weekBlocks, in: wkPeriod, calendar: utc)
+equal("stacked by tag: Tuesday has Writing and Work", [stacked[1]["Writing"] ?? 0, stacked[1]["Work"] ?? 0], [150, 40])
+equal("and each day adds up to the day", stacked[1].values.reduce(0, +), Insights.slots(weekBlocks, in: wkPeriod, calendar: utc)[1])
+
 section("export")
 equal("a plain field is left alone", Export.field("hello"), "hello")
 equal("a comma gets quotes", Export.field("a, b"), "\"a, b\"")

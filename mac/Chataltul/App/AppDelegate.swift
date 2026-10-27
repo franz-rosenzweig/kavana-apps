@@ -59,6 +59,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         park = ParkController(store: store)
 
         var actions = PopoverActions()
+        actions.answer = { [weak self] a in self?.answer(a) }
+        actions.openWeek = { [weak self] in self?.openWindow("today", span: .week) }
         actions.openSettings = { [weak self] pane in self?.openSettings(pane) }
         actions.openCafe = { [weak self] in self?.openCafe() }
         actions.park = { [weak self] in self?.popover.hide(); self?.park.show() }
@@ -140,12 +142,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // ---------------------------------------------------------------- check-ins and the other pings
 
     func answer(_ a: String) {
-        guard store.active?.pending != nil else { return }
-        let c = store.cat(store.active?.cat)
+        guard let b = store.active, let n = b.pending else { return }
+        let c = store.cat(b.cat)
         store.answer(a)
         notifier.clearDelivered()
         cat.hide()
-        if a == "drifted" { say("No worries.", "Back to it, \(c.name) is with you.", cat: c.id, seconds: 2.5) }
+        if a == "drifted" { askReason(blockID: b.id, n: n, cat: c) }
+    }
+
+    /// After Drifted: what pulled you away? A tap on the card is noted with the check-in (the week in review reads them).
+    func askReason(blockID: String, n: Int, cat c: CatInfo) {
+        guard store.state.catsOn, store.settings.catInCorner else { return }
+        var model = CatCardModel(label: "DRIFTED", cat: c.id, title: "No worries. What pulled you away?", body: nil,
+                                 buttons: Reason.quick.map { id in CatButton(label: Reason.label(id)) { [weak self] in self?.noteReason(blockID, n, id) } } + [CatButton(label: "Other") { [weak self] in self?.noteReason(blockID, n, "other") }])
+        model.compactButtons = true
+        cat.show("reason", model: model, seconds: 20)
+    }
+
+    func noteReason(_ id: String, _ n: Int, _ why: String) {
+        store.act("answer", ["id": id, "n": n, "answer": "drifted", "why": why])
+        cat.hide("reason")
     }
 
     private func answerFromNotification(_ id: String, _ n: Int, _ a: String) {
@@ -249,7 +265,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         seconds += 1
         status.refresh(now: now)
         if seconds % 2 == 0 { away.sample(now: now) }
-        if bumpable || currentHit != nil { watcher.look() }
+        if bumpable || currentHit != nil || (store.settings.recordTiming && store.running) { watcher.look() }
         // an allowance counts the seconds spent on a list outside a block
         if let h = currentHit {
             let date = Date()
@@ -264,6 +280,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let guarded = currentHit.flatMap { enforcement(for: $0.list) }.map { $0.mode != .speedBump } ?? false
         applyOther(other.tick(now: now, stillGuarded: guarded))
         breaksSecond(now)
+        recordTiming(now)
+    }
+
+    /// Where the block goes: the app in front each second, and for a browser the site's domain. Not while the Mac is idle.
+    func recordTiming(_ now: Int) {
+        guard store.settings.recordTiming, store.running, let b = store.active else { store.saveTiming(); return }
+        if away.currentIdleMs() >= max(1, store.settings.awayAfterMin) * 60_000 { return }
+        guard let app = frontAppForTiming() else { return }
+        var site: (String, String)?
+        if let br = ReadableBrowser.with(bundleID: app.id), let d = watcher.recentDomain(for: app.id, within: 5_000) { site = (d, br.name) }
+        store.addTiming(block: b.id, start: b.start, bundleID: app.id, name: app.name, ms: 1000, site: site)
+        if seconds % 15 == 0 { store.saveTiming() }
+    }
+
+    /// What is in front (a test says what). Chataltul's own windows aren't a place the time went.
+    var timingFront: (() -> (id: String, name: String)?)?
+    private func frontAppForTiming() -> (id: String, name: String)? {
+        if let t = timingFront { return t() }
+        guard let a = NSWorkspace.shared.frontmostApplication, let id = a.bundleIdentifier, id != Bundle.main.bundleIdentifier else { return nil }
+        return (id, a.localizedName ?? id)
     }
 
     // ---------------------------------------------------------------- the speed bump
@@ -339,7 +375,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let c = store.shownCat
         cat.show("access", model: CatCardModel(
             label: "ONE QUESTION", cat: c.id, title: "May I see which page is open in \(browser.name)?",
-            body: "Your list has websites on it. macOS will ask once. I only look at the address of the front tab, and nothing leaves this Mac. If you say no, I just won't watch \(browser.name).",
+            body: (store.settings.blocklist.sites.isEmpty ? "So a block can show which sites it went to. " : "Your list has websites on it. ") + "macOS will ask once. I only note the site's name, never the address, and nothing leaves this Mac. If you say no, I just won't watch \(browser.name).",
             buttons: [
                 CatButton(label: "Ask macOS", primary: true) { [weak self] in
                     self?.cat.hide("access")
@@ -355,6 +391,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func trackEyeBlock(_ st: UiState) {
         let id = st.view.active?.id
         guard id != eyeBlockID else { return }
+        // a block started or ended: the Shortcuts the person named run (to turn a Focus on and off)
+        if id != nil { ShortcutRunner.run(store.settings.shortcutStart) } else if eyeBlockID != nil { ShortcutRunner.run(store.settings.shortcutEnd) }
         eyeBlockID = id
         if let b = st.view.active { eye.blockStarted(at: b.start) } else { eye.blockEnded() }
     }
@@ -420,9 +458,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// The app window, on a page (today, cafe, history, later, blocklist, breaks).
-    func openWindow(_ section: String?) {
+    func openWindow(_ section: String?, span: Span? = nil) {
         popover?.hide()
-        AppWindow.shared.show(store: store, app: self, section: section)
+        AppWindow.shared.show(store: store, app: self, section: section, span: span)
     }
 
     func openCafe() { openWindow("cafe") }

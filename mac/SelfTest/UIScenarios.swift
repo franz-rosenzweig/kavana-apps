@@ -242,6 +242,54 @@ enum UIScenarios {
             }
         }
 
+
+        // ================================================================ stage 3
+        // where the time went: the blocks of today and the earlier ones get app by app records
+        let wnow = nowMs()
+        let todayStart = Calendar.current.startOfDay(for: Date())
+        for b in store.state.history.prefix(20) {
+            let apps: [(String, String, Int)] = [("com.apple.TextEdit", "Writer", 41), ("com.apple.Safari", "Safari", 6), ("com.apple.mail", "Mail", 3), ("com.apple.iBooksX", "Books", 8)]
+            for (id, name, min) in apps { for _ in 0..<min { store.addTiming(block: b.id, start: b.start, bundleID: id, name: name, ms: 60_000, site: id == "com.apple.Safari" ? (min > 5 ? "youtube.com" : "library.example", "Safari") : nil) } }
+        }
+        _ = wnow; _ = todayStart
+        check("timing: where it went is remembered", store.wentRows(for: store.state.history.prefix(3).map { $0.id }).first?.name == "Writer")
+        // the popover after a block, with where it went
+        store.resetForTest()
+        let n3 = nowMs()
+        store.act("start", ["intention": "Draft the newsletter", "minutes": 50, "style": "ask", "cat": "miso"], now: n3 - 51 * MIN)
+        store.act("tick", now: n3)
+        if let w = store.awaiting {
+            for (id, name, min) in [("com.apple.TextEdit", "Writer", 41), ("com.apple.Safari", "Safari", 6), ("com.apple.mail", "Mail", 3)] { for _ in 0..<min { store.addTiming(block: w.id, start: w.start, bundleID: id, name: name, ms: 60_000, site: id == "com.apple.Safari" ? ("youtube.com", "Safari") : nil) } }
+            check("popover-home: where it went is there", store.wentRows(for: [w.id]).count == 3)
+        }
+        for dark in [false, true] { check("popover-home-went \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(PopoverRoot(store: store, actions: actions), name: "popover-home-went", dark: dark))) }
+        store.act("outcome", ["id": store.awaiting!.id, "outcome": "done"], now: nowMs())
+
+        // the week in review, with drift reasons and a paused day
+        richDoc()
+        for (i, b) in store.state.history.prefix(12).enumerated() where i % 3 == 0 {
+            store.act("answer", ["id": b.id, "n": 1, "answer": "drifted", "why": ["web", "phone", "messages", "web"][i % 4]], now: nowMs())
+        }
+        for b in store.state.history.prefix(40) {
+            for (id, name, min) in [("com.apple.TextEdit", "Writer", 62), ("com.apple.iBooksX", "Books", 20), ("com.apple.Safari", "Safari", 11), ("com.apple.mail", "Mail", 7)] {
+                for _ in 0..<min { store.addTiming(block: b.id, start: b.start, bundleID: id, name: name, ms: 6_000, site: id == "com.apple.Safari" ? ("youtube.com", "Safari") : nil) }
+            }
+        }
+        store.settings.recordTiming = true
+        let weekNav = WindowNav(.today); weekNav.openSpan = .week
+        for dark in [false, true] {
+            let root = WindowRoot(store: store, nav: weekNav, sync: sync2, watcher: watch2, openSettings: { _ in }, startBlock: {}).frame(width: 1240, height: 800)
+            check("window-review \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(root, name: "window-review", dark: dark, pad: 0, wall: false)))
+        }
+        let monthWent = TodayView(store: store, showCafe: {}, initialSpan: .month).frame(width: 1008, height: 800).background(Palette.page)
+        check("window-month-went drawn", Shot.exists(Shot.render(monthWent, name: "window-month-went", dark: true, pad: 0, wall: false)))
+        // the reason card after Drifted
+        for dark in [false, true] {
+            var reasons = CatCardModel(label: "DRIFTED", cat: "miso", title: "No worries. What pulled you away?", body: nil, buttons: Reason.quick.map { id in CatButton(label: Reason.label(id)) {} } + [CatButton(label: "Other") {}])
+            reasons.compactButtons = true
+            check("cat-reason \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(CatCardView(model: reasons), name: "cat-reason", dark: dark, pad: 24)))
+        }
+
         // ---- Settings
         let sync = SyncController(store: store)
         let watcher = Watcher(store: store)

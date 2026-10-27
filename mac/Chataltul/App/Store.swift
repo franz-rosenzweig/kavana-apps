@@ -27,6 +27,10 @@ final class Store: ObservableObject {
     /// What each list's allowance has seen today (usage.json).
     @Published private(set) var usage = DayUsage()
     private let usageStore: UsageStore
+    /// Where each block went, app by app (timing.json): kept only on this Mac.
+    private(set) var timing = TimingLog()
+    private let timingStore: TimingStore
+    private var timingDirty = false
     private var tracker = PingTracker()
     /// Pings that came due, for whoever shows them (the cat, a notification).
     var onDue: ([Ping]) -> Void = { _ in }
@@ -57,6 +61,9 @@ final class Store: ObservableObject {
         settings = settingsStore.read()
         usageStore = UsageStore(folder: folder)
         usage = usageStore.read()
+        timingStore = TimingStore(folder: folder)
+        timing = timingStore.read()
+        timing.prune(before: nowMs() - 400 * 86_400_000)
         // The doc: loaded, or if it doesn't parse, kept aside (never written over) and started anew.
         do { try host.load(docs.read()) }
         catch {
@@ -79,6 +86,21 @@ final class Store: ObservableObject {
               let data = try? JSONEncoder().encode(r), let list = try? JSONDecoder().decode([Hist].self, from: data) else { return [] }
         return list
     }
+
+    // ---------- where it went ----------
+
+    func addTiming(block id: String, start: Int, bundleID: String, name: String, ms: Int, site: (domain: String, browser: String)?) {
+        timing.add(block: id, start: start, bundleID: bundleID, name: name, ms: ms, site: site)
+        timingDirty = true
+    }
+    func saveTiming() { if timingDirty { timingStore.write(timing); timingDirty = false } }
+    func clearTiming() { timing.clear(); timingStore.erase(); timingDirty = false; objectWillChange.send() }
+
+    /// The lines of "where it went" for these blocks.
+    func wentRows(for blockIDs: [String]) -> [WentRow] { Went.rows(timing.timings(for: blockIDs), blocklist: settings.blocklist) }
+
+    /// Days in a row, with the week's pause.
+    var streak: StreakInfo { Streaks.withPause(state.history) }
 
     // ---------- the lists' allowances ----------
 

@@ -34,6 +34,9 @@ final class AwayMonitor {
         return Int(CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyInput) * 1000)
     }
 
+    /// Milliseconds since the last key or click (or what a test says).
+    func currentIdleMs() -> Int { idleOverride?() ?? Self.idleMs() }
+
     private func offline() {
         guard store.running else { return }
         tracker.offlineNow(now: nowMs(), idleMs: idleOverride?() ?? Self.idleMs())

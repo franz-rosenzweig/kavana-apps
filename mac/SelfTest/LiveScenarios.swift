@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The real app wiring, end to end: the engine, the speed bump, the cat in the corner, the shortcuts, the
 /// away prompt, with every window far off the screen, no notifications, and no reading of the real front
@@ -75,8 +76,9 @@ enum LiveScenarios {
         spin()
         check("leave anyway: the cat doesn't come up again for that block", !app.bump.isShown)
         check("leave anyway: it isn't guarded any more", !app.bumpable)
-        store.stop()   // inside ten seconds: taken back
-        check("a stop in the first ten seconds takes the block back", store.active == nil && store.state.history.isEmpty)
+        store.resetForTest()   // (the checks above take more than ten seconds on a slow run, so start a block now)
+        store.start(title: "Cancel soon")
+        check("a stop in the first ten seconds takes the block back", store.stop() && store.active == nil && store.state.history.isEmpty)
 
         // ---- the 15 seconds run out
         store.start(title: "Second block")
@@ -148,7 +150,13 @@ enum LiveScenarios {
         app.answer("drifted")
         spin()
         check("drifted: counted", store.active?.drifts == 1)
-        check("drifted: the cat says no worries", app.cat.kind == "say")
+        check("drifted: the cat asks what pulled them away", app.cat.kind == "reason")
+        Shot.renderPanel(app.cat.panel, name: "live-reason", dark: false)
+        check("drifted: a real tap on a reason notes it", press(app.cat.panel, "cat.The web"))
+        spin()
+        store.act("stop")
+        if let a = store.awaiting { store.act("outcome", ["id": a.id, "outcome": nil as Any? ?? NSNull()]) }
+        check("drifted: the reason is kept with the check-in", store.state.history.first?.whys == ["web"])
         app.cat.hide()
 
         // ---- the end of a block
@@ -370,6 +378,88 @@ enum LiveScenarios {
         Shot.renderPanel(AppWindow.shared.windowForTest, name: "live-window-blocklist", dark: true)
         check("window: pages change", AppWindow.shared.nav.section == .blocklist)
         AppWindow.shared.windowForTest?.orderOut(nil)
+
+
+        // ================================================================ stage 3, live
+        // ---- where it went, recorded from the front app
+        fresh()
+        store.settings.recordTiming = true
+        store.clearTiming()
+        var frontNow: (id: String, name: String)? = ("com.apple.TextEdit", "Writer")
+        app.timingFront = { frontNow }
+        store.act("start", ["intention": "Timing test", "minutes": 25, "style": "ask", "cat": "miso"], now: nowMs() - 60_000)
+        let blockID = store.active?.id ?? ""
+        for _ in 0..<5 { app.second(nowMs()) }
+        frontNow = ("com.apple.mail", "Mail")
+        for _ in 0..<2 { app.second(nowMs()) }
+        check("timing: the seconds go to the app in front", store.wentRows(for: [blockID]).map { $0.name }.prefix(2) == ["Writer", "Mail"])
+        frontNow = nil
+        app.second(nowMs())
+        check("timing: Chataltul's own windows aren't a place the time went", store.wentRows(for: [blockID]).count == 2)
+        frontNow = ("com.apple.TextEdit", "Writer")
+        let idleBefore = app.away.idleOverride
+        app.away.idleOverride = { 5 * MIN }
+        let before = store.timing.blocks[blockID]?.totalMs ?? 0
+        app.second(nowMs())
+        check("timing: an idle Mac isn't counted", (store.timing.blocks[blockID]?.totalMs ?? 0) == before)
+        app.away.idleOverride = idleBefore
+        store.act("pause")
+        let paused = store.timing.blocks[blockID]?.totalMs ?? 0
+        app.second(nowMs())
+        check("timing: a pause isn't counted", (store.timing.blocks[blockID]?.totalMs ?? 0) == paused)
+        store.act("resume")
+        store.settings.recordTiming = false
+        app.second(nowMs())
+        check("timing: switched off, nothing is remembered", (store.timing.blocks[blockID]?.totalMs ?? 0) == paused)
+        store.settings.recordTiming = true
+        app.timingFront = nil
+        store.saveTiming()
+        check("timing: it is kept in a file on this Mac", FileManager.default.fileExists(atPath: store.folder.appendingPathComponent("timing.json").path))
+        let raw = (try? String(contentsOf: store.folder.appendingPathComponent("timing.json"), encoding: .utf8)) ?? ""
+        check("timing: it has app names and seconds, no addresses", !raw.contains("http") && raw.contains("Writer"))
+        check("timing: and it is not in the doc that sync carries", !store.docJSON().contains("Writer"))
+        store.clearTiming()
+        check("timing: forgotten when asked", store.timing.isEmpty && !FileManager.default.fileExists(atPath: store.folder.appendingPathComponent("timing.json").path))
+        store.act("stop"); store.act("tick", now: nowMs() + 70 * MIN)
+        if let a = store.awaiting { store.act("outcome", ["id": a.id, "outcome": nil as Any? ?? NSNull()]) }
+
+        // ---- export
+        let exportDir = FileManager.default.temporaryDirectory.appendingPathComponent("chataltul-export-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: exportDir, withIntermediateDirectories: true)
+        Exporter.testFolder = exportDir
+        let saved = Exporter.save(Export.blocksCSV(store.state.history, catName: { store.cat($0).name }), name: "blocks.csv", type: .commaSeparatedText)
+        check("export: a file is written", saved != nil && FileManager.default.fileExists(atPath: saved!.path))
+        check("export: it is a spreadsheet with a header", ((try? String(contentsOf: saved!, encoding: .utf8)) ?? "").hasPrefix("start,minutes,title"))
+        Exporter.testFolder = nil
+        try? FileManager.default.removeItem(at: exportDir)
+
+        // ---- Focus Shortcuts when a block starts and ends
+        fresh()
+        var ran: [String] = []
+        ShortcutRunner.onRun = { ran.append($0) }
+        store.settings.shortcutStart = "Focus On"; store.settings.shortcutEnd = "Focus Off"
+        store.act("start", ["intention": "Shortcut test", "minutes": 25, "style": "ask", "cat": "miso"], now: nowMs() - 60_000)
+        check("shortcuts: one runs when a block starts", ran == ["Focus On"])
+        store.act("stop"); store.act("tick", now: nowMs() + 70 * MIN)
+        check("shortcuts: and one when it ends", ran == ["Focus On", "Focus Off"])
+        store.settings.shortcutStart = ""; store.settings.shortcutEnd = ""
+        ShortcutRunner.onRun = nil
+        if let a = store.awaiting { store.act("outcome", ["id": a.id, "outcome": nil as Any? ?? NSNull()]) }
+
+        // ---- the popover's week button opens the window on the week
+        app.openWindow("today", span: .week); spin(0.5)
+        check("week: the window opens on the week", AppWindow.shared.nav.openSpan == .week && AppWindow.shared.isShown)
+        Shot.renderPanel(AppWindow.shared.windowForTest, name: "live-window-week", dark: false)
+        AppWindow.shared.windowForTest?.orderOut(nil)
+
+        // ---- the model on this Mac, if there is one (not checked, only tried)
+        print("  (the model on this Mac is \(OnDevice.available ? "there" : "not there"))")
+        if OnDevice.available {
+            var reply: String??
+            Task { reply = .some(await OnDevice.answer("Which day was my best day?", facts: "Period: This week\nBest day: Tuesday, 3 h 10 min\nFocused: 8 h 40 min over 6 blocks")) }
+            _ = SyncScenarios.wait("the model", 60) { reply != nil }
+            print("  (a trial question to the model: \(String(describing: reply ?? nil)))")
+        }
 
         // ---- the settings window opens
         app.openSettings("blocklist")
