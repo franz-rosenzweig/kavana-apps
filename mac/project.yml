@@ -1,0 +1,51 @@
+# XcodeGen spec. Generates Chataltul.xcodeproj from this file plus the Swift sources,
+# so the project is reviewable text in git instead of an opaque bundle.
+#   brew install xcodegen && xcodegen generate && open Chataltul.xcodeproj
+# build.sh reads the same settings and builds without Xcode.
+name: Chataltul
+options:
+  bundleIdPrefix: xyz.tiresia
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+targets:
+  Chataltul:
+    type: application
+    platform: macOS
+    # a shared scheme, so `xcodebuild -scheme Chataltul` and the Run button agree
+    scheme:
+      configVariants: []
+    sources:
+      - path: Chataltul
+        excludes: ["Info.plist", "Chataltul.entitlements"]
+    settings:
+      base:
+        PRODUCT_NAME: Chataltul
+        PRODUCT_BUNDLE_IDENTIFIER: xyz.tiresia.chataltul
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.9"
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
+        COMBINE_HIDPI_IMAGES: YES
+    info:
+      path: Chataltul/Info.plist
+      properties:
+        CFBundleName: Chataltul
+        CFBundleDisplayName: Chataltul
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: "14.0"
+        LSApplicationCategoryType: public.app-category.productivity
+        # a menu bar app: no Dock icon and no menu bar of its own until a window opens
+        LSUIElement: true
+        NSHumanReadableCopyright: "Free software."
+        NSPrincipalClass: NSApplication
+        NSAppleEventsUsageDescription: Chataltul reads the address of the page in front in Safari, Chrome, Brave, Arc and Edge, only to see whether it is a site on your list. Nothing is sent anywhere.
+        NSUserNotificationsUsageDescription: Chataltul shows your check-ins when the cat is not on screen.
+    entitlements:
+      path: Chataltul/Chataltul.entitlements
+      properties:
+        # Sandbox off: it watches which app is in front and talks to other apps with Apple events.
+        com.apple.security.app-sandbox: false
+        com.apple.security.automation.apple-events: true
