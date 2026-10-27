@@ -33,7 +33,25 @@ core() {
   node tools/check-web.js
 }
 
+# the app's own windows, drawn to PNG with nothing on the screen
+ui() {
+  local APP=$OUT/ui/Chataltul.app
+  CHATALTUL_SELFTEST=1 CHATALTUL_BUNDLE_ID=xyz.tiresia.chataltul.selftest CHATALTUL_OUT=$OUT/ui CHATALTUL_SIGN=- CHATALTUL_OPT=${CHATALTUL_OPT:--Onone} \
+      ./build.sh >$OUT/ui-build.log 2>&1 || { grep -E "error" $OUT/ui-build.log | head -30; echo "the self-test copy didn't build (build/selftest/ui-build.log)" >&2; exit 1; }
+  rm -rf $OUT/shots; mkdir -p $OUT/shots
+  local FOLDER; FOLDER=$(mktemp -d -t chataltul-ui)
+  ( sleep 180; pkill -f "$APP/Contents/MacOS/Chataltul" ) 2>/dev/null &
+  local watchdog=$!
+  CHATALTUL_OFFSCREEN=1 CHATALTUL_NO_NOTIFY=1 CHATALTUL_NO_WATCH=1 CHATALTUL_FOLDER=$FOLDER CHATALTUL_FILE_SESSION=1 "$APP/Contents/MacOS/Chataltul" -SelfTestOut "$PWD/$OUT" -ApplePersistenceIgnoreState YES >$OUT/ui.log 2>&1 || true
+  kill $watchdog 2>/dev/null || true
+  rm -rf "$FOLDER"
+  grep -E "^(FAIL|[0-9]+ passed|SELFTEST|UNCAUGHT|SIGNAL)" $OUT/ui.log || { echo "no result; see build/selftest/ui.log" >&2; tail -20 $OUT/ui.log; exit 1; }
+  grep -q "SELFTEST passed" $OUT/ui.log
+}
+
 case $MODE in
   core) core ;;
+  ui) ui ;;
+  all) core; ui ;;
   *) echo "unknown mode $MODE" >&2; exit 2 ;;
 esac

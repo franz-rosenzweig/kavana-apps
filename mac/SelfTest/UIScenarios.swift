@@ -1,0 +1,167 @@
+import AppKit
+import SwiftUI
+
+/// Every stage-1 screen, drawn from the real views over a real engine state.
+enum UIScenarios {
+    static let MIN = 60_000
+
+    static func run() throws {
+        let store = try Store()
+        let actions = PopoverActions()
+
+        // an earlier day's worth of blocks, so "2 of 6" and "3 cats home" are true
+        func finishedBlocks(_ n: Int, now: Int) {
+            for k in 0..<n {
+                let start = now - (n - k) * 70 * MIN
+                store.act("start", ["intention": ["Outline the talk", "Read chapter 4", "Spanish practice"][k % 3], "minutes": 25, "style": "ask"], now: start)
+                store.act("tick", now: start + 26 * MIN)
+                if let w = store.awaiting { store.act("outcome", ["id": w.id, "outcome": "done"], now: start + 27 * MIN) }
+            }
+        }
+        func fresh(blocksBefore: Int = 2) -> Int {
+            store.resetForTest()
+            let now = nowMs()
+            finishedBlocks(blocksBefore, now: now)
+            for t in ["Book the dentist", "Look up that podcast episode", "Return the library books"] { store.act("addLater", ["text": t], now: now - 3600_000) }
+            return now
+        }
+
+        // ---- ready
+        var now = fresh()
+        check("ready: nothing is running", store.active == nil && store.awaiting == nil)
+        check("ready: two blocks done today", store.blocksToday == 2)
+        for dark in [false, true] { check("popover-ready \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(PopoverRoot(store: store, actions: actions), name: "popover-ready", dark: dark))) }
+
+        // ---- focusing
+        now = fresh()
+        store.act("start", ["intention": "Draft the newsletter", "minutes": 25, "style": "ask", "cat": "miso"], now: now - 7 * MIN)
+        check("focus: a block runs with a growing kitten", store.active?.kitten == "growing")
+        for dark in [false, true] { check("popover-focus \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(PopoverRoot(store: store, actions: actions), name: "popover-focus", dark: dark))) }
+
+        // ---- a check-in waiting
+        now = fresh()
+        store.act("start", ["intention": "Draft the newsletter", "minutes": 25, "style": "ask", "cat": "miso"], now: now - 16 * MIN)
+        store.act("tick", now: now)
+        check("checkin: the check-in is pending", store.active?.pending == 1)
+        for dark in [false, true] {
+            check("popover-checkin \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(PopoverRoot(store: store, actions: actions), name: "popover-checkin", dark: dark)))
+            let model = CatCardModel(label: "CHECK-IN", cat: "miso", title: "Boo! Still on: Draft the newsletter?", body: "9 min left · answer here, no need to switch apps",
+                buttons: [CatButton(label: "Yes", primary: true, symbol: "checkmark") {}, CatButton(label: "Drifted", symbol: "arrow.triangle.2.circlepath") {}],
+                hint: "Or press ⌃⌥Y for Yes, ⌃⌥D for Drifted")
+            check("cat-checkin \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(CatCardView(model: model), name: "cat-checkin", dark: dark, pad: 24)))
+        }
+        // the menu bar says so
+        let sc = StatusController(store: store)
+        if case .focusing(_, _, let pending) = sc.menuState(now: nowMs()) { check("menu bar: the orange dot shows while a check-in waits", pending) } else { check("menu bar: focusing state", false) }
+
+        // ---- paused
+        now = fresh()
+        store.act("start", ["intention": "Draft the newsletter", "minutes": 25, "style": "ask", "cat": "miso"], now: now - 9 * MIN)
+        store.act("pause", now: now - 2 * MIN)
+        check("paused: the engine says when it ends", store.active?.pauseEnds != nil)
+        for dark in [false, true] { check("popover-paused \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(PopoverRoot(store: store, actions: actions), name: "popover-paused", dark: dark))) }
+
+        // ---- came home
+        now = fresh()
+        store.act("start", ["intention": "Draft the newsletter", "minutes": 50, "style": "ask", "cat": "miso"], now: now - 51 * MIN)
+        store.act("tick", now: now)
+        check("home: the kitten came home", store.awaiting?.kitten == "home")
+        for dark in [false, true] { check("popover-home \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(PopoverRoot(store: store, actions: actions), name: "popover-home", dark: dark))) }
+        store.act("outcome", ["id": store.awaiting!.id, "outcome": "done"], now: nowMs())
+
+        // ---- a kitten that wandered off
+        now = fresh()
+        store.act("start", ["intention": "Spanish practice", "minutes": 25, "style": "ask", "cat": "miso"], now: now - 20 * MIN)
+        store.act("away", ["at": now - 15 * MIN, "grace": 0], now: now - 15 * MIN)
+        store.act("tick", now: now + 6 * MIN)
+        check("wandered: the kitten left and the block ended", store.awaiting?.kitten == "gone")
+        for dark in [false, true] { check("popover-wandered \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(PopoverRoot(store: store, actions: actions), name: "popover-wandered", dark: dark))) }
+
+        // ---- back from being away
+        now = fresh()
+        store.act("start", ["intention": "Read chapter 4", "minutes": 50, "style": "ask", "cat": "miso"], now: now - 20 * MIN)
+        store.awayPrompt = AwayReturn(from: now - 12 * MIN, to: now)
+        for dark in [false, true] { check("popover-away \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(PopoverRoot(store: store, actions: actions), name: "popover-away", dark: dark))) }
+        store.awayPrompt = nil
+
+        // ---- a break
+        now = fresh()
+        store.act("startBreak", ["minutes": 10], now: now - 3 * MIN)
+        check("break: the engine has a break", store.onBreak != nil)
+        for dark in [false, true] { check("popover-break \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(PopoverRoot(store: store, actions: actions), name: "popover-break", dark: dark))) }
+
+        // ---- sounds
+        store.resetForTest()
+        store.settings.mix = [MixEntry(id: "rain"), MixEntry(id: "purr")]
+        for dark in [false, true] { check("popover-sounds \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(SoundsPane(store: store, done: {}).frame(width: 340).cardBackground(), name: "popover-sounds", dark: dark))) }
+        store.settings.mix = []
+
+        // ---- the other cat cards
+        for dark in [false, true] {
+            let nudge = CatCardModel(cat: "miso", title: "One thing at a time.", body: "Draft the newsletter")
+            check("cat-nudge \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(CatCardView(model: nudge), name: "cat-nudge", dark: dark, pad: 24)))
+            let end = CatCardModel(cat: "miso", title: "Boo! Time's up. How did it go?", body: "Draft the newsletter\nMiso came home to your café. +25 treats",
+                buttons: [CatButton(label: "Done", primary: true) {}, CatButton(label: "Partly") {}, CatButton(label: "Not really") {}])
+            check("cat-end \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(CatCardView(model: end), name: "cat-end", dark: dark, pad: 24)))
+            let gone = CatCardModel(cat: "miso", picture: Art.gone, title: "Miso wandered off.", body: "Your block keeps going.")
+            check("cat-wandered \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(CatCardView(model: gone), name: "cat-wandered", dark: dark, pad: 24)))
+            let ask = CatCardModel(label: "ONE QUESTION", cat: "miso", title: "May I see which page is open in Chrome?",
+                body: "Your list has websites on it. macOS will ask once. I only look at the address of the front tab, and nothing leaves this Mac. If you say no, I just won't watch Chrome.",
+                buttons: [CatButton(label: "Ask macOS", primary: true) {}, CatButton(label: "Not now") {}])
+            check("cat-access \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(CatCardView(model: ask), name: "cat-access", dark: dark, pad: 24)))
+        }
+
+        // ---- the speed bump, over a page
+        for dark in [false, true] {
+            let model = BumpModel()
+            let n = nowMs()
+            model.card = BumpCard(target: .site(domain: "youtube.com", browser: "Chrome"), shownAt: n - 3_000, blockID: "x", cat: "miso", catName: "Miso", title: "Draft the newsletter", blockEnd: n + 31 * MIN)
+            let page = ZStack {
+                Color(white: dark ? 0.12 : 0.97)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 22), count: 4), spacing: 22) {
+                    ForEach(0..<12, id: \.self) { _ in RoundedRectangle(cornerRadius: 10).fill(Color(white: dark ? 0.2 : 0.9)).frame(height: 150) }
+                }.padding(28)
+                SpeedBumpView(model: model)
+            }.frame(width: 1100, height: 820)
+            check("speedbump \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(page, name: "speedbump", dark: dark, pad: 0, wall: false)))
+        }
+
+        // ---- park a thought
+        now = fresh()
+        for dark in [false, true] { check("park \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(ParkView(store: store, done: {}), name: "park", dark: dark, pad: 30))) }
+
+        // ---- the menu bar item in every state
+        func strip(_ dark: Bool) -> some View {
+            let states: [(String, MenuState, String)] = [
+                ("Ready", .ready, ""), ("Focusing", .focusing(remaining: 0.62, text: "31:48", pending: false), "31:48"),
+                ("Check-in waiting", .focusing(remaining: 0.48, text: "24:06", pending: true), "24:06"), ("Paused", .paused(remaining: 0.58, text: "4:58"), "4:58"),
+                ("On a break", .breakTime(remaining: 0.6, text: "08:42"), "08:42"), ("Came home", .home, "Home"),
+            ]
+            return HStack(spacing: 14) {
+                ForEach(0..<states.count, id: \.self) { i in
+                    VStack(spacing: 6) {
+                        HStack(spacing: 2) {
+                            Image(nsImage: MenuIcon.image(states[i].1))
+                            Text(states[i].2).font(Font(StatusController.clockFont(13)))
+                                .foregroundStyle(Color(nsColor: MenuIcon.textColor(orange: { if case .paused = states[i].1 { return true } else { return false } }())))
+                        }
+                        .frame(height: 30).padding(.horizontal, 10)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(dark ? Color(hex: 0x221D27) : Color(hex: 0xF3ECE2)))
+                        Text(states[i].0).font(.system(size: 11)).foregroundStyle(Palette.muted)
+                    }
+                }
+            }
+        }
+        for dark in [false, true] { check("menubar \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(strip(dark), name: "menubar", dark: dark, pad: 20))) }
+
+        // ---- Settings
+        let sync = SyncController(store: store)
+        let watcher = Watcher(store: store)
+        for dark in [false, true] {
+            for pane in SettingsPane.allCases {
+                let name = "settings-\(pane.rawValue)"
+                check("\(name) \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(SettingsView(store: store, nav: SettingsNav(pane), sync: sync, watcher: watcher), name: name, dark: dark, pad: 0, wall: false)))
+            }
+        }
+    }
+}
