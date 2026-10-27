@@ -3,12 +3,13 @@ import ServiceManagement
 import SwiftUI
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, blocks, shortcuts, blocklist, account
+    case general, blocks, breaks, blocklist, shortcuts, account
     var id: String { rawValue }
     var title: String {
         switch self {
         case .general: return "General"
         case .blocks: return "Blocks and check-ins"
+        case .breaks: return "Breaks"
         case .shortcuts: return "Shortcuts"
         case .blocklist: return "Blocklist"
         case .account: return "Account and sync"
@@ -18,6 +19,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general: return "gearshape"
         case .blocks: return "timer"
+        case .breaks: return "cup.and.saucer"
         case .shortcuts: return "command"
         case .blocklist: return "pawprint"
         case .account: return "person.crop.circle"
@@ -46,9 +48,10 @@ final class SettingsWindow {
             w.isReleasedWhenClosed = false
             w.contentView = NSHostingView(rootView: SettingsView(store: store, nav: nav, sync: app.sync, watcher: app.watcher))
             w.center()
+            if FloatingPanel.offscreen { w.setFrameOrigin(NSPoint(x: -40_000, y: -40_000)) }   // a test: far off the screen
             window = w
         }
-        NSApp.activate(ignoringOtherApps: true)
+        if !FloatingPanel.offscreen { NSApp.activate(ignoringOtherApps: true) }
         window?.makeKeyAndOrderFront(nil)
     }
 }
@@ -111,8 +114,9 @@ struct SettingsView: View {
         switch nav.pane {
         case .general: GeneralPane(store: store)
         case .blocks: BlocksPane(store: store)
+        case .breaks: BreaksView(store: store)
         case .shortcuts: ShortcutsPane(store: store)
-        case .blocklist: BlocklistPane(store: store, watcher: watcher)
+        case .blocklist: BlocklistView(store: store, watcher: watcher)
         case .account: AccountPane(store: store, sync: sync)
         }
     }
@@ -199,12 +203,6 @@ struct GeneralPane: View {
                 if eng.cat {
                     PickRow(title: "Next kitten", detail: nil, last: true, options: store.state.cats.filter { $0.met }.map { ($0.id, $0.name) }, value: Binding(get: { eng.companion }, set: { store.setEngine(["companion": $0]) }))
                 }
-            }
-            Section_("When you're away from the Mac", note: "Being away is not drifting: the kitten stays. This only asks whether those minutes count.") {
-                PickRow(title: "After", options: [(2, "2 minutes"), (3, "3 minutes"), (5, "5 minutes"), (10, "10 minutes"), (15, "15 minutes")], value: $store.settings.awayAfterMin)
-                PickRow(title: "In the middle of a block", last: true,
-                        options: [(AwayAction.ask, "Ask if it counts"), (.count, "Always count it")] + (store.state.canTakeOff ? [(.takeOff, "Take it off")] : []),
-                        value: $store.settings.awayAction)
             }
             Section_("This Mac") {
                 Row(title: "Open at login") {
@@ -327,109 +325,6 @@ final class RecorderView: NSView {
         let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: NSColor.labelColor, .paragraphStyle: style]
         let h = NSAttributedString(string: text, attributes: attrs).size().height
         NSAttributedString(string: text, attributes: attrs).draw(in: NSRect(x: 0, y: (bounds.height - h) / 2, width: bounds.width, height: h))
-    }
-}
-
-// ---------------------------------------------------------------- Blocklist
-
-struct BlocklistPane: View {
-    @ObservedObject var store: Store
-    var watcher: Watcher
-    @State private var site = ""
-    @State private var siteError = false
-    @State private var refresh = 0
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            Section_("The cat on a distracting app", note: "While a block runs and you open something on this list, the cat walks over it: 15 seconds to come back, or hold Leave anyway for 2 seconds and the kitten wanders off. The block keeps going.") {
-                Row(title: "Speed bump", detail: "\(store.settings.blocklist.count) apps and sites on the list", last: true) { Switch(on: $store.settings.speedBump) }
-            }
-            Section_("Apps") {
-                ForEach(store.settings.blocklist.apps, id: \.bundleID) { a in
-                    Row(title: a.name, detail: a.bundleID) {
-                        Button { store.settings.blocklist.apps.removeAll { $0 == a } } label: { Image(systemName: "minus.circle") }
-                            .buttonStyle(.plain).foregroundStyle(Palette.muted).accessibilityLabel("Remove \(a.name)")
-                    }
-                }
-                Row(title: "Add an app…", last: true) {
-                    Button("Choose") { chooseApp() }.buttonStyle(Chip(size: 13, radius: 9, padding: EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12)))
-                }
-            }
-            Section_("Websites", note: "A site covers its subdomains. Safari, Chrome, Brave, Arc and Edge are read by the Mac app. Firefox and Zen can't be read this way, so their sites aren't watched; list the app itself above if you want it guarded.") {
-                ForEach(store.settings.blocklist.sites, id: \.self) { s in
-                    Row(title: s) {
-                        Button { store.settings.blocklist.sites.removeAll { $0 == s } } label: { Image(systemName: "minus.circle") }
-                            .buttonStyle(.plain).foregroundStyle(Palette.muted).accessibilityLabel("Remove \(s)")
-                    }
-                }
-                Row(title: "", last: true) {
-                    HStack {
-                        TitleField(placeholder: "Add a site, like reddit.com", text: $site, size: 13, center: false, onSubmit: addSite)
-                        Button("Add", action: addSite).buttonStyle(Chip(fill: Palette.accent, text: Palette.onAccent, size: 13, radius: 9, padding: EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14)))
-                    }
-                }
-            }
-            if siteError { Text("That isn't a website address.").font(.system(size: 12)).foregroundStyle(Palette.orange) }
-            Section_("Reading the page in front", note: "macOS asks once for each browser. Say no and Chataltul simply doesn't watch that browser's sites.") {
-                let installed = ReadableBrowser.all.filter { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0.bundleID) != nil }
-                if installed.isEmpty { Row(title: "No browser it can read is installed", last: true) { EmptyView() } }
-                ForEach(Array(installed.enumerated()), id: \.element.bundleID) { i, b in
-                    BrowserRow(browser: b, watcher: watcher, last: i == installed.count - 1)
-                }
-            }
-        }
-    }
-
-    private func addSite() {
-        siteError = false
-        if store.settings.blocklist.sites.contains(Blocklist.normalizeDomain(site) ?? "") { site = ""; return }
-        if store.settings.blocklist.add(site: site) { site = "" } else if !site.trimmingCharacters(in: .whitespaces).isEmpty { siteError = true }
-    }
-
-    private func chooseApp() {
-        let p = NSOpenPanel()
-        p.allowedContentTypes = [.application]
-        p.directoryURL = URL(fileURLWithPath: "/Applications")
-        p.allowsMultipleSelection = true
-        p.prompt = "Add"
-        guard p.runModal() == .OK else { return }
-        for url in p.urls {
-            guard let b = Bundle(url: url), let id = b.bundleIdentifier else { continue }
-            let name = (b.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String) ?? (b.object(forInfoDictionaryKey: "CFBundleName") as? String) ?? url.deletingPathExtension().lastPathComponent
-            store.settings.blocklist.add(app: ListedApp(bundleID: id, name: name))
-        }
-    }
-}
-
-struct BrowserRow: View {
-    var browser: ReadableBrowser
-    var watcher: Watcher
-    var last: Bool
-    @State private var status: BrowserAccess = .unknown
-
-    var body: some View {
-        Row(title: browser.name, detail: detail, last: last) {
-            switch status {
-            case .allowed: Text("Allowed").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.accentText)
-            case .denied:
-                Button("Open System Settings") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!) }
-                    .buttonStyle(Chip(size: 12, radius: 9, padding: EdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10)))
-            case .notRunning: Text("Not open").font(.system(size: 13)).foregroundStyle(Palette.muted)
-            case .unknown:
-                Button("Allow…") { watcher.requestAccess(browser) { status = $0 } }
-                    .buttonStyle(Chip(fill: Palette.accent, text: Palette.onAccent, size: 12, radius: 9, padding: EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12)))
-            }
-        }
-        .onAppear { watcher.refreshAccess(browser) { status = $0 } }
-    }
-
-    private var detail: String? {
-        switch status {
-        case .allowed: return "Chataltul can see the address of the front tab."
-        case .denied: return "Not allowed, so its sites aren't watched. Turn it on under Privacy → Automation."
-        case .notRunning: return "Open it, and this shows whether it is allowed."
-        case .unknown: return "Not asked yet."
-        }
     }
 }
 

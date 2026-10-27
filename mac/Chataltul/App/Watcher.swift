@@ -12,7 +12,7 @@ enum BrowserAccess: String {
 final class Watcher {
     let store: Store
     /// A look at the front: the listed thing it matches (or nil), and the front app's bundle id.
-    var onFront: (Target?, String?) -> Void = { _, _ in }
+    var onFront: (GuardHit?, String?) -> Void = { _, _ in }
     /// A readable browser is in front during a block with sites on the list, and the person hasn't been asked yet.
     var onNeedBrowserAccess: (ReadableBrowser) -> Void = { _ in }
 
@@ -44,8 +44,8 @@ final class Watcher {
         guard let app = NSWorkspace.shared.frontmostApplication, let bid = app.bundleIdentifier else { return }
         // Chataltul's own windows in front (its popover, settings) change nothing
         if bid == Bundle.main.bundleIdentifier { return }
-        if let a = store.settings.blocklist.app(bid) {
-            onFront(.app(a), bid)
+        if let h = store.settings.blocklist.hit(bundleID: bid) {
+            onFront(h, bid)
             return
         }
         guard let browser = ReadableBrowser.with(bundleID: bid), !store.settings.blocklist.sites.isEmpty else {
@@ -122,9 +122,9 @@ final class Watcher {
                 else if code == 0 { self.access[browser.bundleID] = .allowed }
                 // only act if the browser is still the one in front
                 guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == browser.bundleID else { return }
-                if let url, let domain = self.store.settings.blocklist.site(forURL: url) {
+                if let url, let hit = self.store.settings.blocklist.hit(url: url, browser: browser.name) {
                     self.lastURL[browser.bundleID] = url
-                    self.onFront(.site(domain: domain, browser: browser.name), browser.bundleID)
+                    self.onFront(hit, browser.bundleID)
                 } else {
                     self.onFront(nil, browser.bundleID)
                 }

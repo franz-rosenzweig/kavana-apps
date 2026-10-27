@@ -200,10 +200,11 @@ public struct Block: Decodable {
     public var title: String { titleOf(intention, tag) }
 }
 
-public struct Brk: Decodable {
+public struct Brk: Decodable, Equatable {
     public var minutes: Int
     public var start: Int
     public var end: Int
+    public init(minutes: Int, start: Int, end: Int) { self.minutes = minutes; self.start = start; self.end = end }
     public init(from decoder: Decoder) throws {
         let c = try decoder.keyed()
         minutes = c.v("minutes", 0); start = c.v("start", 0); end = c.v("end", 0)

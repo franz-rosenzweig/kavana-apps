@@ -154,6 +154,94 @@ enum UIScenarios {
         }
         for dark in [false, true] { check("menubar \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(strip(dark), name: "menubar", dark: dark, pad: 20))) }
 
+
+        // ================================================================ stage 2
+        // ---- a café worth looking at: two weeks of long blocks, things bought with the treats, today's blocks
+        func richDoc() {
+            store.resetForTest()
+            let cal = Calendar.current
+            let startOfToday = cal.startOfDay(for: Date())
+            let cats = ["miso", "pepper", "mochi", "pickles", "earl", "biscuit", "miso", "pepper", "mochi", "pickles", "miso", "earl"]
+            for (i, d) in (1...12).reversed().enumerated() {
+                let day = cal.date(byAdding: .day, value: -d, to: startOfToday)!
+                let start = Int(day.addingTimeInterval(10 * 3600).timeIntervalSince1970 * 1000)
+                store.act("start", ["intention": "Earlier \(d)", "minutes": 90, "style": "ask", "cat": cats[i % cats.count], "tag": ["Writing", "Work", "Reading", "Study"][i % 4]], now: start)
+                store.act("tick", now: start + 91 * MIN)
+                if let w = store.awaiting { store.act("outcome", ["id": w.id, "outcome": "done"], now: start + 92 * MIN) }
+            }
+            let n = nowMs()
+            for id in ["cushion", "rug", "window", "clock", "lamp", "plant", "bookshelf", "cattree", "counter", "armchair", "box", "fireplace"] { store.act("buy", ["id": id], now: n - 3 * 3600_000) }
+            // today
+            let t = [(n - 230 * MIN, 50, "Outline the talk", "Work", "pepper", true), (n - 150 * MIN, 40, "Read chapter 4", "Reading", "earl", true), (n - 80 * MIN, 9, "Spanish practice", "Study", "pickles", false)]
+            for (start, mins, title, tag, cat, finish) in t {
+                store.act("start", ["intention": title, "minutes": mins, "style": "ask", "cat": cat, "tag": tag], now: start)
+                if finish { store.act("tick", now: start + (mins + 1) * MIN); if let w = store.awaiting { store.act("outcome", ["id": w.id, "outcome": "done"], now: start + (mins + 2) * MIN) } }
+                else { store.act("away", ["at": start + 4 * MIN, "grace": 0], now: start + 4 * MIN); store.act("stop", now: start + mins * MIN); if let w = store.awaiting { store.act("outcome", ["id": w.id, "outcome": nil as Any? ?? NSNull()], now: start + (mins + 1) * MIN) } }
+            }
+            store.act("start", ["intention": "Draft the newsletter", "minutes": 25, "style": "ask", "cat": "miso", "tag": "Writing"], now: n - 7 * MIN)
+            for t in ["Book the dentist", "Look up that podcast episode", "Return the library books", "Find the photos from March"] { store.act("addLater", ["text": t], now: n - 3600_000) }
+        }
+        richDoc()
+        check("a rich doc: things are owned", store.state.things.count >= 6)
+        check("a rich doc: many blocks", store.state.history.count >= 12)
+        let sync2 = SyncController(store: store)
+        let watch2 = Watcher(store: store)
+        func windowShot(_ section: WindowSection, _ name: String, dark: Bool, span: Span? = nil) {
+            let nav = WindowNav(section)
+            let root = WindowRoot(store: store, nav: nav, sync: sync2, watcher: watch2, openSettings: { _ in }, startBlock: {}).frame(width: 1240, height: 800)
+            check("\(name) \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(root, name: name, dark: dark, pad: 0, wall: false)))
+        }
+        for dark in [false, true] {
+            windowShot(.today, "window-today", dark: dark)
+            windowShot(.cafe, "window-cafe", dark: dark)
+            windowShot(.history, "window-history", dark: dark)
+            windowShot(.later, "window-later", dark: dark)
+            windowShot(.blocklist, "window-blocklist", dark: dark)
+            windowShot(.breaks, "window-breaks", dark: dark)
+        }
+        // the month, with the span set the way a click would set it
+        for dark in [false, true] {
+            let month = TodayView(store: store, showCafe: {}, initialSpan: .month).frame(width: 1008, height: 800).background(Palette.page)
+            check("window-month \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(month, name: "window-month", dark: dark, pad: 0, wall: false)))
+            let week = TodayView(store: store, showCafe: {}, initialSpan: .week).frame(width: 1008, height: 800).background(Palette.page)
+            check("window-week \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(week, name: "window-week", dark: dark, pad: 0, wall: false)))
+        }
+
+        // ---- a list with every setting on show
+        var rich = Blocklist(lists: [
+            GuardList(name: "Distractions", color: 0, apps: [ListedApp(bundleID: "com.apple.mail", name: "Mail"), ListedApp(bundleID: "com.apple.MobileSMS", name: "Messages"), ListedApp(bundleID: "com.apple.news", name: "News")], sites: ["youtube.com", "reddit.com", "x.com", "instagram.com", "news.ycombinator.com"], mode: .speedBump, when: GuardWhen(.blocks)),
+            GuardList(name: "News", color: 1, sites: ["bbc.co.uk", "theguardian.com"], mode: .waitItOut, when: GuardWhen(.weekdays), allowanceMin: 15),
+            GuardList(name: "Messages", color: 2, apps: [ListedApp(bundleID: "net.whatsapp.WhatsApp", name: "WhatsApp")], mode: .locked, when: GuardWhen(.always)),
+        ])
+        let savedList = store.settings.blocklist
+        store.settings.blocklist = rich
+        store.addUsage(rich.lists[1].id, ms: 6 * 60_000)
+        for dark in [false, true] { windowShot(.blocklist, "window-blocklist-news", dark: dark) }
+        rich = savedList
+        store.settings.blocklist = savedList
+
+        // ---- the full-screen break, and the eye break card
+        let model = BreakModel(brk: Brk(minutes: 10, start: nowMs() - 80_000, end: nowMs() + 520_000), idea: BreakSettings().ideaFor(0), strict: false, postponeMin: 5, cat: "miso", eyeTip: true)
+        check("break-screen drawn", Shot.exists(Shot.render(BreakScreenView(model: model).frame(width: 1440, height: 900), name: "break-screen", dark: true, pad: 0, wall: false)))
+        let strict = BreakModel(brk: Brk(minutes: 15, start: nowMs() - 80_000, end: nowMs() + 820_000), idea: BreakSettings().ideaFor(1), strict: true, postponeMin: 5, cat: "pepper", eyeTip: false)
+        check("break-screen strict drawn", Shot.exists(Shot.render(BreakScreenView(model: strict).frame(width: 1440, height: 900), name: "break-screen-strict", dark: true, pad: 0, wall: false)))
+        for dark in [false, true] {
+            var eye = CatCardModel(label: "EYE BREAK", cat: "miso", title: "Look at something far away.", body: "For 20 seconds. Your eyes will thank you.", buttons: [CatButton(label: "Skip") {}])
+            eye.countdownUntil = nowMs() + 14_000
+            check("cat-eye \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(CatCardView(model: eye), name: "cat-eye", dark: dark, pad: 24)))
+        }
+
+        // ---- wait it out, locked, used up
+        for dark in [false, true] {
+            for (kind, name) in [(OtherKind.waitItOut, "wait"), (.locked, "locked"), (.usedUp, "usedup")] {
+                let bm = BumpModel()
+                let n = nowMs()
+                bm.other = OtherCard(kind: kind, target: .site(domain: "bbc.co.uk", browser: "Safari"), listName: "News", shownAt: n - 7_000, waitMs: 30_000, until: n + 31 * MIN, cat: "miso", catName: "Miso")
+                let page = ZStack { Color(white: dark ? 0.12 : 0.97); SpeedBumpView(model: bm) }.frame(width: 1100, height: 820)
+                check("guard-\(name) \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(page, name: "guard-\(name)", dark: dark, pad: 0, wall: false)))
+            }
+        }
+
         // ---- Settings
         let sync = SyncController(store: store)
         let watcher = Watcher(store: store)

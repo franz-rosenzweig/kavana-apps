@@ -2,7 +2,7 @@ import Foundation
 
 /// A piece of JSON of any shape, for the parts of the engine's answers the app doesn't give a type
 /// (an op's `result`).
-public enum JSONValue: Decodable, Equatable {
+public enum JSONValue: Decodable, Encodable, Equatable {
     case null
     case bool(Bool)
     case number(Double)
@@ -18,6 +18,18 @@ public enum JSONValue: Decodable, Equatable {
         else if let s = try? c.decode(String.self) { self = .string(s) }
         else if let a = try? c.decode([JSONValue].self) { self = .array(a) }
         else { self = .object(try c.decode([String: JSONValue].self)) }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case .null: try c.encodeNil()
+        case .bool(let b): try c.encode(b)
+        case .number(let n): try c.encode(n)
+        case .string(let s): try c.encode(s)
+        case .array(let a): try c.encode(a)
+        case .object(let o): try c.encode(o)
+        }
     }
 
     public subscript(key: String) -> JSONValue? {

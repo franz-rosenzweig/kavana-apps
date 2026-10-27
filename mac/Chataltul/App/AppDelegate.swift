@@ -22,6 +22,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let cat = CatController()
     let bump = BumpController()
     var speed = SpeedBump()
+    var other = OtherGuard()
+    let breakScreen = BreakController()
+    var eye = EyeBreakTimer()
+    private var eyeBlockID: String?
+    private var usageSaved = 0
+    /// What is in front now, if it is on a list.
+    private(set) var currentHit: GuardHit?
+    private var currentBundle: String?
     private var shownCheckins = Set<String>()
     private var seconds = 0
     private var cancellables = Set<AnyCancellable>()
@@ -62,12 +70,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         status.onMenu = { [weak self] in self?.statusMenu() ?? NSMenu() }
 
         bump.model.backToWork = { [weak self] in self?.apply(self?.speed.backToWork() ?? []) }
+        bump.model.backToWorkOther = { [weak self] in self?.applyOther(self?.other.backToWork() ?? []) }
         bump.model.leaveHeld = { [weak self] in self?.apply(self?.speed.leaveHeld(now: nowMs()) ?? []) }
         bump.model.editList = { [weak self] in
             // the card can't be left by clicking elsewhere, so the list opens beside it
             self?.openSettings("blocklist")
         }
-        watcher.onFront = { [weak self] target, bid in self?.looked(target, bid) }
+        watcher.onFront = { [weak self] hit, bid in self?.looked(hit, bid) }
         watcher.onNeedBrowserAccess = { [weak self] browser in self?.askBrowserAccess(browser) }
         notifier.onAnswer = { [weak self] id, n, a in self?.answerFromNotification(id, n, a) }
         notifier.onOpen = { [weak self] in self?.popover.show(key: true) }
@@ -173,7 +182,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showPendingCheckin(_ st: UiState) {
         guard let b = st.view.active, let n = b.pending else { return }
         let key = "\(b.id):\(n)"
-        guard shownCheckins.insert(key).inserted, st.catsOn, store.settings.catInCorner else { return }
+        guard st.catsOn, store.settings.catInCorner, !shownCheckins.contains(key) else { return }
+        // during a call or full-screen video it holds, and comes when the Mac is free (breaksSecond looks again)
+        if store.settings.breaks.waitDuringCalls, Busy.now() { return }
+        shownCheckins.insert(key)
         showCheckin(b, n)
     }
 
@@ -193,6 +205,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     cat.show("end", model: CatCardModel(cat: a.cat, title: title, body: p.body, buttons: [CatButton(label: "Open Chataltul", primary: true) { [weak self] in self?.cat.hide(); self?.popover.show(key: true) }]), seconds: 30)
                 } else if let w = st.view.awaiting {
                     sound.meow(if: w.kitten == "home")
+                    if store.settings.breaks.start == .auto, store.onBreak == nil { store.startBreak(store.breakAfter(w)) }
                     let c = st.cat(w.cat)
                     let says = w.kitten == "home" ? "\(c.name) came home to your café. +\(w.treats) treats" : "\(c.name) wandered off."
                     let b = [w.intention.isEmpty ? nil : w.intention, says].compactMap { $0 }.joined(separator: "\n")
@@ -204,6 +217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     ]), seconds: 60) { [weak self] in self?.notifier.postNow(title: title, body: p.body) }
                 }
             case "break-over":
+                if store.macBreakEnd != nil { continue }   // a longer break is still on: the Mac says when it is over
                 cat.show("break", model: CatCardModel(cat: catID, title: title, body: "It's time to focus. Ready for the next block?", buttons: [CatButton(label: "Open Chataltul", primary: true) { [weak self] in self?.cat.hide(); self?.popover.show(key: true) }]), seconds: 30) { [weak self] in
                     self?.notifier.postNow(title: title, body: p.body)
                 }
@@ -226,6 +240,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if st.view.active != nil, !askedNotify { askedNotify = true; notifier.askIfNeeded() }
         if st.view.active != nil { watcher.look() }
+        trackEyeBlock(st)
+        updateBreakScreen()
     }
     private var askedNotify = false
 
@@ -233,8 +249,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         seconds += 1
         status.refresh(now: now)
         if seconds % 2 == 0 { away.sample(now: now) }
-        if bumpable { watcher.look() }
+        if bumpable || currentHit != nil { watcher.look() }
+        // an allowance counts the seconds spent on a list outside a block
+        if let h = currentHit {
+            let date = Date()
+            let blockEnd = store.running ? store.active?.end : nil
+            if GuardPolicy.countsUsage(for: h.list, now: date, blockEnd: blockEnd, usedMs: store.usedMs(h.list.id, at: date)) {
+                store.addUsage(h.list.id, ms: 1000, at: date)
+                if now - usageSaved > 10_000 { store.saveUsage(); usageSaved = now }
+            }
+            looked(h, currentBundle)   // it may have been used up, or a window may have begun
+        }
         apply(speed.tick(block: bumpBlock(), now: now))
+        let guarded = currentHit.flatMap { enforcement(for: $0.list) }.map { $0.mode != .speedBump } ?? false
+        applyOther(other.tick(now: now, stillGuarded: guarded))
+        breaksSecond(now)
     }
 
     // ---------------------------------------------------------------- the speed bump
@@ -250,8 +279,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return BumpBlock(id: b.id, paused: b.paused != nil, kitten: b.kitten, cat: b.cat, catName: store.cat(b.cat).name, title: b.title, end: b.end)
     }
 
-    func looked(_ target: Target?, _ bundleID: String?) {
-        apply(speed.front(target: target, bundleID: bundleID, block: bumpBlock(), now: nowMs()))
+    /// What a list asks for now: with the running block's end, and what its allowance has seen today.
+    func enforcement(for list: GuardList, at date: Date = Date()) -> Enforcement? {
+        let blockEnd = store.running ? store.active?.end : nil
+        return GuardPolicy.enforcement(for: list, now: date, blockEnd: blockEnd, usedMs: store.usedMs(list.id, at: date))
+    }
+
+    /// Something was brought to the front (or looked at again): the speed bump, the wait or the lock may answer.
+    func looked(_ hit: GuardHit?, _ bundleID: String?) {
+        currentHit = hit; currentBundle = bundleID
+        let n = nowMs()
+        guard store.settings.speedBump else { apply(speed.front(target: nil, bundleID: bundleID, block: nil, now: n)); applyOther(other.front(hit: nil, enforcement: nil, bundleID: bundleID, cat: "", catName: "", now: n)); return }
+        let enf = hit.flatMap { enforcement(for: $0.list) }
+        let bumpTarget = enf?.mode == .speedBump ? hit?.target : nil
+        apply(speed.front(target: bumpTarget, bundleID: hit == nil ? bundleID : nil, block: bumpBlock(), now: n))
+        let cat = store.active?.cat ?? store.state.companion
+        applyOther(other.front(hit: hit, enforcement: enf, bundleID: bundleID, cat: cat, catName: store.cat(cat).name, now: n))
+    }
+
+    func applyOther(_ actions: [OtherAction]) {
+        for a in actions {
+            switch a {
+            case .show(let c), .update(let c):
+                bump.model.other = c
+                bump.show()
+                cat.hide()
+            case .hide:
+                bump.model.other = nil
+                if bump.model.card == nil { bump.hide() }
+            case .activate(let bid): Watcher.activate(bid)
+            }
+        }
     }
 
     func apply(_ actions: [BumpAction]) {
@@ -263,7 +321,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 bump.show()
                 cat.hide()
             case .update(let c): bump.model.card = c
-            case .hide: bump.hide()
+            case .hide:
+                bump.model.card = nil
+                if bump.model.other == nil { bump.hide() }
             case .away(let at, let grace): store.kittenLeaves(at: at, grace: grace)
             case .wandered(let name):
                 let id = store.active?.cat ?? store.state.companion
@@ -289,6 +349,69 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ]), seconds: 120)
     }
 
+    // ---------------------------------------------------------------- breaks
+
+    /// A block started or ended: the eye breaks count from the start.
+    private func trackEyeBlock(_ st: UiState) {
+        let id = st.view.active?.id
+        guard id != eyeBlockID else { return }
+        eyeBlockID = id
+        if let b = st.view.active { eye.blockStarted(at: b.start) } else { eye.blockEnded() }
+    }
+
+    func updateBreakScreen() {
+        guard store.settings.breaks.fullScreen, let b = store.onBreak else { breakScreen.hide(); return }
+        if let m = breakScreen.model { m.brk = b; return }
+        let bs = store.settings.breaks
+        let m = BreakModel(brk: b, idea: bs.ideaFor(store.catsHomeToday + store.blocksToday), strict: bs.strict, postponeMin: bs.postponeMin, cat: store.state.companion, eyeTip: bs.eyeBreaks)
+        m.skip = { [weak self] in self?.store.stopBreak() }
+        m.postpone = { [weak self] in self?.postponeBreak() }
+        m.editIdeas = { [weak self] in self?.breakScreen.hide(); self?.openSettings("breaks") }
+        breakScreen.show(m)
+    }
+
+    /// "Postpone 5 min": the break goes, and comes back.
+    func postponeBreak() {
+        guard let b = store.onBreak else { return }
+        let mins = max(1, b.minutes)
+        store.stopBreak()
+        store.postponed = (at: nowMs() + store.settings.breaks.postponeMin * 60_000, minutes: mins)
+        say("Break postponed.", "\(store.settings.breaks.postponeMin) minutes, then it's back.", cat: store.state.companion, seconds: 4)
+    }
+
+    /// Once a second: a postponed break coming back, a long break's end, an eye break.
+    func breaksSecond(_ now: Int) {
+        if store.active?.pending != nil { showPendingCheckin(store.state) }
+        if let p = store.postponed, now >= p.at { store.postponed = nil; store.startBreak(p.minutes) }
+        if store.macBreakOver() {
+            let c = store.cat(nil)
+            say("Break's over.", "It's time to focus. Ready for the next block?", cat: store.state.companion, seconds: 20)
+            _ = c
+        }
+        let bs = store.settings.breaks
+        guard bs.eyeBreaks else { return }
+        eye.everyMs = bs.eyeEveryMin * 60_000; eye.seconds = bs.eyeSeconds
+        let busy = bs.waitDuringCalls && Busy.now()
+        if eye.check(now: now, running: store.running, busy: busy) { showEyeBreak(now) }
+    }
+
+    func showEyeBreak(_ now: Int) {
+        let bs = store.settings.breaks
+        let c = store.shownCat
+        let total = bs.eyeSeconds * 1000
+        var model = CatCardModel(label: "EYE BREAK", cat: c.id, title: "Look at something far away.", body: "For \(bs.eyeSeconds) seconds. Your eyes will thank you.",
+                                 buttons: bs.strict ? [] : [CatButton(label: "Skip") { [weak self] in self?.endEyeBreak() }])
+        model.countdownUntil = now + total
+        model.countdownTotalMs = total
+        model.close = bs.strict ? nil : { [weak self] in self?.endEyeBreak() }
+        cat.show("eye", model: model, seconds: Double(bs.eyeSeconds)) { [weak self] in self?.eye.finish(at: nowMs()) }
+    }
+
+    func endEyeBreak() {
+        cat.hide("eye")
+        eye.finish(at: nowMs())
+    }
+
     // ---------------------------------------------------------------- windows and menus
 
     func openSettings(_ pane: String?) {
@@ -296,19 +419,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         SettingsWindow.shared.show(store: store, app: self, pane: pane)
     }
 
-    func openCafe() {
-        popover.hide()
-        if let u = URL(string: store.settings.serverURL) { NSWorkspace.shared.open(u) }
+    /// The app window, on a page (today, cafe, history, later, blocklist, breaks).
+    func openWindow(_ section: String?) {
+        popover?.hide()
+        AppWindow.shared.show(store: store, app: self, section: section)
+    }
+
+    func openCafe() { openWindow("cafe") }
+
+    /// "Start a block" in the window's sidebar.
+    func startFromWindow() { store.start(title: "", stopwatch: store.preset.stopwatch) }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { openWindow(nil) }
+        return true
     }
 
     private func statusMenu() -> NSMenu {
         let m = NSMenu()
+        m.addItem(withTitle: "Open Chataltul", action: #selector(windowItem), keyEquivalent: "").target = self
         m.addItem(withTitle: "Settings…", action: #selector(settingsItem), keyEquivalent: ",").target = self
         m.addItem(NSMenuItem.separator())
         m.addItem(withTitle: "Quit Chataltul", action: #selector(quitItem), keyEquivalent: "q").target = self
         return m
     }
     @objc private func settingsItem() { openSettings(nil) }
+    @objc private func windowItem() { openWindow(nil) }
     @objc private func quitItem() { NSApp.terminate(nil) }
 
     /// A menu for the sake of ⌘C and ⌘V in text fields: an accessory app has no menu bar, but its key equivalents still work.
@@ -330,6 +466,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let window = NSMenu(title: "Window"); windowItem.submenu = window
         window.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         NSApp.mainMenu = main
+    }
+
+    /// A locked list keeps Chataltul on until the block ends: quitting would be the way round it.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let until = store?.lockedUntil else { return .terminateNow }
+        say("Locked until \(clockTime(until)).", "A locked list keeps Chataltul on until your block ends.", cat: store.state.companion, seconds: 5)
+        return .terminateCancel
     }
 
     func applicationWillTerminate(_ n: Notification) {

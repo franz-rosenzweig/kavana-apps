@@ -173,6 +173,7 @@ final class BumpController {
         panel?.orderOut(nil)
         panel = nil
         model.card = nil
+        model.other = nil
     }
 
     var isShown: Bool { panel != nil }

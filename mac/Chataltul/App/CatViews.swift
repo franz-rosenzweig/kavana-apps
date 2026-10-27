@@ -22,6 +22,9 @@ struct CatCardModel {
     var buttons: [CatButton] = []
     var hint: String?
     var close: (() -> Void)?
+    /// A ring that counts down to this time (an eye break's 20 seconds).
+    var countdownUntil: Int? = nil
+    var countdownTotalMs: Int = 20_000
 }
 
 /// The cat peeking up from the corner of the screen with a card beside it (screen 3).
@@ -51,6 +54,19 @@ struct CatCardView: View {
             if let l = model.label { Label11(text: l, color: Palette.accentText, spacing: 1) }
             Text(model.title).font(.system(size: 19, weight: .semibold)).foregroundStyle(Palette.ink).fixedSize(horizontal: false, vertical: true)
             if let b = model.body, !b.isEmpty { Text(b).font(.system(size: 13)).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true) }
+            if let until = model.countdownUntil {
+                TimelineView(.animation(minimumInterval: 0.1)) { _ in
+                    let left = max(0, until - nowMs())
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle().stroke(Palette.ringTrack, lineWidth: 5)
+                            Circle().trim(from: 0, to: max(0.001, CGFloat(left) / CGFloat(max(1, model.countdownTotalMs)))).stroke(Palette.accent, style: StrokeStyle(lineWidth: 5, lineCap: .round)).rotationEffect(.degrees(-90))
+                            Text("\((left + 999) / 1000)").font(clockFont(18, weight: .bold)).foregroundStyle(Palette.ink)
+                        }.frame(width: 52, height: 52)
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
             if !model.buttons.isEmpty {
                 HStack(spacing: 8) {
                     ForEach(model.buttons) { b in
@@ -134,6 +150,7 @@ struct SpeedBumpView: View {
         ZStack {
             Color.black.opacity(0.42)
             if let card = model.card { cardView(card) }
+            else if let other = model.other { otherView(other) }
         }
         .ignoresSafeArea()
     }
@@ -174,13 +191,51 @@ struct SpeedBumpView: View {
             .cardBackground(radius: 24)
             .shadow(color: .black.opacity(0.35), radius: 40, y: 20)
             .overlay(alignment: .top) {
-                Breathing { CatImage(path: Art.portrait(c.cat)) }
+                Breathing { CatImage(path: Art.hasPose(c.cat, "walk") ? Art.pose(c.cat, "walk") : Art.portrait(c.cat)) }
                     .frame(width: 190, height: 190)
                     .offset(x: -28, y: -90)
                     .shadow(color: .black.opacity(0.28), radius: 8, y: 6)
             }
             .offset(y: -30)
             .onAppear { hold.onHeld = model.leaveHeld }
+        }
+    }
+
+    /// Wait it out, locked, used up: the cat, the words, and one way out, back to work.
+    private func otherView(_ c: OtherCard) -> some View {
+        TimelineView(.animation(minimumInterval: 1 / 20)) { _ in
+            let now = nowMs()
+            VStack(spacing: 14) {
+                Text(c.title).font(.system(size: 28, weight: .bold)).foregroundStyle(Palette.ink).multilineTextAlignment(.center)
+                Text(c.line(now: now)).font(.system(size: 16)).foregroundStyle(Palette.muted2).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                ZStack {
+                    Circle().stroke(Palette.ringTrack, lineWidth: 6)
+                    if c.kind == .waitItOut {
+                        Circle().trim(from: 0, to: max(0.001, c.fraction(now: now))).stroke(Palette.accent, style: StrokeStyle(lineWidth: 6, lineCap: .round)).rotationEffect(.degrees(-90))
+                        Text("\(c.secondsLeft(now: now))").font(clockFont(26, weight: .bold)).foregroundStyle(Palette.ink)
+                    } else {
+                        Image(systemName: "lock.fill").font(.system(size: 24)).foregroundStyle(Palette.muted2)
+                    }
+                }.frame(width: 76, height: 76).padding(.vertical, 4)
+                Button(action: model.backToWorkOther) { Text("Back to work").frame(maxWidth: .infinity) }
+                    .buttonStyle(Chip(fill: Palette.accent, text: Palette.onAccent, size: 17, radius: 14, padding: EdgeInsets(top: 15, leading: 12, bottom: 15, trailing: 12)))
+                    .probe("back")
+                Rectangle().fill(Palette.hairline).frame(height: 1)
+                HStack(spacing: 4) {
+                    Text("\(c.target.label) is on your \(c.listName) list ·").font(.system(size: 12)).foregroundStyle(Palette.muted)
+                    Button("Edit the list", action: model.editList).buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.accentText)
+                }
+            }
+            .padding(.init(top: 92, leading: 32, bottom: 26, trailing: 32))
+            .frame(width: 460)
+            .cardBackground(radius: 24)
+            .shadow(color: .black.opacity(0.35), radius: 40, y: 20)
+            .overlay(alignment: .top) {
+                Breathing { CatImage(path: Art.pose(c.cat, "walk")) }
+                    .frame(width: 190, height: 190).offset(x: -28, y: -90)
+                    .shadow(color: .black.opacity(0.28), radius: 8, y: 6)
+            }
+            .offset(y: -30)
         }
     }
 
@@ -212,6 +267,9 @@ struct SpeedBumpView: View {
 /// What the speed bump window shows, and what its buttons do.
 final class BumpModel: ObservableObject {
     @Published var card: BumpCard?
+    /// Wait it out, locked or used up: the same window, with no way to leave early.
+    @Published var other: OtherCard?
+    var backToWorkOther: () -> Void = {}
     var graceMs = SpeedBump.defaultGraceMs
     var backToWork: () -> Void = {}
     var leaveHeld: () -> Void = {}

@@ -21,6 +21,10 @@ enum Art {
     static func nap(_ id: String) -> String { cats[id]?.nap ?? "cats/\(id)-nap-1.webp" }
     static let gone = "cafe/gone-1.webp"
 
+    /// A pose painting (walk, loaf, stretch, wash, back) if this cat has it, else its napping picture.
+    static func pose(_ id: String, _ pose: String) -> String { cats[id]?.poses?[pose] ?? nap(id) }
+    static func hasPose(_ id: String, _ pose: String) -> Bool { cats[id]?.poses?[pose] != nil }
+
     enum Stage { case nap, kitten, grown, home, gone }
 
     /// Which picture a block's cat is in: it grows with the block (web/app.js renderSky).

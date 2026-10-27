@@ -12,10 +12,14 @@ mac/
   Chataltul/
     Core/                no AppKit, so the self-test runs it without a screen:
                          EngineHost (the web's engine in JavaScriptCore), Models, SpeedBump (+ HoldTracker),
-                         AwayTracker, PingTracker, Blocklist, MacSettings, Sounds, SyncClient, DocStore
+                         AwayTracker, PingTracker, Blocklist (lists, modes, schedules), GuardPolicy (what a list asks
+                         for now, wait it out, locked, allowances), Breaks (cycles, ideas, eye breaks), Insights (the
+                         numbers in Today), MacSettings, Sounds, SyncClient, DocStore
     App/                 AppKit and SwiftUI: AppDelegate (puts it together), Store (the one model), the menu
                          bar item, the popover, the cat's windows, Watcher (front app and browser address),
-                         Hotkeys, Notifier, SoundPlayer, SyncController, Settings
+                         Hotkeys, Notifier, SoundPlayer, SyncController, Settings, the app window (AppWindow), the
+                         café (CafeScene, a native port of web/cafe3d.js), the full Blocklist and Breaks views, the
+                         full-screen break (BreakScreen) and Busy (is a call or full-screen video on?)
     Resources/js/        engine.js lines.js cats.js news.js: the web's, copied as they are; bridge.js: the
                          Android app's, with a few lines marked MAC
     Resources/           cats/ cafe/ audio/(meows) rig.json sounds.json AppIcon.icns
