@@ -1,0 +1,338 @@
+{
+ "groups": [
+  {
+   "id": "cats",
+   "name": "Cats"
+  },
+  {
+   "id": "water",
+   "name": "Rain and water"
+  },
+  {
+   "id": "fire",
+   "name": "Fire"
+  },
+  {
+   "id": "outside",
+   "name": "Outside"
+  },
+  {
+   "id": "places",
+   "name": "Places"
+  },
+  {
+   "id": "music",
+   "name": "Music"
+  },
+  {
+   "id": "noise",
+   "name": "Noise"
+  }
+ ],
+ "kinds": [
+  {
+   "id": "purr",
+   "name": "Purring",
+   "group": "cats",
+   "free": true,
+   "file": "purr-1"
+  },
+  {
+   "id": "bigpurr",
+   "name": "Slow purr",
+   "about": "Long, even breaths.",
+   "group": "cats",
+   "like": "purr",
+   "file": "bigpurr-1"
+  },
+  {
+   "id": "deeppurr",
+   "name": "Deep purr",
+   "about": "On the sofa, very deep.",
+   "group": "cats",
+   "like": "purr",
+   "file": "deeppurr-1"
+  },
+  {
+   "id": "sleepypurr",
+   "name": "Sleepy purr",
+   "about": "Purring in its sleep.",
+   "group": "cats",
+   "like": "purr",
+   "file": "sleepypurr-1"
+  },
+  {
+   "id": "tomasina",
+   "name": "Tomasina",
+   "about": "Purring on the bed, nose to the mic.",
+   "group": "cats",
+   "like": "purr",
+   "file": "tomasina-1"
+  },
+  {
+   "id": "rain",
+   "name": "Rain",
+   "group": "water",
+   "free": true,
+   "file": "rain-1"
+  },
+  {
+   "id": "lightrain",
+   "name": "Light rain",
+   "about": "Soft rain on open country.",
+   "group": "water",
+   "like": "rain",
+   "file": "lightrain-1"
+  },
+  {
+   "id": "heavyrain",
+   "name": "Heavy rain",
+   "about": "A downpour.",
+   "group": "water",
+   "like": "rain",
+   "file": "heavyrain-1"
+  },
+  {
+   "id": "thunder",
+   "name": "Thunderstorm",
+   "about": "Rain and rolling thunder.",
+   "group": "water",
+   "like": "rain",
+   "file": "thunder-1"
+  },
+  {
+   "id": "rainforest",
+   "name": "Rainforest",
+   "about": "Drops on ferns, and a shower now and then.",
+   "group": "water",
+   "like": "rain",
+   "file": "rainforest-1"
+  },
+  {
+   "id": "stream",
+   "name": "Stream",
+   "about": "A brook in the Scottish Borders.",
+   "group": "water",
+   "like": "rain",
+   "file": "stream-1"
+  },
+  {
+   "id": "waves",
+   "name": "Waves",
+   "about": "Slow surf on a beach.",
+   "group": "water",
+   "file": "waves-1"
+  },
+  {
+   "id": "bigwaves",
+   "name": "Big waves",
+   "about": "The Baltic hitting the shore.",
+   "group": "water",
+   "like": "waves",
+   "file": "bigwaves-1"
+  },
+  {
+   "id": "baltic",
+   "name": "Baltic beach",
+   "about": "Small waves on a German beach.",
+   "group": "water",
+   "like": "waves",
+   "file": "baltic-1"
+  },
+  {
+   "id": "ocean",
+   "name": "Ocean",
+   "about": "Breakers coming in.",
+   "group": "water",
+   "like": "waves",
+   "file": "ocean-1"
+  },
+  {
+   "id": "sauna",
+   "name": "Sauna stove",
+   "about": "A wood stove, burning steady.",
+   "group": "fire",
+   "free": true,
+   "like": "fire",
+   "file": "sauna-1"
+  },
+  {
+   "id": "fire",
+   "name": "Fireplace",
+   "about": "A low fire that crackles.",
+   "group": "fire",
+   "file": "fire-1"
+  },
+  {
+   "id": "crackle",
+   "name": "Crackling fire",
+   "about": "Lots of snaps and pops.",
+   "group": "fire",
+   "like": "fire",
+   "file": "crackle-1"
+  },
+  {
+   "id": "hearth",
+   "name": "Hearth",
+   "about": "A fire in the fireplace.",
+   "group": "fire",
+   "like": "fire",
+   "file": "hearth-1"
+  },
+  {
+   "id": "bigroom",
+   "name": "Fire in a big room",
+   "about": "Close up, and the room rings.",
+   "group": "fire",
+   "like": "fire",
+   "file": "bigroom-1"
+  },
+  {
+   "id": "springbirds",
+   "name": "Spring birds",
+   "about": "A warbler, a sparrow and geese.",
+   "group": "outside",
+   "free": true,
+   "like": "birds",
+   "file": "springbirds-1"
+  },
+  {
+   "id": "birds",
+   "name": "Birds",
+   "about": "Dawn in a pine forest.",
+   "group": "outside",
+   "file": "birds-1"
+  },
+  {
+   "id": "birdsong",
+   "name": "Birdsong",
+   "about": "A spring day in Virginia.",
+   "group": "outside",
+   "like": "birds",
+   "file": "birdsong-1"
+  },
+  {
+   "id": "night",
+   "name": "Night",
+   "about": "Crickets on a warm night.",
+   "group": "outside",
+   "file": "night-1"
+  },
+  {
+   "id": "crickets",
+   "name": "Crickets",
+   "about": "Just the crickets.",
+   "group": "outside",
+   "like": "night",
+   "file": "crickets-1"
+  },
+  {
+   "id": "farstorm",
+   "name": "Crickets and a far storm",
+   "about": "A summer garden, thunder far off.",
+   "group": "outside",
+   "like": "night",
+   "file": "farstorm-1"
+  },
+  {
+   "id": "wind",
+   "name": "Wind",
+   "about": "Wind around the house.",
+   "group": "outside",
+   "file": "wind-1"
+  },
+  {
+   "id": "hollowwind",
+   "name": "Hollow wind",
+   "about": "Empty and far away.",
+   "group": "outside",
+   "like": "wind",
+   "file": "hollowwind-1"
+  },
+  {
+   "id": "cafeteria",
+   "name": "Campus cafeteria",
+   "about": "Lunch at a university in Istanbul.",
+   "group": "places",
+   "free": true,
+   "like": "cafe",
+   "file": "cafeteria-1"
+  },
+  {
+   "id": "cafe",
+   "name": "Café",
+   "about": "Murmur and the odd cup.",
+   "group": "places",
+   "file": "cafe-1"
+  },
+  {
+   "id": "copenhagen",
+   "name": "Copenhagen café",
+   "about": "Sitting outside, people chatting.",
+   "group": "places",
+   "like": "cafe",
+   "file": "copenhagen-1"
+  },
+  {
+   "id": "city",
+   "name": "City at night",
+   "about": "A quiet street, the odd car.",
+   "group": "places",
+   "like": "wind",
+   "file": "city-1"
+  },
+  {
+   "id": "wandering",
+   "name": "Wandering",
+   "about": "Slow, calm synths.",
+   "group": "music",
+   "free": true,
+   "file": "wandering-1"
+  },
+  {
+   "id": "dunes",
+   "name": "Dunes",
+   "about": "Spacey and wide.",
+   "group": "music",
+   "file": "dunes-1"
+  },
+  {
+   "id": "angelic",
+   "name": "Angelic pad",
+   "about": "Soft chords that drift.",
+   "group": "music",
+   "file": "angelic-1"
+  },
+  {
+   "id": "bowls",
+   "name": "Singing bowls",
+   "about": "Bowls, waves and a bird.",
+   "group": "music",
+   "file": "bowls-1"
+  },
+  {
+   "id": "tibetan",
+   "name": "Tibetan bowl",
+   "about": "A bowl and a gong.",
+   "group": "music",
+   "file": "tibetan-1"
+  },
+  {
+   "id": "brown",
+   "name": "Brown noise",
+   "group": "noise",
+   "free": true
+  },
+  {
+   "id": "white",
+   "name": "White noise",
+   "group": "noise",
+   "free": true
+  }
+ ],
+ "meows": [
+  "meow-a-1",
+  "meow-b-1",
+  "meow-c-1"
+ ]
+}
