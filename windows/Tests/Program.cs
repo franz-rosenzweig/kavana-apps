@@ -437,7 +437,7 @@ Equal("its tip has the time", st.Tip("Write", null), "Chataltul · 15:00 · Writ
 Check("a check-in waiting gives the dot", TrayState.Of(host.Run("tick", now: n0 + 15 * MIN + 1).State.View.Active, null, null, n0 + 15 * MIN + 1) is TrayState.Focusing { Pending: true });
 Check("nothing running is ready", TrayState.Of(null, null, null, n0) is TrayState.Ready);
 Check("the picture is only drawn again when the ring moves enough to show",
-    new TrayState.Focusing(0.5, "a", false).Key == new TrayState.Focusing(0.501, "b", false).Key && new TrayState.Focusing(0.5, "a", false).Key != new TrayState.Focusing(0.45, "a", false).Key);
+    new TrayState.Focusing(0.51, "a", false).Key == new TrayState.Focusing(0.512, "b", false).Key && new TrayState.Focusing(0.51, "a", false).Key != new TrayState.Focusing(0.45, "a", false).Key);
 foreach (var size in new[] { 16, 20, 24, 32 })
 {
     var px = TrayArt.Draw(new TrayState.Ready(), size, true);
