@@ -192,7 +192,7 @@ public sealed class Blocklist
 
 /// <summary>
 /// Browsers whose address the app can read, with UI Automation: the address box of the front window. Unlike
-/// the Mac, Windows asks for no permission, and Firefox and Zen can be read too. Only the site's name is used.
+/// the Mac, Windows asks for no permission, and Firefox and Zen are tried too (not yet seen working). Only the site's name is used.
 /// </summary>
 public sealed record Browser(string Exe, string Name, bool Gecko)
 {

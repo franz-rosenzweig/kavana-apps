@@ -31,7 +31,7 @@ window, the kitten's ring.
   free the rest of the time. With the cat off, or if nobody answers in 90 seconds, it's a Windows
   notification with Yes and Drifted on it.
 - **The speed bump.** While a block runs and an app on my list comes to the front, or a site on my list in
-  Chrome, Edge, Brave, Vivaldi, Opera, Arc, Firefox or Zen, the cat walks over it: the screen dims (all but the
+  Chrome, Edge, Brave, Vivaldi, Opera or Arc (Firefox and Zen are tried, not yet confirmed), the cat walks over it: the screen dims (all but the
   taskbar), "Boo! You're focusing.", 15 seconds to come back, and a big "Back to work" that takes me back to
   the window I was in. "Leave anyway" has to be held for two seconds, and then the kitten wanders off and the
   block goes on without it. No close, no pause, no snooze; Alt+F4 does nothing to it. If I do nothing, the 15
@@ -153,8 +153,8 @@ hold and a two-second hold of Leave anyway, the 15 seconds running out, Back to 
 seconds, a check-in in the corner with Drifted and its reason, being away, parking a thought, the end and its
 outcome, the break offered and a break longer than the engine's. Every screen is drawn to a PNG in light and
 in dark. The workflow adds `-OnScreen` (on its own desktop: real pixels show the windows are see-through and
-the cat's corner lets clicks through; Leave anyway is held with the real mouse), `-Browser` (Edge, Chrome and
-Firefox open a page on that machine and their address is read) and `-Launch` (the app as it ships starts,
+the cat's corner lets clicks through; Leave anyway is held with the real mouse), `-Browser` (Edge and Chrome open
+a page on that machine and their address is read; Firefox is tried and noted, since a fresh Firefox there never shows the page) and `-Launch` (the app as it ships starts,
 sits in the tray and quits).
 
 ## What I could not check without a person

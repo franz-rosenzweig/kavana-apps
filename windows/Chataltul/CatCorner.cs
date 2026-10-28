@@ -177,6 +177,9 @@ sealed class CatCorner
         Win.SetShapes([(Layout(card), 8), (Layout(catView), 0)], scale);
     }
 
+    /// <summary>Where the cat's painting is in the window, in DIPs (the self-test looks through its empty corner).</summary>
+    public Rect? CatRect => catView is { } c ? Layout(c) : null;
+
     /// <summary>Where an element sits in the window by layout alone (the slide doesn't move its shape).</summary>
     static Rect Layout(FrameworkElement e)
     {

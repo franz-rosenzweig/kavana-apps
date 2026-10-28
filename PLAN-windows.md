@@ -14,7 +14,7 @@ releases are tagged `windows-vX.Y.Z`, like the Mac's `mac-vX.Y.Z`.
 
 The tray icon with the kitten and its ring, the popover (Focus, Break, Long, Start; Pause, park, Stop; how
 did it go), check-ins as the cat in the corner with Yes and Drifted and the reasons after Drifted, the
-speed bump over apps and over sites in Chrome, Edge, Brave, Vivaldi, Opera, Arc, Firefox and Zen, park a
+speed bump over apps and over sites in Chrome, Edge, Brave, Vivaldi, Opera and Arc (Firefox and Zen tried), park a
 thought and start a block from anywhere, away from the PC, Windows notifications as the second chance,
 Settings, open at sign-in, an installer for one person. What it does is in [windows/README.md](windows/README.md).
 

@@ -355,7 +355,7 @@ sealed class SettingsWindow
             problem,
             Note("A site covers its subdomains (youtube.com covers m.youtube.com)."),
             Switch("Look at the site open in my browser", store.Settings.ReadBrowsers, on => Quietly(s => s.ReadBrowsers = on)),
-            Note("In " + string.Join(", ", Browser.All.Select(b => b.Name)) + ", Chataltul reads the address of the front tab to find the sites on your list. It only ever uses the site's name, and nothing leaves this PC."));
+            Note("In " + string.Join(", ", Browser.All.Where(b => !b.Gecko).Select(b => b.Name)) + ", Chataltul reads the address of the front tab to find the sites on your list (Firefox and Zen are tried too). It only ever uses the site's name, and nothing leaves this PC."));
     }
 
     UIElement Item(string title, string? detail, Action remove)

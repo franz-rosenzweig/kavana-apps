@@ -126,19 +126,36 @@ sealed class Floating
 
     [DllImport("shcore.dll")] static extern int GetDpiForMonitor(IntPtr monitor, int type, out uint x, out uint y);
 
-    /// <summary>Puts the window here, in pixels (far off the screen in the self-test).</summary>
+    /// <summary>
+    /// What Windows keeps around the content in the window's outer rectangle: an invisible resize border on some
+    /// windows, even ones with no frame to see. Sizes and places are set for the content, so it is added on.
+    /// </summary>
+    (int L, int T, int R, int B) Frame()
+    {
+        if (!Native.GetWindowRect(Hwnd, out var outer) || !Native.GetClientRect(Hwnd, out var inner)) return (0, 0, 0, 0);
+        var p = new Native.POINT();
+        Native.ClientToScreen(Hwnd, ref p);
+        int l = p.X - outer.Left, t = p.Y - outer.Top;
+        return (l, t, Math.Max(0, outer.Width - inner.Width - l), Math.Max(0, outer.Height - inner.Height - t));
+    }
+
+    /// <summary>Puts the window's content here, this big, in pixels (far off the screen in the self-test).</summary>
     public void Move(int x, int y, int width, int height)
     {
         if (Offscreen) { x -= Away; y -= Away; }
-        AppWindow.MoveAndResize(new RectInt32(x, y, Math.Max(1, width), Math.Max(1, height)));
+        var f = Frame();
+        AppWindow.MoveAndResize(new RectInt32(x - f.L, y - f.T, Math.Max(1, width) + f.L + f.R, Math.Max(1, height) + f.T + f.B));
     }
 
-    /// <summary>The window's place on the screen, in pixels, as it would be without the self-test's offset.</summary>
+    /// <summary>The content's place on the screen, in pixels, as it would be without the self-test's offset.</summary>
     public Native.RECT Bounds
     {
         get
         {
-            Native.GetWindowRect(Hwnd, out var r);
+            var p = new Native.POINT();
+            Native.ClientToScreen(Hwnd, ref p);
+            Native.GetClientRect(Hwnd, out var c);
+            var r = new Native.RECT { Left = p.X, Top = p.Y, Right = p.X + c.Width, Bottom = p.Y + c.Height };
             if (Offscreen) { r.Left += Away; r.Right += Away; r.Top += Away; r.Bottom += Away; }
             return r;
         }
@@ -172,11 +189,13 @@ sealed class Floating
     /// </summary>
     public void SetShapes(IEnumerable<(Rect Rect, double Radius)> shapes, double scale)
     {
+        // a window's region counts from its outer corner, the content from inside the frame
+        var (fl, ft, _, _) = Frame();
         IntPtr all = Native.CreateRectRgn(0, 0, 0, 0);
         foreach (var (r, radius) in shapes)
         {
-            var piece = Native.CreateRoundRectRgn((int)Math.Floor(r.X * scale), (int)Math.Floor(r.Y * scale),
-                (int)Math.Ceiling(r.Right * scale) + 1, (int)Math.Ceiling(r.Bottom * scale) + 1,
+            var piece = Native.CreateRoundRectRgn(fl + (int)Math.Floor(r.X * scale), ft + (int)Math.Floor(r.Y * scale),
+                fl + (int)Math.Ceiling(r.Right * scale) + 1, ft + (int)Math.Ceiling(r.Bottom * scale) + 1,
                 (int)Math.Round(radius * 2 * scale), (int)Math.Round(radius * 2 * scale));
             Native.CombineRgn(all, all, piece, Native.RGN_OR);
             Native.DeleteObject(piece);

@@ -369,6 +369,13 @@ static class SelfTest
         Add("the cat's window is see-through where it doesn't paint", Near(seen, 0xFF00FF), $"{seen:x6} at {corner.X},{corner.Y}");
         var under = Native.GetAncestor(Native.WindowFromPoint(corner), Native.GA_ROOT);
         Add("a click there goes through to the window underneath", under != app.Cat.Win.Hwnd, under == wall.Hwnd ? "the wall" : $"{under:x}");
+        if (app.Cat.CatRect is { } pic)
+        {
+            // inside the window's shape, where the painting itself is see-through: only a clear backdrop shows the wall here
+            var s = Native.GetDpiForWindow(app.Cat.Win.Hwnd) / 96.0;
+            var inPicture = Native.ScreenPixel(cat.Left + (int)((pic.X + 4) * s), cat.Top + (int)((pic.Y + 4) * s));
+            Add("where the cat's painting is empty, the desktop shows through", Near(inPicture, 0xFF00FF), $"{inPicture:x6}");
+        }
         var onCard = new Native.POINT { X = cat.Right - 40, Y = cat.Top + 40 };
         var cardPixel = Native.ScreenPixel(onCard.X, onCard.Y);
         Add("the card itself is drawn", !Near(cardPixel, 0xFF00FF), $"{cardPixel:x6}");
@@ -488,8 +495,10 @@ static class SelfTest
                     reader.Read -= Got;
                 }
                 var host = got != null ? Blocklist.Host(got) : null;
-                Add($"the address in {browser.Name} is read", host == "127.0.0.1",
-                    $"{(got == null ? "nothing read" : $"read \"{got}\"")}; its windows: {string.Join(" | ", TitlesOf(exe))}");
+                var said = $"{(got == null ? "nothing read" : $"read \"{got}\"")}; its windows: {string.Join(" | ", TitlesOf(exe))}";
+                // Firefox, started fresh on GitHub's machines, never shows the page there: noted, not checked, until it's seen on a PC
+                if (browser.Gecko) Add($"the address in {browser.Name} (noted only)", true, $"{(host == "127.0.0.1" ? "read" : "not read")}: {said}");
+                else Add($"the address in {browser.Name} is read", host == "127.0.0.1", said);
             }
             catch (Exception e) { Add($"the address in {browser.Name} is read", false, e.Message); }
             finally
