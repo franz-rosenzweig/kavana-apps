@@ -50,6 +50,8 @@ class MainActivity : ComponentActivity() {
         if (BuildConfig.DEBUG && intent.hasExtra("minute")) repo.prefs.edit().putLong("minuteMs", intent.getLongExtra("minute", 0)).apply()
         // check-account.py: `--es server http://10.0.2.2:<port>/` signs in to a sandbox server instead of the real one.
         if (BuildConfig.DEBUG && intent.hasExtra("server")) repo.prefs.edit().putString("server", intent.getStringExtra("server")).apply()
+        // check-widgets.py: `--ei wallpaperHour 14` draws the café wallpaper as at that hour (-1: the clock's), to see it by day and at night.
+        if (BuildConfig.DEBUG && intent.hasExtra("wallpaperHour")) repo.prefs.edit().putInt("wallpaperHour", intent.getIntExtra("wallpaperHour", -1)).apply()
         // The sound mix is snapshot state in a global object: create it here, outside any composition, or the
         // first frame of a cold start can read it from a snapshot that doesn't know it yet (a crash).
         xyz.tiresia.kavana.ui.SoundMix.mix
@@ -65,6 +67,8 @@ class MainActivity : ComponentActivity() {
     // A widget's Stop: the app's own Stop dialog (or Cancel in the first seconds), so it says what stopping means.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // (the widgets' check, debug builds: the wallpaper's hour, also when the app is already open)
+        if (BuildConfig.DEBUG && intent.hasExtra("wallpaperHour")) KavanaApp.repo.prefs.edit().putInt("wallpaperHour", intent.getIntExtra("wallpaperHour", -1)).apply()
         if (intent.getBooleanExtra("stop", false)) askToStop()
         if (intent.getBooleanExtra("sounds", false)) Requests.sounds = true
         intent.getStringExtra("tab")?.let { Requests.tab = it }

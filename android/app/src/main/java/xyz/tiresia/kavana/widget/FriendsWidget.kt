@@ -184,9 +184,9 @@ fun FriendsContent(s: Snap) {
                     }
                 } else {
                     Text(when {
-                        !fs.signedIn -> "Sign in to see your friends here."
-                        !fs.sharing -> "You're not sharing your focus, so your friends' stays hidden."
-                        else -> "No friends yet. Friends are added in Chataltul on the web."
+                        !fs.signedIn -> "Not signed in"
+                        !fs.sharing -> "Sharing is off"
+                        else -> "No friends yet"
                     }, style = TextStyle(color = ColorProvider(ink), fontSize = 13.sp), maxLines = 4)
                 }
                 Spacer(GlanceModifier.defaultWeight())

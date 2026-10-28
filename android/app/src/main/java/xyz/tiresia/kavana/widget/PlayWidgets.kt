@@ -183,7 +183,7 @@ fun PetContent(s: Snap, stateMode: Int) {
     Box(GlanceModifier.fillMaxSize().background(ImageProvider(bmp)).clickable(OPEN_APP)) {
         when {
             !s.catsOn -> Box(GlanceModifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
-                Text("Cats are switched off in Chataltul", style = TextStyle(color = ColorProvider(ink), fontSize = 13.sp, textAlign = TextAlign.Center))
+                Text("Cats are off", style = TextStyle(color = ColorProvider(ink), fontSize = 13.sp, textAlign = TextAlign.Center))
             }
             strip -> Row(GlanceModifier.fillMaxSize().padding(end = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(GlanceModifier.width(104.dp).fillMaxHeight().clickable(pet)) {}

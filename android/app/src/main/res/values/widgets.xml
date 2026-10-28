@@ -28,6 +28,8 @@
     <string name="widget_cafe_about">Your café with today\'s cats; in dark mode, the month\'s, at night.</string>
     <string name="widget_friends_name">Friends\' table</string>
     <string name="widget_friends_about">Who\'s focusing, who\'s on a break, and how long they have left.</string>
+    <string name="wallpaper_name">Chataltul café</string>
+    <string name="wallpaper_about">Your café, with today\'s cats</string>
     <string name="tile_focus">Chataltul</string>
     <string name="tile_park">Park a thought</string>
     <string name="tile_sound">Focus sound</string>

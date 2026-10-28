@@ -26,7 +26,7 @@ What it does:
 - Check-ins are scheduled on the phone itself, so nothing goes through my server. "Still on: …?" (or "Still focusing?" when the block has no title) has Yes / Drifted right on the notification, and "How did it go?" has Done / Partly / Not really, and a note.
 - The countdown (or the stopwatch) sits on the lock screen and in the status bar while a block runs (on Samsung, in the Now Bar).
 - Later, a daily goal, a daily reminder, breaks, park a thought, +5 / +10 at the end, your own nudge lines, tags, news.
-- **Widgets, tiles and shortcuts.** Fourteen home-screen widgets, three Quick Settings tiles, shortcuts on the app's icon, and a countdown on the lock screen. See Widgets, just below.
+- **Widgets, tiles and shortcuts.** Fourteen home-screen widgets, the café as a live wallpaper, three Quick Settings tiles, shortcuts on the app's icon, and a countdown on the lock screen. See Widgets, just below.
 - **Sign in, if you want, and it syncs with the web.** Settings → Sign In: type your email and Chataltul emails you a 6-digit code, and that's it, no password to remember (if you're new, the code makes your account). A name and a password work too. Your history on the phone comes along into the account, and from then on the phone and the web (and your other devices) have the same blocks, Later, cats and settings: a change goes up a moment after you make it, and what you did elsewhere comes in when you open Chataltul. The account page has your email, a password if you want one, signing out (the account's history leaves the phone, it's safe on the server) and deleting the account (your history stays on the phone).
 
 What it doesn't do yet: the parts of the account that are about other people (friends, napping together, rooms with a code, rankings, the shelter counters). Without an account your history stays on the phone and nothing about you is sent anywhere; the one thing the app fetches is a sound's recording, the first time you pick it.
@@ -46,6 +46,10 @@ Then the playful ones. **Pet the cat** is your cat on its sill: tap it and it ho
 On a tablet (or a phone, if you stretch them) they have bigger shapes: the Window becomes a big window with the clock under it when it's 4 × 4, the café fills a 6 × 4, the goal, the streak and the missions have short wide shapes, the constellation puts its words beside the sky, Pet the cat gets a bubble, and the friends' table sits on the café's day wall by day and on the night wall at night.
 
 ![On a tablet: the big Window, the café, the short wide goal, streak and missions, the friends' table by day, the wide constellation and Pet the cat](docs/widgets-tablet.webp)
+
+**The café as your wallpaper.** Settings → Widgets → Café wallpaper, then Set wallpaper. It's the same 3D café, floating on the café wall by day and under the stars at night, with today's cats in it and your cat going along above the dock; during a block it says how long is left, never what you called it, because the wallpaper can be the lock screen too. It's easy on the battery: it moves for a few seconds when you come back to the home screen, swipe between pages or tap it, and then holds still, drawing again once a minute; while an app is open it draws nothing at all.
+
+![The café wallpaper on a home screen, by day and at night](docs/wallpaper.webp)
 
 "Park a thought" opens a tiny dialog over whatever you're doing, not the whole app. There are three Quick Settings tiles (Chataltul, Park a thought and Focus sound), and when you press and hold the app's icon you get Start 25, Start 50, Park a thought and Open the café.
 

@@ -162,6 +162,10 @@ fun SettingsTab(s: UiState, act: MainActivity, onTab: (Tab) -> Unit) {
                 Text("Add", color = MaterialTheme.colorScheme.primary)
             }
             GroupDivider()
+            Item("Café wallpaper", Icons.Rounded.Wallpaper, k.orange, onClick = { xyz.tiresia.kavana.wallpaper.CafeWallpaperService.choose(ctx) }) {
+                Text("Set", color = MaterialTheme.colorScheme.primary)
+            }
+            GroupDivider()
             var hide by remember { mutableStateOf(xyz.tiresia.kavana.widget.WidgetPins.hideTitles) }
             Item("Hide block titles", Icons.Rounded.VisibilityOff, k.gray, sub = "On widgets and the lock screen") {
                 Switch(hide, { hide = it; xyz.tiresia.kavana.widget.WidgetPins.hideTitles = it })

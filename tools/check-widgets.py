@@ -2,7 +2,7 @@
 """The widgets' check, on the emulator (a debug build): every widget in every state, a whole block run from a widget,
 Park a thought, the countdown notification, the Quick Settings tiles and the launcher shortcuts.
 
-    KAVANA_ADB=<adb> python3 tools/check-widgets.py <app-debug.apk> <out-dir> [states|dark|live|play|playdark|pet|cafe|friends|tablet]
+    KAVANA_ADB=<adb> python3 tools/check-widgets.py <app-debug.apk> <out-dir> [states|dark|live|play|playdark|pet|cafe|friends|tablet|wallpaper]
 
 With no phase it does all three in one go; an emulator that renders for long enough grows to several GB, so
 the phases can each run on a freshly booted one.
@@ -142,6 +142,16 @@ def differ(a, b):
     from PIL import ImageChops
     d = ImageChops.difference(a, b).convert('L')
     return sum(1 for v in d.getdata() if v > 24) * 100.0 / (a.width * a.height)
+
+
+def calm():
+    """An emulator under load can show "System UI isn't responding": wait it out."""
+    for _ in range(3):
+        if P.find("isn't responding"):
+            P.tap('Wait', exact=True)
+            time.sleep(3)
+        else:
+            return
 
 
 def doc():
@@ -284,7 +294,7 @@ try:
         check('This week, as weather: the title, the best day, Today', has(t, 'This week, as weather', 'best:', 'Today', 'no blocks yet'))
         t = labp('friends')
         check("Friends' table: who is doing what, and how long they have left", has(t, 'Dana', '14 min left', 'Sam', 'on a break', 'Alex', 'not focusing', 'Kim', "isn't sharing", 'Refresh'))
-        check("Friends' table: no friends, signed out, not sharing", has(t, 'No friends yet.', 'Sign in to see your friends here.', 'Open Chataltul', "You're not sharing your focus, so your friends' stays hidden."))
+        check("Friends' table: no friends, signed out, not sharing", has(t, 'No friends yet', 'Not signed in', 'Open Chataltul', 'Sharing is off'))
         step('play')
 
     if on('playdark'):
@@ -426,7 +436,7 @@ try:
             P.adb('shell', 'am', 'force-stop', PKG)
             P.adb('shell', 'am', 'start', '-n', LAB, '--ez', 'live', 'true', '--es', 'provider', 'friends', '--ei', 'w', '340', '--ei', 'h', '150')
             time.sleep(6)
-            check('signed out: it says so, and asks to open the app', P.wait_for('Sign in to see your friends here.', 8) and P.find('Open Chataltul') is not None)
+            check('signed out: it says so, and asks to open the app', P.wait_for('Not signed in', 8) and P.find('Open Chataltul') is not None)
             step('friends-signed-out')
             # an account on the phone (the sandbox's own sign-in is check-account's job): its name and a session cookie, in the app's preferences
             P.adb('shell', 'am', 'force-stop', PKG)
@@ -439,20 +449,24 @@ try:
             if P.find('Refresh'):
                 P.tap('Refresh', exact=True)
             check('signed in: the friends, from the list the server gives', P.wait_for('Dana', 15) and P.wait_for('Sam', 3) and P.wait_for('Alex', 3))
-            t = texts()
+            for _ in range(4):  # (a screen with a ticking countdown doesn't always read the first time)
+                t = texts()
+                if any(re.match(r'1[34]:\d\d left$', x) for x in t):
+                    break
+                time.sleep(1)
             check('with how long they have left (counting down), a break, and not focusing', any(re.match(r'1[34]:\d\d left$', x) for x in t) and has(t, 'on a break', 'not focusing'))
             check('and the session cookie went with the request', seen['cookie'] is not None and 'testcookie' in seen['cookie'])
             step('friends')
             reply['sharing'] = False
             P.tap('Refresh', exact=True)
-            check('not sharing: it says why, and hides them', P.wait_for("You're not sharing your focus, so your friends' stays hidden.", 15))
+            check('not sharing: it says why, and hides them', P.wait_for('Sharing is off', 15))
             reply['sharing'] = True
             reply['friends'] = [{'name': 'kim', 'display': 'Kim', 'status': 'hidden'}]
             P.tap('Refresh', exact=True)
             check("a friend who shares nothing: \"isn't sharing\"", P.wait_for("isn't sharing", 15))
             reply['friends'] = []
             P.tap('Refresh', exact=True)
-            check('no friends yet: it says where they are added', P.wait_for('No friends yet.', 15))
+            check('no friends yet: it says where they are added', P.wait_for('No friends yet', 15))
             step('friends-none')
         finally:
             srv.shutdown()
@@ -467,6 +481,111 @@ try:
         check('the short wide goal, streak and missions', has(t, 'Today', 'of your 2 h goal', '40 min to go', 'days in a row', '2 of 3', 'missions', 'Collect +20'))
         check('Pet the cat with its bubble, and the friends by day and at night', has(t, 'Mrrp?', 'Dana', '14 min left', 'Refresh'))
         step('tablet')
+
+    if on('wallpaper'):
+        print('\nthe café wallpaper (on the emulator\'s own home screen)')
+        WP = f'{PKG}/xyz.tiresia.kavana.wallpaper.CafeWallpaperService'
+
+        def frames():
+            """The wallpaper's frame count as it last told the log (debug builds log it), and whether it was moving."""
+            out = P.adb('logcat', '-d', '-s', 'CafeWallpaper:I')
+            found = re.findall(r'frames=(\d+)(?: active=(\w+))?', out)
+            return (int(found[-1][0]), found[-1][1]) if found else (0, '')
+
+        def cpu():
+            pid = P.adb('shell', 'pidof', PKG).strip()
+            top = P.adb('shell', 'top', '-b', '-n', '1', '-p', pid) if pid else ''
+            m = re.search(r'\s([\d.]+)\s+[\d.]+\s+[\d:.]+\s+\S*kavana', top)
+            return float(m.group(1)) if m else -1.0
+
+        calm()
+        P.adb('shell', 'pm', 'clear', PKG)
+        P.adb('shell', 'pm', 'grant', PKG, 'android.permission.POST_NOTIFICATIONS')
+        # two cats home today, so the café has someone in it (a minute lasting three seconds)
+        P.adb('shell', 'am', 'start', '-n', f'{PKG}/xyz.tiresia.kavana.MainActivity', '--el', 'minute', '3000', '--ei', 'wallpaperHour', '14')
+        time.sleep(3)
+        P.adb('shell', 'am', 'force-stop', PKG)
+        lab('x', '--ez', 'live', 'true', '--ei', 'w', '340', '--ei', 'h', '150')
+        for _ in range(3):  # (a fresh install's first screen can land on top of the lab: start it again until it's the lab)
+            calm()
+            P.adb('shell', 'am', 'force-stop', PKG)
+            P.adb('shell', 'am', 'start', '-n', LAB, '--ez', 'live', 'true', '--ei', 'w', '340', '--ei', 'h', '150')
+            if P.wait_for('Miso is waiting', 12):
+                break
+        for i in range(2):
+            P.wait_for('Miso is waiting', 10)
+            P.tap('15', exact=True)
+            P.wait_for('CAME HOME', 90)
+            P.tap('Done', exact=True)
+            time.sleep(1)
+        P.adb('shell', 'am', 'force-stop', PKG)
+        P.adb('logcat', '-c')
+        P.adb('shell', 'am', 'start', '-a', 'android.service.wallpaper.CHANGE_LIVE_WALLPAPER', '--ecn', 'android.service.wallpaper.extra.LIVE_WALLPAPER_COMPONENT', WP)
+        time.sleep(8)
+        step('wallpaper-preview-day')
+        check('the system shows the café wallpaper in its preview (it draws)', frames()[0] > 0)
+        picked = False
+        for label in ['Set wallpaper', 'SET WALLPAPER', 'Apply', 'Set']:
+            if P.find(label):
+                P.tap(label, exact=True)
+                picked = True
+                break
+        time.sleep(2)
+        for label in ['Home and lock screens', 'Home & lock screens', 'Home screen and lock screen', 'Home screen']:
+            if P.find(label):
+                P.tap(label, exact=True)
+                break
+        time.sleep(3)
+        check('and it can be set as the wallpaper', picked and WP.split('/')[1] in P.adb('shell', 'dumpsys', 'wallpaper'))
+        P.adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
+        time.sleep(4)
+        f1, _ = frames()
+        c_active = cpu()
+        time.sleep(4)
+        f2, _ = frames()
+        print(f'  moving: {f1} -> {f2} frames in 4 s, cpu {c_active}%')
+        check('coming into view, it moves (a capped frame rate: 10 to 30 a second)', 40 <= f2 - f1 <= 120)
+        step('wallpaper-home-day')
+        time.sleep(14)
+        f3, a3 = frames()
+        c_idle = cpu()
+        time.sleep(20)
+        f4, a4 = frames()
+        print(f'  still: {f3} -> {f4} frames in 20 s ({a3}, {a4}), cpu {c_idle}%')
+        check('then it holds still (at most a frame a minute)', f4 - f3 <= 1)
+        P.adb('shell', 'am', 'start', '-n', f'{PKG}/xyz.tiresia.kavana.MainActivity')
+        time.sleep(4)
+        f5, _ = frames()
+        time.sleep(10)
+        f6, _ = frames()
+        check('out of sight (an app in front), it draws nothing', f6 - f5 == 0 and 'visible=false' in P.adb('logcat', '-d', '-s', 'CafeWallpaper:I'))
+        P.adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
+        time.sleep(15)
+        f7, _ = frames()
+        w, h = (int(v) for v in P.adb('shell', 'wm', 'size').split()[-1].split('x'))
+        P.adb('shell', 'input', 'tap', str(w // 2), str(int(h * .47)))
+        time.sleep(3)
+        f8, _ = frames()
+        check('a tap on the home screen wakes it again', f8 - f7 >= 20)
+        # during a block: how long is left (never what it's called); then at night: the starry sky. (Never a force-stop from here on:
+        # Android drops a live wallpaper whose app is force-stopped.)
+        P.adb('shell', 'am', 'start', '-n', LAB, '--ez', 'live', 'true', '--ei', 'w', '340', '--ei', 'h', '150')
+        P.wait_for('Miso is waiting', 12)
+        P.tap('Start', exact=True)
+        P.wait_for('FOCUSING', 10)
+        P.adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
+        time.sleep(5)
+        step('wallpaper-home-focusing')
+        check('still the café wallpaper after all that', WP.split('/')[1] in P.adb('shell', 'dumpsys', 'wallpaper'))
+        P.adb('shell', 'am', 'start', '-n', f'{PKG}/xyz.tiresia.kavana.MainActivity', '--activity-clear-top', '--activity-single-top', '--ei', 'wallpaperHour', '22')  # (to the open app, not just its task to the front)
+        time.sleep(3)
+        P.adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
+        time.sleep(6)
+        step('wallpaper-home-night')
+        P.adb('shell', 'am', 'start', '-n', f'{PKG}/xyz.tiresia.kavana.MainActivity', '--activity-clear-top', '--activity-single-top', '--ei', 'wallpaperHour', '-1')
+        time.sleep(2)
+        P.adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
+        P.adb('uninstall', PKG)  # and the emulator's own wallpaper back, so the next boot doesn't start by drawing the café
 
 finally:
     P.adb('shell', 'cmd', 'uimode', 'night', 'no')

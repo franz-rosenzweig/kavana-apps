@@ -198,7 +198,7 @@ fun MissionsContent(s: Snap) {
                 }
                 Spacer(GlanceModifier.height(10.dp))
                 if (s.collectTotal > 0) Pill("Collect +${s.collectTotal}", pal.orange, pal.onOrange, actionRunCallback<CollectAction>(), GlanceModifier.fillMaxWidth(), icon = R.drawable.w_treat, height = 40.dp, textSize = 14.sp)
-                else Text(if (s.missionsTotal == 0) "They come with the day" else s.missionNext.ifEmpty { "All done for today" }, style = TextStyle(color = ColorProvider(pal.muted), fontSize = 12.sp), maxLines = 2)
+                else if (s.missionsTotal > 0) Text(s.missionNext.ifEmpty { "All done for today" }, style = TextStyle(color = ColorProvider(pal.muted), fontSize = 12.sp), maxLines = 2)
             }
         }
         return
@@ -220,8 +220,7 @@ fun MissionsContent(s: Snap) {
             }
             Column(GlanceModifier.defaultWeight(), verticalAlignment = Alignment.CenterVertically) {
                 Text(if (s.missionsTotal == 0) "No missions yet" else "${s.missionsDone} of ${s.missionsTotal} missions", style = TextStyle(color = ColorProvider(pal.ink), fontSize = 15.sp, fontWeight = FontWeight.Bold), maxLines = 1)
-                val line = if (s.missionsTotal == 0) "They come with the day" else if (s.missionNext.isNotEmpty()) s.missionNext else "All done for today"
-                Text(line, style = TextStyle(color = ColorProvider(pal.muted), fontSize = 12.sp), maxLines = 1)
+                if (s.missionsTotal > 0) Text(s.missionNext.ifEmpty { "All done for today" }, style = TextStyle(color = ColorProvider(pal.muted), fontSize = 12.sp), maxLines = 1)
             }
             if (s.collectTotal > 0) {
                 Spacer(GlanceModifier.width(8.dp))

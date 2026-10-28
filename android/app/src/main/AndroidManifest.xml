@@ -105,6 +105,11 @@
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/friends_widget_info" />
         </receiver>
         <receiver android:name=".widget.DayReceiver" android:exported="false" />
+        <!-- the café as a live wallpaper -->
+        <service android:name=".wallpaper.CafeWallpaperService" android:exported="true" android:label="@string/wallpaper_name" android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter><action android:name="android.service.wallpaper.WallpaperService" /></intent-filter>
+            <meta-data android:name="android.service.wallpaper" android:resource="@xml/wallpaper" />
+        </service>
         <!-- Quick Settings tiles -->
         <service android:name=".widget.FocusTileService" android:exported="true" android:label="@string/tile_focus" android:icon="@drawable/ic_notify"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">

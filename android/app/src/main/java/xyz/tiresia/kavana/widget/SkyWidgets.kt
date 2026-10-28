@@ -70,7 +70,6 @@ fun ConstellationContent(s: Snap) {
                 Text(if (n == 0) "No stars yet" else "$n ${if (n == 1) "block" else "blocks"},\n$n ${if (n == 1) "star" else "stars"}", style = TextStyle(color = ColorProvider(white), fontSize = 20.sp, fontWeight = FontWeight.Bold), maxLines = 2)
                 Spacer(GlanceModifier.height(8.dp))
                 if (s.streak > 0) Text(if (s.streak == 1) "1 day in a row" else "${s.streak} days in a row", style = TextStyle(color = ColorProvider(amber), fontSize = 12.5.sp, fontWeight = FontWeight.Bold), maxLines = 1)
-                else Text("Bring a kitten home to light one", style = TextStyle(color = ColorProvider(dim), fontSize = 12.sp), maxLines = 2)
             }
         } else if (small) {
             Box(GlanceModifier.fillMaxSize().padding(start = 16.dp, top = 14.dp)) {
@@ -88,7 +87,7 @@ fun ConstellationContent(s: Snap) {
             }
             Box(GlanceModifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp), contentAlignment = Alignment.BottomStart) {
                 Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(brightest(s) ?: "Bring a kitten home to light one", style = TextStyle(color = ColorProvider(dim), fontSize = 11.5.sp), modifier = GlanceModifier.defaultWeight(), maxLines = 1)
+                    Text(brightest(s) ?: "", style = TextStyle(color = ColorProvider(dim), fontSize = 11.5.sp), modifier = GlanceModifier.defaultWeight(), maxLines = 1)
                     if (s.streak > 0) Text(if (s.streak == 1) "1 day in a row" else "${s.streak} days in a row", style = TextStyle(color = ColorProvider(amber), fontSize = 12.sp, fontWeight = FontWeight.Bold), maxLines = 1)
                 }
             }
