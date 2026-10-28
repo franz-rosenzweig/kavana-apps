@@ -78,19 +78,54 @@ sealed class Floating
             Native.DwmSetWindowAttribute(Hwnd, Native.DWMWA_WINDOW_CORNER_PREFERENCE, ref corner, sizeof(int));
             var border = Native.DWMWA_COLOR_NONE;
             Native.DwmSetWindowAttribute(Hwnd, Native.DWMWA_BORDER_COLOR, ref border, sizeof(uint));
-            if (backdrop == Backdrop.Clear)
-            {
-                // the "sheet of glass": DWM takes the window's own alpha everywhere, so the clear brush shows the desktop
-                var glass = new Native.MARGINS { Left = -1, Right = -1, Top = -1, Bottom = -1 };
-                Native.DwmExtendFrameIntoClientArea(Hwnd, ref glass);
-                Window.SystemBackdrop = new ClearBackdrop();
-            }
+            if (backdrop == Backdrop.Clear) MakeClear();
         }
         AppWindow.Closing += (_, e) => { e.Cancel = true; if (!KeepOnClose) Hide(); };
         Window.Activated += (_, e) =>
         {
             if (e.WindowActivationState == WindowActivationState.Deactivated && IsShown) Deactivated?.Invoke();
         };
+    }
+
+    Native.WndProc? clearProc;
+    IntPtr previousProc;
+    static IntPtr black;
+
+    /// <summary>
+    /// A window the desktop shows through wherever its content doesn't paint. Three things are needed besides the
+    /// clear brush (WinUIEx's TransparentTintBackdrop does the same): DWM's blur behind the window with a region that
+    /// is nowhere, so DWM takes the window's alpha; no frame margins; and the window's own Win32 background painted
+    /// black, which DWM then treats as nothing, also each time Windows asks for it to be erased.
+    /// </summary>
+    void MakeClear()
+    {
+        Glass();
+        clearProc = (h, msg, w, l) =>
+        {
+            if (msg == Native.WM_ERASEBKGND) { PaintBlack(h, w); return new IntPtr(1); }
+            if (msg == Native.WM_DWMCOMPOSITIONCHANGED) Glass();
+            return Native.CallWindowProc(previousProc, h, msg, w, l);
+        };
+        previousProc = Native.SetWindowLongPtr(Hwnd, Native.GWLP_WNDPROC, Marshal.GetFunctionPointerForDelegate(clearProc));
+        var dc = Native.GetDC(Hwnd);
+        PaintBlack(Hwnd, dc);
+        Native.ReleaseDC(Hwnd, dc);
+        Window.SystemBackdrop = new ClearBackdrop();
+    }
+
+    void Glass()
+    {
+        var none = new Native.MARGINS();
+        Native.DwmExtendFrameIntoClientArea(Hwnd, ref none);
+        var blur = new Native.DWM_BLURBEHIND { dwFlags = 3, fEnable = 1, hRgnBlur = Native.CreateRectRgn(-2, -2, -1, -1) };
+        Native.DwmEnableBlurBehindWindow(Hwnd, ref blur);
+    }
+
+    static void PaintBlack(IntPtr hwnd, IntPtr dc)
+    {
+        if (dc == IntPtr.Zero || !Native.GetClientRect(hwnd, out var r)) return;
+        if (black == IntPtr.Zero) black = Native.CreateSolidBrush(0);
+        Native.FillRect(dc, ref r, black);
     }
 
     /// <summary>What the window shows, its size in DIPs worked out from it.</summary>

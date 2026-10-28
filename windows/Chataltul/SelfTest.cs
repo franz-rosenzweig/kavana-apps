@@ -399,7 +399,8 @@ static class SelfTest
         app.Looked(store.Settings.Blocklist.Hit("fake.exe"), FakeApp);
         await Spin(800);
         var dim = Native.ScreenPixel(work.Left + 4, work.Top + 4);
-        Add("the speed bump dims the screen and lets it show through", !Near(dim, 0xFF00FF) && (dim >> 16 & 0xFF) > 0x40 && (dim & 0xFF) > 0x40, $"{dim:x6}");
+        // the wall's magenta, dimmed: not white or gray under the dim, which would mean the window isn't see-through
+        Add("the speed bump dims the screen and lets it show through", !Near(dim, 0xFF00FF) && (dim >> 16 & 0xFF) > 0x40 && (dim & 0xFF) > 0x40 && (dim >> 8 & 0xFF) < 0x30, $"{dim:x6}");
         if (app.Bump.Hold is { } hold)
         {
             var b = app.Bump.Win.Bounds;
