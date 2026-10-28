@@ -15,7 +15,10 @@ object WidgetUpdater {
     /** The app's state changed (Repo.after): save what the widgets draw, and redraw them if it's different. */
     fun onState(ctx: Context, st: UiState) {
         CafeRender.update(ctx, st)
-        if (WidgetStore.put(ctx, snapOf(st).copy(mix = SoundMix.mix.map { SnapSound(it.first, Sound.byId(it.first)?.name ?: it.first, it.second) }, muted = SoundMix.muted))) refresh(ctx)
+        if (WidgetStore.put(ctx, snapOf(st).copy(mix = SoundMix.mix.map { SnapSound(it.first, Sound.byId(it.first)?.name ?: it.first, it.second) }, muted = SoundMix.muted))) {
+            refresh(ctx)
+            WatchSync.send(ctx, WidgetStore.get(ctx))
+        }
     }
 
     /** Something outside the engine changed what a widget shows (the sound mix, mute): snapshot again from the latest state. */

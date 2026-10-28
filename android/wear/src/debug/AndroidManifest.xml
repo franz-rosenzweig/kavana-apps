@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- debug builds only: a made-up snapshot for the emulator, which has no phone -->
+        <activity android:name=".TileLab" android:exported="true" android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+        <activity android:name=".ComplicationLab" android:exported="true" android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+        <receiver android:name=".DebugSnap" android:exported="true">
+            <intent-filter><action android:name="xyz.tiresia.kavana.wear.DEBUG_SNAP" /></intent-filter>
+        </receiver>
+    </application>
+</manifest>

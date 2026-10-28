@@ -105,6 +105,13 @@
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/friends_widget_info" />
         </receiver>
         <receiver android:name=".widget.DayReceiver" android:exported="false" />
+        <!-- taps from the Wear OS app (the Wearable Data Layer) -->
+        <service android:name=".widget.WatchListenerService" android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/chataltul" />
+            </intent-filter>
+        </service>
         <!-- the café as a live wallpaper -->
         <service android:name=".wallpaper.CafeWallpaperService" android:exported="true" android:label="@string/wallpaper_name" android:permission="android.permission.BIND_WALLPAPER">
             <intent-filter><action android:name="android.service.wallpaper.WallpaperService" /></intent-filter>

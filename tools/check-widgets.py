@@ -2,7 +2,7 @@
 """The widgets' check, on the emulator (a debug build): every widget in every state, a whole block run from a widget,
 Park a thought, the countdown notification, the Quick Settings tiles and the launcher shortcuts.
 
-    KAVANA_ADB=<adb> python3 tools/check-widgets.py <app-debug.apk> <out-dir> [states|dark|live|play|playdark|pet|cafe|friends|tablet|wallpaper]
+    KAVANA_ADB=<adb> python3 tools/check-widgets.py <app-debug.apk> <out-dir> [states|dark|live|play|playdark|pet|cafe|friends|tablet|wallpaper|watch]
 
 With no phase it does all three in one go; an emulator that renders for long enough grows to several GB, so
 the phases can each run on a freshly booted one.
@@ -586,6 +586,67 @@ try:
         time.sleep(2)
         P.adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
         P.adb('uninstall', PKG)  # and the emulator's own wallpaper back, so the next boot doesn't start by drawing the café
+
+    if on('watch'):
+        print('\ntaps from the watch, on the phone (no watch here: the debug build hands each to the phone\'s watch code as the watch\'s message would arrive)')
+        P.adb('shell', 'pm', 'clear', PKG)
+        P.adb('shell', 'pm', 'grant', PKG, 'android.permission.POST_NOTIFICATIONS')
+        P.adb('shell', 'am', 'start', '-n', f'{PKG}/xyz.tiresia.kavana.MainActivity', '--el', 'minute', '3000')  # a minute lasts three seconds
+        time.sleep(3)
+        P.adb('shell', 'am', 'force-stop', PKG)
+
+        def watch(o, *extra):
+            P.adb('logcat', '-c')
+            P.adb('shell', f"am broadcast -f 32 -a xyz.tiresia.kavana.DEBUG_WATCH -p {PKG} --es json '{json.dumps(o)}' {' '.join(extra)}")
+            for _ in range(30):
+                time.sleep(0.5)
+                if 'lab: handled' in P.adb('logcat', '-d', '-s', 'ChataltulWatch:I'):
+                    return True
+            return False
+
+        def running():
+            return next((b for b in doc()['blocks'] if not b.get('ended')), None)
+
+        def until(test, secs):
+            for _ in range(secs // 3):
+                b = test()
+                if b:
+                    return b
+                time.sleep(3)
+            return None
+
+        watch({'op': 'start', 'min': 25})
+        b = running()
+        check('Start 25 on the watch: a block of 25 minutes', b is not None and b.get('minutes') == 25)
+        watch({'op': 'stop'})
+        check('Done from the watch can\'t stop a block that\'s still counting down', running() is not None)
+        watch({'op': 'pause'})
+        check('Pause', (running() or {}).get('paused') is not None)
+        watch({'op': 'resume'})
+        check('Resume', running() is not None and running().get('paused') is None)
+        b = until(lambda: (lambda r: r if r and any(c.get('answer') is None for c in r.get('checkins', [])) else None)(running()), 90)
+        check('a check-in comes', b is not None)
+        watch({'op': 'answer', 'what': 'yes'})
+        check('Yes from the watch answers it', any(c.get('answer') == 'yes' for c in (running() or {}).get('checkins', [])))
+        b = until(lambda: next((x for x in doc()['blocks'] if x.get('ended') and not x.get('closed')), None), 90)
+        check('the kitten comes home', b is not None)
+        watch({'op': 'outcome', 'what': 'done'})
+        check('Done from the watch records it as Done', any(x.get('outcome') == 'done' for x in doc()['blocks']))
+
+        watch({'op': 'start', 'min': 5}, '--ez', 'overtime', 'true')
+        b = until(lambda: (lambda r: r if r and r.get('over') else None)(running()), 45)
+        check('with "Count extra time" on, a block runs on past its end', b is not None)
+        watch({'op': 'stop'})
+        last = sorted(doc()['blocks'], key=lambda x: x.get('start', 0))[-1]
+        check('Done in extra time from the watch ends it, and the kitten is home', running() is None and last.get('ended') and not last.get('stopped') and last.get('home'))
+        watch({'op': 'outcome', 'what': 'done'})
+
+        watch({'op': 'start', 'min': -1})
+        b = running()
+        check('∞ on the watch: a stopwatch', b is not None and b.get('mode') == 'stopwatch')
+        watch({'op': 'stop'})
+        check('Done from the watch can\'t stop a stopwatch before 10 minutes (the kitten would wander off)', running() is not None)
+        check('a hello from the watch is answered without trouble', watch({'op': 'hello'}) and 'FATAL EXCEPTION' not in P.adb('logcat', '-d', '-s', 'AndroidRuntime:E'))
 
 finally:
     P.adb('shell', 'cmd', 'uimode', 'night', 'no')

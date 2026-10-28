@@ -55,6 +55,14 @@ On a tablet (or a phone, if you stretch them) they have bigger shapes: the Windo
 
 The countdown on the lock screen has the kitten walking along its bar, with a dot for each check-in, and it never says what you called the block (the shade does, once you're unlocked). One switch in Settings, "Hide block titles", takes the titles off the widgets too. The widgets are made with Jetpack Glance and draw from a small saved snapshot, so they never wake the app to look at something. The pictures in them are drawn by the app and kept small.
 
+### On the watch (Wear OS, not released yet)
+
+![The watch's tile: ready, focusing, extra time, a check-in, paused and came home; then the complication, round and short, between blocks and during one](docs/watch.webp)
+
+I wear a Pixel Watch, so Chataltul has a watch part too: a tile and a complication. Swipe to the tile and it's the window with your cat: ready, with Start 25 and 15, 50 and ∞; focusing, with a ring that empties, the minutes left and Pause (Done instead, in extra time or once a stopwatch has passed 10 minutes); a check-in, with Yes and Drifted; paused, with Resume; and the kitten come home with its treats, and Done. The complication puts the minutes left on the watch face while a block runs (the watch counts them down by itself), and today's minutes against the goal the rest of the time. Opening Chataltul from the watch's list of apps shows the same thing as the tile.
+
+The watch doesn't decide anything itself. Every tap goes to the phone, which does it and sends the new state back, so the phone, the widgets and the watch always agree, and with "Hide block titles" on the watch doesn't show them either. It needs the phone app on the phone the watch is paired with, both from the same release. Like the phone app it doesn't come from the Play Store: it goes onto the watch from a computer with adb, over Wi-Fi (Wireless debugging in the watch's Developer options).
+
 ### Building it
 
 It builds on my Mac over SSH, the same way as Daf and Binah (JDK 17 and `~/android-sdk` there):
@@ -62,7 +70,7 @@ It builds on my Mac over SSH, the same way as Daf and Binah (JDK 17 and `~/andro
 ```
 cd ~/Documents/Claude/Projects/kavana-apps/android
 ./gradlew assembleDebug                 # Chataltul dev, installs beside the real one
-./release.sh                            # Chataltul-<version>.apk, signed with Dvarim's key
+./release.sh                            # Chataltul-<version>.apk and Chataltul-Watch-<version>.apk, signed with Dvarim's key
 adb install -r Chataltul-<version>.apk
 ```
 
@@ -140,7 +148,9 @@ The motion study and its tools: `warp.js` (the web's living cats, a copy of what
 
 The account check, `tools/check-account.py`, signs in and syncs on the emulator against a sandbox copy of the server on this computer (never the real one: it makes and deletes accounts, so it refuses any other address). It reads the emailed codes from the sandbox's outbox, plays a second device through the API, and walks signing in by email, syncing both ways, a password, signing out and back in, a password changed elsewhere, and deleting the account. How to start the sandbox is at the top of the script.
 
-The widgets' check, `tools/check-widgets.py`, hosts every widget in every state in the debug build's Widget lab (a screen of the app's own, at real sizes, so it never goes near a home screen), runs a whole block from a widget, parks a thought from one, looks at the countdown notification, the Quick Settings tiles and the shortcuts, pets the cat (one tap, two quick taps, and the buzz in the phone), draws the café from real blocks, and fills the friends' table from a stand-in for the server's friends list (never the real one). It runs in phases (`states`, `dark`, `live`, `play`, `playdark`, `pet`, `cafe`, `friends`), each of which can run on a freshly started emulator, because an emulator grows to several GB if it draws for long enough. `tools/widget-previews.py` makes the pictures the launcher's widget list shows, from the real widgets.
+The widgets' check, `tools/check-widgets.py`, hosts every widget in every state in the debug build's Widget lab (a screen of the app's own, at real sizes, so it never goes near a home screen), runs a whole block from a widget, parks a thought from one, looks at the countdown notification, the Quick Settings tiles and the shortcuts, pets the cat (one tap, two quick taps, and the buzz in the phone), draws the café from real blocks, and fills the friends' table from a stand-in for the server's friends list (never the real one). It runs in phases (`states`, `dark`, `live`, `play`, `playdark`, `pet`, `cafe`, `friends`, `tablet`, `wallpaper`), each of which can run on a freshly started emulator, because an emulator grows to several GB if it draws for long enough. `tools/widget-previews.py` makes the pictures the launcher's widget list shows, from the real widgets.
+
+The watch's check, `tools/check-wear.py`, runs on a Wear OS emulator. The emulator has no phone, so it feeds the watch made-up snapshots, draws the tile in each state with the watch's own tile renderer (on a screen of the debug build's, the Tile lab), taps it and reads in the log what would have gone to the phone, opens the app, and draws the complication the way a watch face does (the Complication lab). The widgets' check has a `watch` phase for the phone's half: it hands the phone the taps a watch would send and watches the real engine do them. The phone and the watch actually talking to each other can only be seen on a real pair.
 
 The device check, `tools/check.py`, drives a phone plugged into my Mac over SSH (or an emulator, with `KAVANA_ADB`). It needs to know which Mac: `KAVANA_MAC=user@host`, plus `KAVANA_MAC_KEY` if ssh needs a key, or the same two lines in `~/.config/kavana-apps/mac.env`, which stays out of the repo. It stops and says so if neither is there.
 

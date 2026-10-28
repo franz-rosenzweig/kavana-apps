@@ -4,5 +4,9 @@
         <!-- Debug builds only: hosts the app's own widgets at real sizes, to look at them (never in the release) -->
         <activity android:name=".widget.WidgetLab" android:exported="true" android:label="Widget lab"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <!-- Debug builds only: plays the watch's taps, for the widgets' check (never in the release) -->
+        <receiver android:name=".widget.WatchLab" android:exported="true">
+            <intent-filter><action android:name="xyz.tiresia.kavana.DEBUG_WATCH" /></intent-filter>
+        </receiver>
     </application>
 </manifest>
