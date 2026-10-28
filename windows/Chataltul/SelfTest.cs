@@ -371,9 +371,10 @@ static class SelfTest
         Add("a click there goes through to the window underneath", under != app.Cat.Win.Hwnd, under == wall.Hwnd ? "the wall" : $"{under:x}");
         if (app.Cat.CatRect is { } pic)
         {
-            // inside the window's shape, where the painting itself is see-through: only a clear backdrop shows the wall here
+            // inside the window's shape, where the painting itself is see-through (its lower left corner, below the card):
+            // only a clear backdrop shows the wall here
             var s = Native.GetDpiForWindow(app.Cat.Win.Hwnd) / 96.0;
-            var inPicture = Native.ScreenPixel(cat.Left + (int)((pic.X + 4) * s), cat.Top + (int)((pic.Y + 4) * s));
+            var inPicture = Native.ScreenPixel(cat.Left + (int)((pic.X + 4) * s), cat.Top + (int)((pic.Bottom - 6) * s));
             Add("where the cat's painting is empty, the desktop shows through", Near(inPicture, 0xFF00FF), $"{inPicture:x6}");
         }
         var onCard = new Native.POINT { X = cat.Right - 40, Y = cat.Top + 40 };
