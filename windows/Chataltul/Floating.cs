@@ -78,7 +78,13 @@ sealed class Floating
             Native.DwmSetWindowAttribute(Hwnd, Native.DWMWA_WINDOW_CORNER_PREFERENCE, ref corner, sizeof(int));
             var border = Native.DWMWA_COLOR_NONE;
             Native.DwmSetWindowAttribute(Hwnd, Native.DWMWA_BORDER_COLOR, ref border, sizeof(uint));
-            if (backdrop == Backdrop.Clear) Window.SystemBackdrop = new ClearBackdrop();
+            if (backdrop == Backdrop.Clear)
+            {
+                // the "sheet of glass": DWM takes the window's own alpha everywhere, so the clear brush shows the desktop
+                var glass = new Native.MARGINS { Left = -1, Right = -1, Top = -1, Bottom = -1 };
+                Native.DwmExtendFrameIntoClientArea(Hwnd, ref glass);
+                Window.SystemBackdrop = new ClearBackdrop();
+            }
         }
         AppWindow.Closing += (_, e) => { e.Cancel = true; if (!KeepOnClose) Hide(); };
         Window.Activated += (_, e) =>
