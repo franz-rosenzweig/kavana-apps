@@ -50,7 +50,7 @@ class QuickStartWidget : GlanceAppWidget() {
         val wid = runCatching { GlanceAppWidgetManager(context).getAppWidgetId(id) }.getOrDefault(-1)
         provideContent {
             val tick = currentState<Preferences>()[WidgetUpdater.TICK]
-            val snap = remember(tick) { WidgetStore.demo(context, wid) ?: WidgetStore.get(context) }
+            val snap = remember(tick) { WidgetStore.fresh(context, wid) }
             val now = remember(tick) { System.currentTimeMillis() }
             QuickContent(snap, now)
         }

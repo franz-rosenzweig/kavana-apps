@@ -223,6 +223,13 @@ class Cafe3D(private val ctx: Context, private val dens: Float, private val redu
     private val path = APath()
     private val mat = Matrix()
 
+    /** Whether every painting the café shows right now has loaded (they load in the background): a picture drawn once, offscreen, waits for it. */
+    fun artReady(): Boolean {
+        val paths = things.map { it.src } + cats.flatMap { listOfNotNull(it.src, it.napSrc) } + walls.mapNotNull { w -> w.id?.let { "cafe/$it-1.webp" } } +
+            listOfNotNull(if (rug != null) "cafe/rug-1.webp" else null)
+        return paths.all { CafeArt.get(ctx, it) != null || CafeArt.isBad(it) }
+    }
+
     // ---------- the camera ----------
     fun resize(w: Float, h: Float) { if (w.toDouble() != W || h.toDouble() != H) { W = w.toDouble(); H = h.toDouble(); S = 0.0; fit(0.0) } }
 

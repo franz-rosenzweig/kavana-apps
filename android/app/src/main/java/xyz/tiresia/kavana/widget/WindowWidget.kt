@@ -94,14 +94,14 @@ class WindowWidget : GlanceAppWidget() {
             // Glance keeps a widget's session going and recomposes it only when its state changes, so the updater
             // bumps a number in that state (WidgetUpdater) and the snapshot is read again each time it changes.
             val tick = currentState<Preferences>()[WidgetUpdater.TICK]
-            val snap = remember(tick) { WidgetStore.demo(context, wid) ?: WidgetStore.get(context) }
+            val snap = remember(tick) { WidgetStore.fresh(context, wid) }
             val now = remember(tick) { System.currentTimeMillis() }
             WindowContent(snap, now)
         }
     }
 }
 
-class WindowWidgetReceiver : GlanceAppWidgetReceiver() {
+class WindowWidgetReceiver : DayWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = WindowWidget()
 }
 

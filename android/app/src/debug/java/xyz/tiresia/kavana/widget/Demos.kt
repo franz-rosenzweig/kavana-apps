@@ -4,12 +4,47 @@ package xyz.tiresia.kavana.widget
 object Demos {
     private const val M = 60_000L
 
+    private fun midnight(daysAgo: Int): Long = java.util.Calendar.getInstance().apply {
+        add(java.util.Calendar.DAY_OF_YEAR, -daysAgo); set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+    }.timeInMillis
+
+    /** The last fourteen days: the minutes and the hour of the longest block, then the week as the board has it (dawn, day, sunset, day, dawn, night with Boo, today). */
+    fun days(empty: Boolean = false): List<SnapDay> {
+        val mins = listOf(35, 0, 60, 45, 0, 70, 30) + listOf(40, 120, 50, 90, 60, 45, 0)
+        val hours = listOf(9, -1, 14, 19, -1, 11, 8) + listOf(7, 12, 18, 13, 8, 23, -1)
+        val arts = listOf("cats/miso-1.webp", "", "cats/mochi-1.webp", "cats/biscuit-1.webp", "", "cats/miso-1.webp", "cats/earl-1.webp") +
+            listOf("cats/mochi-1.webp", "cats/miso-1.webp", "cats/biscuit-1.webp", "cats/miso-1.webp", "cats/earl-1.webp", "cats/boo-1.webp", "")
+        return (0 until 14).map { i -> SnapDay(midnight(13 - i), if (empty) 0 else mins[i], if (empty) "" else arts[i], if (empty) -1 else hours[i]) }
+    }
+
+    /** About a month of blocks, a day in each of most of this month's days, and a run of days at the end. */
+    fun stars(): List<SnapStar> {
+        val cal = java.util.Calendar.getInstance()
+        val dom = cal.get(java.util.Calendar.DAY_OF_MONTH)
+        val rnd = java.util.Random(5)
+        val out = ArrayList<SnapStar>()
+        for (d in 1..dom) {
+            val run = d > dom - 5
+            if (!run && rnd.nextInt(10) > 6) continue
+            repeat(if (run) 1 else 1 + rnd.nextInt(2)) {
+                val c = (cal.clone() as java.util.Calendar).apply { set(java.util.Calendar.DAY_OF_MONTH, d); set(java.util.Calendar.HOUR_OF_DAY, 8 + rnd.nextInt(12)); set(java.util.Calendar.MINUTE, rnd.nextInt(60)) }
+                out.add(SnapStar(c.timeInMillis, listOf(15, 25, 25, 50, 50, 90)[rnd.nextInt(6)]))
+            }
+        }
+        return out.takeLast(22)
+    }
+
+    /** Today at this time, in milliseconds. */
+    fun at(hour: Int, minute: Int): Long = java.util.Calendar.getInstance().apply { set(java.util.Calendar.HOUR_OF_DAY, hour); set(java.util.Calendar.MINUTE, minute); set(java.util.Calendar.SECOND, 0) }.timeInMillis
+
     fun base(cat: String = "miso", name: String = "Miso", theme: String = "classic") = Snap(
         cat = cat, catName = name, theme = theme,
         portrait = if (cat == "pepper") "cats/pepper-2.webp" else "cats/$cat-1.webp",
         kitten = if (cat == "pepper") "cats/pepper-kitten-2.webp" else "cats/$cat-kitten-1.webp",
         nap = if (cat == "pepper") "cats/pepper-nap-2.webp" else "cats/$cat-nap-1.webp",
         todayMin = 80, goalMin = 120, streak = 5, missionsDone = 2, missionsTotal = 3, treats = 120,
+        missionNext = "Bring 3 kittens home: 2 of 3",
+        boo = true, todayHome = 3, todayTreats = 174, monthHome = 38, monthMin = 1513, monthGone = 2, monthTreats = 1474, month = java.text.SimpleDateFormat("MMMM", java.util.Locale.getDefault()).format(java.util.Date()), stars = stars(), days = days(), loaf = when (cat) { "pepper" -> "cats/pepper-loaf-2.webp"; "miso", "mochi" -> "cats/$cat-loaf-1.webp"; else -> null },
         collect = listOf(SnapReward("starter-1", 20)),
         later = listOf(SnapLater("l1", "Book the dentist"), SnapLater("l2", "Look up that podcast episode"), SnapLater("l3", "Return the library books"), SnapLater("l4", "Reply to Dana")),
         mix = listOf(SnapSound("rain", "Rain", 0.7f), SnapSound("purr", "Purring", 0.38f)),

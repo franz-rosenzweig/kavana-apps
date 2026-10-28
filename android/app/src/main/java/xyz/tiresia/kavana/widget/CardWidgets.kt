@@ -70,9 +70,9 @@ class CardPal(val dark: Boolean) {
     val track = if (dark) Color(255, 255, 255, 30) else Color(0xFFEFE6DA)
 }
 
-private fun isDark(ctx: Context) = (ctx.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+internal fun isDark(ctx: Context) = (ctx.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
-private val OPEN_APP: Action @Composable get() = actionStartActivity<MainActivity>()
+internal val OPEN_APP: Action @Composable get() = actionStartActivity<MainActivity>()
 
 // =============================== Today ===============================
 
@@ -85,18 +85,18 @@ class TodayWidget : GlanceAppWidget() {
         val wid = runCatching { GlanceAppWidgetManager(context).getAppWidgetId(id) }.getOrDefault(-1)
         provideContent {
             val tick = currentState<Preferences>()[WidgetUpdater.TICK]
-            val snap = remember(tick) { WidgetStore.demo(context, wid) ?: WidgetStore.get(context) }
+            val snap = remember(tick) { WidgetStore.fresh(context, wid) }
             TodayContent(snap)
         }
     }
 }
 
-class TodayWidgetReceiver : GlanceAppWidgetReceiver() {
+class TodayWidgetReceiver : DayWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = TodayWidget()
 }
 
 /** "1h 20" for 80 minutes, "45m" for 45. */
-private fun compact(m: Int) = if (m >= 60) "${m / 60}h ${(m % 60).toString().padStart(2, '0')}" else "${m}m"
+internal fun compact(m: Int) = if (m >= 60) "${m / 60}h ${(m % 60).toString().padStart(2, '0')}" else "${m}m"
 
 @Composable
 fun TodayContent(s: Snap) {
@@ -182,7 +182,7 @@ class LaterWidget : GlanceAppWidget() {
         val wid = runCatching { GlanceAppWidgetManager(context).getAppWidgetId(id) }.getOrDefault(-1)
         provideContent {
             val tick = currentState<Preferences>()[WidgetUpdater.TICK]
-            val snap = remember(tick) { WidgetStore.demo(context, wid) ?: WidgetStore.get(context) }
+            val snap = remember(tick) { WidgetStore.fresh(context, wid) }
             LaterContent(snap)
         }
     }
@@ -243,7 +243,7 @@ class SoundWidget : GlanceAppWidget() {
         val wid = runCatching { GlanceAppWidgetManager(context).getAppWidgetId(id) }.getOrDefault(-1)
         provideContent {
             val tick = currentState<Preferences>()[WidgetUpdater.TICK]
-            val snap = remember(tick) { WidgetStore.demo(context, wid) ?: WidgetStore.get(context) }
+            val snap = remember(tick) { WidgetStore.fresh(context, wid) }
             SoundContent(snap)
         }
     }

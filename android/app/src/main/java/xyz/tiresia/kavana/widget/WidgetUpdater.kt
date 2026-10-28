@@ -14,6 +14,7 @@ import xyz.tiresia.kavana.ui.SoundMix
 object WidgetUpdater {
     /** The app's state changed (Repo.after): save what the widgets draw, and redraw them if it's different. */
     fun onState(ctx: Context, st: UiState) {
+        CafeRender.update(ctx, st)
         if (WidgetStore.put(ctx, snapOf(st).copy(mix = SoundMix.mix.map { SnapSound(it.first, Sound.byId(it.first)?.name ?: it.first, it.second) }, muted = SoundMix.muted))) refresh(ctx)
     }
 
@@ -38,7 +39,9 @@ object WidgetUpdater {
     }
 
     /** Every kind of widget there is. */
-    private val WIDGETS = listOf<androidx.glance.appwidget.GlanceAppWidget>(WindowWidget(), QuickStartWidget(), TodayWidget(), LaterWidget(), SoundWidget())
+    private val WIDGETS = listOf<androidx.glance.appwidget.GlanceAppWidget>(WindowWidget(), QuickStartWidget(), TodayWidget(), LaterWidget(), SoundWidget(),
+        StreakWidget(), GoalWidget(), MissionsWidget(), PetCatWidget(), ClockWidget(),
+        ConstellationWidget(), WeatherWidget(), CafeWidget(), FriendsWidget())
 
     /** Each widget's state holds a number that changes on every refresh, so Glance draws it again from the latest snapshot. */
     val TICK = longPreferencesKey("tick")

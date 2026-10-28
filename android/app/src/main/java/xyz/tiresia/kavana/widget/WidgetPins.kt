@@ -15,6 +15,15 @@ object WidgetPins {
         Kind("Today", "Your goal, your streak and your missions", TodayWidgetReceiver::class.java),
         Kind("Later", "Your list, and a place to park a thought", LaterWidgetReceiver::class.java),
         Kind("Sound", "The sounds you focus to, with volume and pause", SoundWidgetReceiver::class.java),
+        Kind("Streak", "Your streak, with a paw for each day of the week", StreakWidgetReceiver::class.java),
+        Kind("Daily goal", "Today's focus as a ring", GoalWidgetReceiver::class.java),
+        Kind("Missions", "Today's missions, with Collect", MissionsWidgetReceiver::class.java),
+        Kind("Pet the cat", "Tap your cat; tap again and it purrs", PetCatWidgetReceiver::class.java),
+        Kind("Constellation", "This month as a night sky, a star for every block", ConstellationWidgetReceiver::class.java),
+        Kind("This week, as weather", "The last seven days as little skies, with their cats", WeatherWidgetReceiver::class.java),
+        Kind("Your café", "Your café with today's cats; the month's at night", CafeWidgetReceiver::class.java),
+        Kind("Friends' table", "Who's focusing, who's on a break (needs an account)", FriendsWidgetReceiver::class.java),
+        Kind("A cat with a day", "The time, the date and what your cat is up to", ClockWidgetReceiver::class.java),
     )
 
     fun supported(ctx: Context) = AppWidgetManager.getInstance(ctx).isRequestPinAppWidgetSupported

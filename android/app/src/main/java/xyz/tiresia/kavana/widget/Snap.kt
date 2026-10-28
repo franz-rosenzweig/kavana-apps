@@ -9,8 +9,10 @@ import xyz.tiresia.kavana.Art
 import xyz.tiresia.kavana.BuildConfig
 import xyz.tiresia.kavana.KJson
 import xyz.tiresia.kavana.UiState
+import xyz.tiresia.kavana.fmtMin
 import xyz.tiresia.kavana.titleOf
 import java.io.File
+import java.util.Calendar
 
 /**
  * What a widget draws, as a few small numbers and words: the app saves one of these every time anything
@@ -46,7 +48,43 @@ data class Snap(
     /** The sounds in the mix (up to two), and whether the widget's pause has them muted. */
     val mix: List<SnapSound> = emptyList(),
     val muted: Boolean = false,
+    /** The first mission of the day that isn't done, with how far along it is ("Bring 3 kittens home: 2 of 3"), or empty. */
+    val missionNext: String = "",
+    /** Boo, who only comes out late, has been met: only then do the widgets show Boo at night. */
+    val boo: Boolean = false,
+    val booArt: String = "cats/boo-1.webp",
+    val booNap: String = "cats/boo-nap-1.webp",
+    /** This month's blocks that came home: a star each in the constellation (the last 200). */
+    val stars: List<SnapStar> = emptyList(),
+    /** The last fourteen days, oldest first, today last. */
+    val days: List<SnapDay> = emptyList(),
+    val todayHome: Int = 0,
+    val todayTreats: Int = 0,
+    val monthHome: Int = 0,
+    val monthMin: Int = 0,
+    val monthGone: Int = 0,
+    val monthTreats: Int = 0,
+    /** "October". */
+    val month: String = "",
+    /** What the same cat looks like in its loaf (purring), or null if it has no such painting. */
+    val loaf: String? = null,
+    val cafeSeed: Long = 0,
+    /** Debug builds only: the Widget lab sets a clock and a pose, to look at night and at a purr. */
+    val demo: SnapDemo? = null,
+    /** The friends' table's list (signed in, sharing, who's doing what), or null to use the saved one. The Widget lab brings its own. */
+    val friends: FriendsSnap? = null,
 )
+
+@Serializable
+data class SnapDemo(val at: Long = 0, val pet: Int = 0)
+
+/** A block that came home: a star. */
+@Serializable
+data class SnapStar(val t: Long, val min: Int)
+
+/** One day: its minutes, the painting of the cat whose block was longest, and the hour that block started (-1 if none). */
+@Serializable
+data class SnapDay(val day: Long, val min: Int, val art: String = "", val hour: Int = -1)
 
 @Serializable
 data class SnapBlock(
@@ -149,6 +187,38 @@ fun snapOf(st: UiState): Snap {
             st.monthly.filter { it.done && !it.claimed }.map { SnapReward(it.id, it.reward) },
         treats = st.treats.left,
         later = st.view.later.take(4).map { SnapLater(it.id, it.text) },
+        missionNext = miss.firstOrNull { !it.done }?.let { m -> if (m.need > 1) "${m.text}: ${if (m.unit == "min") "${fmtMin(m.have)} of ${fmtMin(m.need)}" else "${m.have} of ${m.need}"}" else m.text } ?: "",
+        boo = st.cats.firstOrNull { it.id == "boo" }?.met == true,
+        booArt = Art.portrait("boo"), booNap = Art.nap("boo"),
+        loaf = c.poses?.get("loaf"),
+    ).withHistory(st)
+}
+
+/** The numbers the playful widgets draw from the history: this month's stars, the last fourteen days, today's and the month's counts. */
+private fun Snap.withHistory(st: UiState): Snap {
+    val cal = Calendar.getInstance().apply { timeInMillis = st.now }
+    fun midnight(daysAgo: Int): Long = (cal.clone() as Calendar).apply {
+        add(Calendar.DAY_OF_YEAR, -daysAgo); set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+    val monthStart = (cal.clone() as Calendar).apply { set(Calendar.DAY_OF_MONTH, 1); set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }.timeInMillis
+    val today0 = midnight(0)
+    val home = st.history.filter { it.kitten == "home" }
+    val inMonth = home.filter { it.start >= monthStart }
+    val days = (13 downTo 0).map { k ->
+        val d0 = midnight(k); val d1 = if (k == 0) Long.MAX_VALUE else midnight(k - 1)
+        val of = home.filter { it.start in d0 until d1 }
+        val top = of.maxByOrNull { it.actual }
+        SnapDay(d0, of.sumOf { it.actual }, top?.let { Art.portrait(it.cat) } ?: "", top?.let { Calendar.getInstance().apply { timeInMillis = it.start }.get(Calendar.HOUR_OF_DAY) } ?: -1)
+    }
+    return copy(
+        stars = inMonth.takeLast(200).map { SnapStar(it.start, it.actual) },
+        days = days,
+        todayHome = home.count { it.start >= today0 }, todayTreats = home.filter { it.start >= today0 }.sumOf { it.treats },
+        monthHome = inMonth.size, monthMin = inMonth.sumOf { it.actual },
+        monthGone = st.history.count { it.kitten == "gone" && it.start >= monthStart },
+        monthTreats = inMonth.sumOf { it.treats },
+        month = java.text.SimpleDateFormat("MMMM", java.util.Locale.getDefault()).format(java.util.Date(st.now)),
+        cafeSeed = monthStart / 86_400_000L,
     )
 }
 
@@ -171,6 +241,12 @@ object WidgetStore {
         try { out.write(KJson.encodeToString(Snap.serializer(), s).toByteArray()); f.finishWrite(out) } catch (e: Exception) { f.failWrite(out) }
         return true
     }
+
+    /**
+     * What a widget draws on this tick: the lab's made-up snapshot or the real one, as a new object each time. Compose skips redrawing
+     * a composable whose parameter is the very same object as last time, and a widget that goes by the clock or by a file needs to draw again.
+     */
+    fun fresh(ctx: Context, id: Int): Snap = (demo(ctx, id) ?: get(ctx)).copy()
 
     // Debug builds only: the Widget lab gives each widget it hosts its own made-up snapshot, to look at every state.
     private fun demoFile(ctx: Context) = File(ctx.filesDir, "widget-demo.json")

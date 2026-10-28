@@ -68,6 +68,43 @@
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/sound_widget_info" />
         </receiver>
+        <receiver android:name=".widget.StreakWidgetReceiver" android:exported="true" android:label="@string/widget_streak_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/streak_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.GoalWidgetReceiver" android:exported="true" android:label="@string/widget_goal_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/goal_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.MissionsWidgetReceiver" android:exported="true" android:label="@string/widget_missions_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/missions_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.PetCatWidgetReceiver" android:exported="true" android:label="@string/widget_pet_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/pet_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.ClockWidgetReceiver" android:exported="true" android:label="@string/widget_clock_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/clock_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.ConstellationWidgetReceiver" android:exported="true" android:label="@string/widget_constellation_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/constellation_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.WeatherWidgetReceiver" android:exported="true" android:label="@string/widget_weather_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/weather_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.CafeWidgetReceiver" android:exported="true" android:label="@string/widget_cafe_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/cafe_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.FriendsWidgetReceiver" android:exported="true" android:label="@string/widget_friends_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/friends_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.DayReceiver" android:exported="false" />
         <!-- Quick Settings tiles -->
         <service android:name=".widget.FocusTileService" android:exported="true" android:label="@string/tile_focus" android:icon="@drawable/ic_notify"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">

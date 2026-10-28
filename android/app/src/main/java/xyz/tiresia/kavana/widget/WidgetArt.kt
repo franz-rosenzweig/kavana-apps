@@ -41,13 +41,13 @@ import kotlin.math.sin
  * it's shown at, so the corners and the dots are never stretched.
  */
 object WidgetArt {
-    private fun render(w: Int, h: Int, density: Float, draw: DrawScope.() -> Unit): Bitmap {
+    internal fun render(w: Int, h: Int, density: Float, draw: DrawScope.() -> Unit): Bitmap {
         val bmp = Bitmap.createBitmap(w.coerceAtLeast(1), h.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
         CanvasDrawScope().draw(Density(density), LayoutDirection.Ltr, Canvas(bmp.asImageBitmap()), Size(w.toFloat(), h.toFloat()), draw)
         return bmp
     }
 
-    private fun cat(ctx: Context, path: String): ImageBitmap? = Art.bitmap(ctx, path)?.asImageBitmap()
+    internal fun cat(ctx: Context, path: String): ImageBitmap? = Art.bitmap(ctx, path)?.asImageBitmap()
 
     /** Whether the wall is dark enough for white words (the library and night cafés, and any dark mode). */
     fun lightInk(theme: String, dark: Boolean) = wallFor(theme, dark).lightInk
