@@ -98,6 +98,16 @@ sealed class Floating
         }
     }
 
+    /// <summary>
+    /// Runs <c>place</c> again once WinUI has laid the window out: Windows' buttons and boxes only take their full
+    /// size when their templates arrive, after the window is on the screen, so a size measured before is short.
+    /// </summary>
+    public void Refit(Action place)
+    {
+        Ui.After(TimeSpan.FromMilliseconds(60), () => { if (IsShown) place(); });
+        Ui.After(TimeSpan.FromMilliseconds(250), () => { if (IsShown) place(); });
+    }
+
     /// <summary>The size the content wants at this width (DIPs).</summary>
     public Size Measure(double width)
     {
@@ -198,6 +208,9 @@ sealed class ClearBackdrop : SystemBackdrop
         compositor ??= new Windows.UI.Composition.Compositor();
         target.SystemBackdrop = compositor.CreateColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
     }
+
+    /// <summary>Light or dark, active or not, a clear backdrop stays clear (the base one would throw: it has no controller).</summary>
+    protected override void OnDefaultSystemBackdropConfigurationChanged(ICompositionSupportsSystemBackdrop target, XamlRoot xamlRoot) { }
 
     protected override void OnTargetDisconnected(ICompositionSupportsSystemBackdrop target)
     {

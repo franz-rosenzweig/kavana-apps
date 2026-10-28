@@ -204,6 +204,9 @@ sealed class BrowserReader : IDisposable
                     ? uia.CreatePropertyCondition(UIA_AutomationIdPropertyId, "urlbar-input")
                     : uia.CreatePropertyCondition(UIA_ControlTypePropertyId, UIA_EditControlTypeId);
                 box = root.FindFirst((UIA.TreeScope)TreeScope_Descendants, condition);
+                // a Firefox that names its box otherwise: its first text box, as in Chromium
+                if (box == null && browser.Gecko)
+                    box = root.FindFirst((UIA.TreeScope)TreeScope_Descendants, uia.CreatePropertyCondition(UIA_ControlTypePropertyId, UIA_EditControlTypeId));
                 if (box == null) return null;
                 boxes[hwnd] = box;
                 if (boxes.Count > 20) boxes.Remove(boxes.Keys.First());

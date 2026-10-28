@@ -55,8 +55,7 @@ sealed class CatCorner
         Win.Content = Build(model);
         Place();
         Win.Show();
-        // once WinUI has laid the card out on the screen, its size is sure
-        Ui.Post(() => { if (Kind == kind) Place(); });
+        Win.Refit(() => { if (Kind == kind) Place(); });
         timer = Ui.After(TimeSpan.FromSeconds(seconds), () =>
         {
             if (Kind != kind) return;

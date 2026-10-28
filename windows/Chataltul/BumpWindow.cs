@@ -218,9 +218,8 @@ sealed class ParkWindow
         int w = (int)Math.Ceiling(size.Width * scale), h = (int)Math.Ceiling(size.Height * scale);
         Win.Move(work.Left + (work.Width - w) / 2, work.Top + (int)(work.Height * 0.18), w, h);
         Win.Show();
-        Ui.Post(() =>
+        Win.Refit(() =>
         {
-            if (!IsShown) return;
             var again = Win.Measure(Width);
             Win.Move(work.Left + (work.Width - w) / 2, work.Top + (int)(work.Height * 0.18), w, (int)Math.Ceiling(again.Height * scale));
         });

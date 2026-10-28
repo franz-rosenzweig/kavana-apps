@@ -68,8 +68,7 @@ sealed class Popover
         Build();
         Place();
         if (!IsShown) Win.Show();
-        // once WinUI has laid the card out on the screen, its size is sure
-        Ui.Post(() => { if (IsShown) Place(); });
+        Win.Refit(Place);
         if (focusTitle) Ui.Post(() => titleBox?.Focus(FocusState.Programmatic));
     }
 
