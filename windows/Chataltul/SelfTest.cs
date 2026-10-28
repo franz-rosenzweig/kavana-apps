@@ -448,7 +448,7 @@ static class SelfTest
         {
             ("msedge.exe", Path.Join(pf86, @"Microsoft\Edge\Application\msedge.exe"), dir => $"--no-first-run --no-default-browser-check --user-data-dir=\"{dir}\" --new-window {url}"),
             ("chrome.exe", Path.Join(pf, @"Google\Chrome\Application\chrome.exe"), dir => $"--no-first-run --no-default-browser-check --user-data-dir=\"{dir}\" --new-window {url}"),
-            ("firefox.exe", Path.Join(pf, @"Mozilla Firefox\firefox.exe"), dir => $"-no-remote -profile \"{dir}\" -new-window {url}"),
+            ("firefox.exe", Path.Join(pf, @"Mozilla Firefox\firefox.exe"), dir => $"-no-remote -profile \"{dir}\" {url}"),
         };
         var reader = new BrowserReader();
         await Spin(500);
@@ -463,18 +463,22 @@ static class SelfTest
                 File.WriteAllText(Path.Join(profile, "user.js"), string.Join("\n",
                     "user_pref(\"browser.aboutwelcome.enabled\", false);", "user_pref(\"browser.startup.homepage_override.mstone\", \"ignore\");",
                     "user_pref(\"startup.homepage_welcome_url\", \"\");", "user_pref(\"datareporting.policy.firstRunURL\", \"\");",
-                    "user_pref(\"browser.shell.checkDefaultBrowser\", false);", "user_pref(\"browser.startup.firstrunSkipsHomepage\", true);"));
+                    "user_pref(\"browser.shell.checkDefaultBrowser\", false);", "user_pref(\"browser.startup.firstrunSkipsHomepage\", true);",
+                    "user_pref(\"toolkit.telemetry.reportingpolicy.firstRun\", false);", "user_pref(\"browser.shell.didSkipDefaultBrowserCheckOnFirstRun\", true);"));
             Process? p = null;
             var began = DateTime.Now.AddSeconds(-1);
             try
             {
                 p = Process.Start(new ProcessStartInfo(path, args(profile)) { UseShellExecute = false });
                 string? got = null;
-                var end = DateTime.UtcNow.AddSeconds(30);
+                var began2 = DateTime.UtcNow;
+                var end = began2.AddSeconds(30);
                 while (DateTime.UtcNow < end && got?.Contains("127.0.0.1") != true)
                 {
                     await Spin(1_000);
                     var hwnd = WindowOf(exe, "Chataltul self-test");
+                    // the page never came up: read whatever window it has, to say what its box holds
+                    if (hwnd == IntPtr.Zero && DateTime.UtcNow - began2 > TimeSpan.FromSeconds(15)) hwnd = WindowOf(exe, "");
                     if (hwnd == IntPtr.Zero) continue;
                     var done = new TaskCompletionSource<string?>();
                     void Got(IntPtr h, Browser b, string? u) { if (h == hwnd) done.TrySetResult(u); }
@@ -484,7 +488,8 @@ static class SelfTest
                     reader.Read -= Got;
                 }
                 var host = got != null ? Blocklist.Host(got) : null;
-                Add($"the address in {browser.Name} is read", host == "127.0.0.1", got ?? $"nothing read; its windows: {string.Join(" | ", TitlesOf(exe))}");
+                Add($"the address in {browser.Name} is read", host == "127.0.0.1",
+                    $"{(got == null ? "nothing read" : $"read \"{got}\"")}; its windows: {string.Join(" | ", TitlesOf(exe))}");
             }
             catch (Exception e) { Add($"the address in {browser.Name} is read", false, e.Message); }
             finally
