@@ -2,7 +2,7 @@
 """The widgets' check, on the emulator (a debug build): every widget in every state, a whole block run from a widget,
 Park a thought, the countdown notification, the Quick Settings tiles and the launcher shortcuts.
 
-    KAVANA_ADB=<adb> python3 tools/check-widgets.py <app-debug.apk> <out-dir> [states|dark|live|play|playdark|pet|cafe|friends]
+    KAVANA_ADB=<adb> python3 tools/check-widgets.py <app-debug.apk> <out-dir> [states|dark|live|play|playdark|pet|cafe|friends|tablet]
 
 With no phase it does all three in one go; an emulator that renders for long enough grows to several GB, so
 the phases can each run on a freshly booted one.
@@ -456,6 +456,17 @@ try:
             step('friends-none')
         finally:
             srv.shutdown()
+
+    if on('tablet'):
+        print('\na tablet\'s shapes (on a tablet-sized emulator: KAV_SIZE=tablet)')
+        t = labp('tablet', '--ei', 'per', '2')
+        check('the big Window, focusing: the clock, the title, the check-in, Pause', has(t, 'Draft the newsletter', 'Check-in in 6 min', 'Pause'))
+        check('the big Window in its other states', has(t, 'Miso is waiting', 'Tap to start 25 minutes', 'BOO! CHECK-IN', 'Still on: Draft the newsletter?', 'MISO CAME HOME', 'Nice, 50 minutes', 'Not really', 'PAUSED', 'Resume', 'MISO WANDERED OFF', 'Open Chataltul'))
+        check('the café, 6 x 4', has(t, 'Your café today', 'came home', 'treats earned'))
+        check('the wide constellation: the words on the left', any(re.match(r'\d+ blocks?,\s*\d+ stars?$', x) for x in t) and has(t, '5 days in a row'))
+        check('the short wide goal, streak and missions', has(t, 'Today', 'of your 2 h goal', '40 min to go', 'days in a row', '2 of 3', 'missions', 'Collect +20'))
+        check('Pet the cat with its bubble, and the friends by day and at night', has(t, 'Mrrp?', 'Dana', '14 min left', 'Refresh'))
+        step('tablet')
 
 finally:
     P.adb('shell', 'cmd', 'uimode', 'night', 'no')

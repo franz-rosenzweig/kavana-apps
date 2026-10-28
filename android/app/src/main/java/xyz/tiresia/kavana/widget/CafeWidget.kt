@@ -60,8 +60,9 @@ import xyz.tiresia.kavana.ui.cafeScene
  * what happened: cats home, time focused, treats.
  */
 object CafeRender {
-    const val W_DP = 340f
-    const val H_DP = 250f
+    // big enough for a tablet's 6 x 4 without going soft; a phone shows it smaller
+    const val W_DP = 460f
+    const val H_DP = 340f
     private val gate = Mutex()
 
     fun file(ctx: Context, night: Boolean) = File(ctx.filesDir, if (night) "cafe-night.webp" else "cafe-day.webp")
@@ -78,7 +79,7 @@ object CafeRender {
         val prefs = KavanaApp.repo.prefs
         for (night in listOf(false, true)) {
             val list = st.history.filter { it.start >= if (night) month0 else today0 }
-            val sig = listOf(night, st.view.settings.theme, st.shop.owned.toList().sorted(), list.map { it.id + it.kitten + Art.portrait(it.cat) }, st.catsOn).toString().hashCode().toString()
+            val sig = listOf(night, W_DP, H_DP, st.view.settings.theme, st.shop.owned.toList().sorted(), list.map { it.id + it.kitten + Art.portrait(it.cat) }, st.catsOn).toString().hashCode().toString()
             if (prefs.getString("cafeSig$night", null) == sig && file(app, night).exists()) continue
             KavanaApp.repo.scope.launch(Dispatchers.Default) {
                 gate.withLock {

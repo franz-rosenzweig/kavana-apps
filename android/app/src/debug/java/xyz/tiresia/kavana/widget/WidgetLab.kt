@@ -44,6 +44,19 @@ class WidgetLab : Activity() {
             "later" -> listOf("ready", "empty").map { Demo("later: $it", LaterWidgetReceiver::class.java, 340, 180, Demos.snap(it, now)) } +
                 Demo("later: short", LaterWidgetReceiver::class.java, 340, 130, Demos.snap("ready", now))
             "sound" -> listOf("focusing", "muted", "ready", "empty").map { Demo("sound: $it", SoundWidgetReceiver::class.java, 340, 72, Demos.snap(it, now)) }
+            "tablet" -> { // a tablet's shapes (the Widget lab on a tablet-sized screen; two at a time: --ei per 2)
+                val b = Demos.snap("ready", now)
+                val rows = listOf(FriendRow("dana", "Dana", "focusing", end = now + 14 * 60_000L), FriendRow("sam", "Sam", "break", end = now + 4 * 60_000L), FriendRow("alex", "Alex", "idle"))
+                listOf(
+                    d("window 4x4: focusing", 436, 436, "focusing"), d("window 4x4: ready", 436, 436, "ready"), d("window 4x4: check-in", 436, 436, "checkin"),
+                    d("window 4x4: came home", 436, 436, "home"), d("window 4x4: paused", 436, 436, "paused"), d("window 4x4: wandered off", 436, 436, "gone"),
+                    Demo("café 6x4", CafeWidgetReceiver::class.java, 536, 436, b), Demo("constellation, wide", ConstellationWidgetReceiver::class.java, 536, 192, b),
+                    Demo("goal, wide", GoalWidgetReceiver::class.java, 260, 148, b), Demo("streak, wide", StreakWidgetReceiver::class.java, 260, 148, b),
+                    Demo("missions, short", MissionsWidgetReceiver::class.java, 260, 148, b), Demo("pet the cat, a wide 2x2", PetCatWidgetReceiver::class.java, 260, 192, b.copy(demo = SnapDemo(Demos.at(14, 20), 0))),
+                    Demo("friends' table, by day", FriendsWidgetReceiver::class.java, 436, 192, b.copy(friends = FriendsSnap(true, true, rows, now), demo = SnapDemo(Demos.at(8, 0)))),
+                    Demo("friends' table, at night", FriendsWidgetReceiver::class.java, 436, 192, b.copy(friends = FriendsSnap(true, true, rows, now), demo = SnapDemo(Demos.at(23, 0)))),
+                )
+            }
             "cafe" -> {
                 val b = Demos.snap("ready", now)
                 val none = b.copy(todayHome = 0, todayMin = 0, todayTreats = 0, monthHome = 0, monthMin = 0, monthGone = 0, monthTreats = 0)

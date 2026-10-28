@@ -138,6 +138,7 @@ fun WindowContent(s: Snap, now: Long) {
         when {
             size.height < 100.dp -> Strip(ctx, s, now, mode, pal, size, hide)
             size.width < 200.dp -> Small(ctx, s, now, mode, pal, size, hide)
+            size.height >= 300.dp && size.width >= 280.dp -> Big(ctx, s, now, mode, pal, size, hide)
             else -> Wide(ctx, s, now, mode, pal, size, hide)
         }
     }
@@ -248,6 +249,110 @@ private fun Wide(ctx: Context, s: Snap, now: Long, mode: WMode, pal: Pal, size: 
                     Spacer(GlanceModifier.defaultWeight())
                     Pill("End break", pal.chip, pal.ink, actionRunCallback<EndBreakAction>(), GlanceModifier.fillMaxWidth(), height = bh, textSize = 14.sp)
                 }
+            }
+        }
+    }
+}
+
+// ---------- the 4 × 4 (a tablet's, or a phone's stretched tall) ----------
+
+@Composable
+private fun Big(ctx: Context, s: Snap, now: Long, mode: WMode, pal: Pal, size: DpSize, hide: Boolean) {
+    val bh = 42.dp
+    val d = minOf(size.width - 140.dp, size.height - 190.dp, 250.dp).coerceAtLeast(110.dp)
+    val win = remember(s, size, now / 20_000) { WidgetArt.window(ctx, s, now, d.value, pal.dark, mode) }
+    val b = s.block
+    val title = if (hide) "" else b?.title.orEmpty()
+
+    @Composable
+    fun line(text: String, sp: TextUnit, color: Color, bold: Boolean = false, lines: Int = 1) =
+        Text(text, style = TextStyle(color = ColorProvider(color), fontSize = sp, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal, textAlign = TextAlign.Center),
+            modifier = GlanceModifier.fillMaxWidth(), maxLines = lines)
+
+    Column(GlanceModifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Image(ImageProvider(win), "${s.catName} in the window", GlanceModifier.size(d))
+        Spacer(GlanceModifier.height(8.dp))
+        when (mode) {
+            WMode.READY -> {
+                line(greeting(), 11.sp, pal.eyebrow, bold = true)
+                line(if (s.catsOn) "${s.catName} is waiting" else "Ready when you are", 24.sp, pal.ink, bold = true)
+                line("Tap to start 25 minutes", 13.sp, pal.muted)
+                Spacer(GlanceModifier.defaultWeight())
+                Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Pill("Start", pal.tint, pal.onTint, start(25), GlanceModifier.defaultWeight(), R.drawable.w_play, height = bh)
+                    Spacer(GlanceModifier.width(8.dp))
+                    Pill("15", pal.chip, pal.ink, start(15), GlanceModifier.width(54.dp), height = bh, textSize = 14.sp)
+                    Spacer(GlanceModifier.width(8.dp))
+                    Pill("50", pal.chip, pal.ink, start(50), GlanceModifier.width(54.dp), height = bh, textSize = 14.sp)
+                }
+            }
+            WMode.FOCUSING, WMode.EXTRA -> {
+                Chrono(ctx, b!!, now, 52f, pal.ink)
+                val l = title.ifEmpty { if (s.catsOn) "${s.catName} is growing" else "" }
+                if (l.isNotEmpty()) line(l, 16.sp, pal.ink, bold = true)
+                line(if (mode == WMode.EXTRA) "Chataltul keeps counting" else b.next?.let { "Check-in in ${((it - now + 59_999) / 60_000).coerceAtLeast(1)} min" } ?: "Check-in at the end", 12.5.sp, pal.muted)
+                Spacer(GlanceModifier.defaultWeight())
+                Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    if (mode == WMode.EXTRA) Pill("Done", pal.green, pal.onGreen, stopAction(), GlanceModifier.defaultWeight(), R.drawable.w_check, height = bh, textSize = 15.sp)
+                    else Pill("Pause", pal.amber, pal.onAmber, actionRunCallback<PauseAction>(), GlanceModifier.defaultWeight(), R.drawable.w_pause, height = bh, textSize = 15.sp)
+                    Spacer(GlanceModifier.width(10.dp))
+                    Round(R.drawable.w_bulb, "Park a thought", pal.chip, pal.ink, actionStartActivity<ParkActivity>(), bh)
+                    if (mode != WMode.EXTRA) {
+                        Spacer(GlanceModifier.width(10.dp))
+                        Round(R.drawable.w_stop, "Stop", pal.chip, pal.ink, stopAction(), bh)
+                    }
+                }
+            }
+            WMode.GONE -> {
+                line("${s.catName.uppercase()} WANDERED OFF", 11.sp, pal.orange, bold = true)
+                Chrono(ctx, b!!, now, 40f, pal.ink)
+                line("Your block keeps going, with no kitten this time.", 12.5.sp, pal.muted, lines = 2)
+                Spacer(GlanceModifier.defaultWeight())
+                Pill("Open Chataltul", pal.chip, pal.ink, OPEN, GlanceModifier.fillMaxWidth(), height = bh, textSize = 15.sp)
+            }
+            WMode.CHECKIN -> {
+                line("BOO! CHECK-IN", 11.sp, pal.orange, bold = true)
+                line(if (title.isNotEmpty()) "Still on: $title?" else "Still focusing?", 22.sp, pal.ink, bold = true, lines = 3)
+                Spacer(GlanceModifier.defaultWeight())
+                Row(GlanceModifier.fillMaxWidth()) {
+                    Pill("Yes", pal.tint, pal.onTint, answer(b!!.id, b.pending ?: 0, "yes"), GlanceModifier.defaultWeight(), height = bh)
+                    Spacer(GlanceModifier.width(10.dp))
+                    Pill("Drifted", pal.chip, pal.ink, answer(b.id, b.pending ?: 0, "drifted"), GlanceModifier.defaultWeight(), height = bh)
+                }
+            }
+            WMode.PAUSED -> {
+                line("PAUSED", 11.sp, pal.orange, bold = true)
+                ChronoTo(ctx, b!!.pauseEnds ?: (b.paused!! + 5 * 60_000L), now, 52f, pal.ink, b.still)
+                line(if (s.catsOn) "Starts again by itself. ${s.catName} waits for you." else "Starts again by itself.", 12.5.sp, pal.muted, lines = 2)
+                Spacer(GlanceModifier.defaultWeight())
+                Pill("Resume", pal.green, pal.onGreen, actionRunCallback<ResumeAction>(), GlanceModifier.fillMaxWidth(), R.drawable.w_play, height = bh, textSize = 15.sp)
+            }
+            WMode.HOME, WMode.STOPPED -> {
+                val e = s.awaiting!!
+                if (mode == WMode.HOME) {
+                    line("${s.catName.uppercase()} CAME HOME", 11.sp, pal.eyebrow, bold = true)
+                    line("Nice, ${e.minutes} minutes", 24.sp, pal.ink, bold = true)
+                    line("+${e.treats} treats", 15.sp, pal.orange, bold = true)
+                } else {
+                    line("STOPPED EARLY", 11.sp, pal.orange, bold = true)
+                    line("${s.catName} wandered off", 22.sp, pal.ink, bold = true)
+                    line("${e.minutes} min · how did it go?", 13.sp, pal.muted)
+                }
+                Spacer(GlanceModifier.defaultWeight())
+                Row(GlanceModifier.fillMaxWidth()) {
+                    Pill("Done", pal.tint, pal.onTint, outcome(e.id, "done"), GlanceModifier.defaultWeight(), height = bh, textSize = 14.sp)
+                    Spacer(GlanceModifier.width(8.dp))
+                    Pill("Partly", pal.chip, pal.ink, outcome(e.id, "partly"), GlanceModifier.defaultWeight(), height = bh, textSize = 14.sp)
+                    Spacer(GlanceModifier.width(8.dp))
+                    Pill("Not really", pal.chip, pal.ink, outcome(e.id, "notreally"), GlanceModifier.defaultWeight(), height = bh, textSize = 14.sp)
+                }
+            }
+            WMode.BREAK -> {
+                line("BREAK", 11.sp, pal.eyebrow, bold = true)
+                line("Stretch your legs", 24.sp, pal.ink, bold = true)
+                line("Stand up, get some water.", 13.sp, pal.muted)
+                Spacer(GlanceModifier.defaultWeight())
+                Pill("End break", pal.chip, pal.ink, actionRunCallback<EndBreakAction>(), GlanceModifier.fillMaxWidth(), height = bh, textSize = 15.sp)
             }
         }
     }

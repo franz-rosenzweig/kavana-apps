@@ -20,6 +20,7 @@ import androidx.glance.layout.Box
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
+import androidx.glance.layout.fillMaxHeight
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
@@ -55,13 +56,23 @@ fun ConstellationContent(s: Snap) {
     val size = LocalSize.current
     val now = clockNow(s)
     val small = size.width < 250.dp
-    val bmp = remember(s.stars, s.days, s.streak, size, now / 3_600_000L) { PlayArt.constellation(ctx, s, size.width.value, size.height.value, small, now) }
+    val wide = size.width >= 450.dp // a tablet's: the words on the left, the sky beside them
+    val bmp = remember(s.stars, s.days, s.streak, size, now / 3_600_000L) { PlayArt.constellation(ctx, s, size.width.value, size.height.value, small, now, if (wide) .3f else .07f) }
     val white = Color(0xFFF2EDE6)
     val lav = Color(0xFFA99BE8)
     val dim = Color(0xFFB7B0D6)
     val amber = Color(0xFFFFCF8A)
     Box(GlanceModifier.fillMaxSize().background(ImageProvider(bmp)).clickable(OPEN_APP)) {
-        if (small) {
+        if (wide) {
+            val n = s.stars.size
+            Column(GlanceModifier.fillMaxHeight().width((size.width.value * .3f).dp).padding(start = 22.dp, top = 18.dp, bottom = 16.dp)) {
+                Text(s.month.uppercase(Locale.getDefault()), style = TextStyle(color = ColorProvider(lav), fontSize = 10.5.sp, fontWeight = FontWeight.Bold), maxLines = 1)
+                Text(if (n == 0) "No stars yet" else "$n ${if (n == 1) "block" else "blocks"},\n$n ${if (n == 1) "star" else "stars"}", style = TextStyle(color = ColorProvider(white), fontSize = 20.sp, fontWeight = FontWeight.Bold), maxLines = 2)
+                Spacer(GlanceModifier.height(8.dp))
+                if (s.streak > 0) Text(if (s.streak == 1) "1 day in a row" else "${s.streak} days in a row", style = TextStyle(color = ColorProvider(amber), fontSize = 12.5.sp, fontWeight = FontWeight.Bold), maxLines = 1)
+                else Text("Bring a kitten home to light one", style = TextStyle(color = ColorProvider(dim), fontSize = 12.sp), maxLines = 2)
+            }
+        } else if (small) {
             Box(GlanceModifier.fillMaxSize().padding(start = 16.dp, top = 14.dp)) {
                 Text(if (s.streak == 0) "No streak yet" else if (s.streak == 1) "1 day" else "${s.streak} days", style = TextStyle(color = ColorProvider(white), fontSize = 15.sp, fontWeight = FontWeight.Bold), maxLines = 1)
             }

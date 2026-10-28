@@ -29,6 +29,7 @@ import androidx.glance.layout.Column
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
+import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.size
@@ -85,6 +86,23 @@ fun StreakContent(s: Snap) {
     val roomy = size.height >= 100.dp
     val big = (minOf(size.width, size.height).value * if (roomy) .34f else .28f).sp
     val lit = minOf(s.streak, 7)
+    if (size.width >= size.height * 1.5f) { // a tablet's short wide one: the number beside its words, the paws below
+        Box(GlanceModifier.fillMaxSize().background(ImageProvider(card)).clickable(OPEN_APP), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text("${s.streak}", style = TextStyle(color = ColorProvider(pal.onSoft), fontSize = 44.sp, fontWeight = FontWeight.Bold), maxLines = 1)
+                    Spacer(GlanceModifier.width(8.dp))
+                    Text(if (s.streak == 1) "day in a row" else "days in a row", style = TextStyle(color = ColorProvider(pal.muted), fontSize = 13.sp), modifier = GlanceModifier.padding(bottom = 9.dp), maxLines = 1)
+                }
+                Spacer(GlanceModifier.height(4.dp))
+                Row {
+                    for (i in 0 until 7) Image(ImageProvider(R.drawable.w_paw), null, GlanceModifier.size(18.dp).padding(horizontal = 1.dp),
+                        colorFilter = ColorFilter.tint(ColorProvider(if (i < lit) pal.tint else pal.track)))
+                }
+            }
+        }
+        return
+    }
     Box(GlanceModifier.fillMaxSize().background(ImageProvider(card)).clickable(OPEN_APP), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("${s.streak}", style = TextStyle(color = ColorProvider(pal.onSoft), fontSize = big, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center), maxLines = 1)
@@ -118,8 +136,27 @@ fun GoalContent(s: Snap) {
     val pal = CardPal(isDark(ctx))
     val card = remember(size, pal.dark) { WidgetArt.card(ctx, size.width.value, size.height.value, pal.bg) }
     val goal = s.goalMin
-    val d = minOf(size.width - 30.dp, size.height - 46.dp).coerceAtLeast(40.dp)
+    val wide = size.width >= size.height * 1.5f // a tablet's short wide one: the ring beside its words
+    val d = if (wide) minOf(size.height - 28.dp, 96.dp).coerceAtLeast(40.dp) else minOf(size.width - 30.dp, size.height - 46.dp).coerceAtLeast(40.dp)
     val ring = remember(s.todayMin, goal, d, pal.dark) { WidgetArt.ring(ctx, d.value, if (goal > 0) (s.todayMin / goal.toFloat()).coerceIn(0f, 1f) else 0f, pal.track, pal.tint, d.value * .09f) }
+    val left = when { goal <= 0 -> "No goal set"; s.todayMin >= goal -> "Goal reached"; else -> "${fmtMin(goal - s.todayMin)} to go" }
+    if (wide) {
+        Box(GlanceModifier.fillMaxSize().background(ImageProvider(card)).clickable(OPEN_APP)) {
+            Row(GlanceModifier.fillMaxSize().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(GlanceModifier.size(d), contentAlignment = Alignment.Center) {
+                    Image(ImageProvider(ring), "Today's focus: ${s.todayMin} minutes", GlanceModifier.size(d))
+                    Text(compact(s.todayMin), style = TextStyle(color = ColorProvider(pal.ink), fontSize = (d.value * .22f).sp, fontWeight = FontWeight.Bold), maxLines = 1)
+                }
+                Spacer(GlanceModifier.width(14.dp))
+                Column(GlanceModifier.defaultWeight()) {
+                    Text("Today", style = TextStyle(color = ColorProvider(pal.ink), fontSize = 16.sp, fontWeight = FontWeight.Bold), maxLines = 1)
+                    Text(if (goal > 0) "of your ${fmtMin(goal)} goal" else "no goal set", style = TextStyle(color = ColorProvider(pal.muted), fontSize = 12.5.sp), maxLines = 1)
+                    if (goal > 0) Text(left, style = TextStyle(color = ColorProvider(pal.onSoft), fontSize = 12.5.sp, fontWeight = FontWeight.Bold), maxLines = 1)
+                }
+            }
+        }
+        return
+    }
     Box(GlanceModifier.fillMaxSize().background(ImageProvider(card)).clickable(OPEN_APP), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box(GlanceModifier.size(d), contentAlignment = Alignment.Center) {
@@ -130,11 +167,7 @@ fun GoalContent(s: Snap) {
                 }
             }
             Spacer(GlanceModifier.height(6.dp))
-            Text(when {
-                goal <= 0 -> "No goal set"
-                s.todayMin >= goal -> "Goal reached"
-                else -> "${fmtMin(goal - s.todayMin)} to go"
-            }, style = TextStyle(color = ColorProvider(pal.muted), fontSize = 12.sp), maxLines = 1)
+            Text(left, style = TextStyle(color = ColorProvider(pal.muted), fontSize = 12.sp), maxLines = 1)
         }
     }
 }
@@ -156,6 +189,20 @@ fun MissionsContent(s: Snap) {
     val size = LocalSize.current
     val pal = CardPal(isDark(ctx))
     val card = remember(size, pal.dark) { WidgetArt.card(ctx, size.width.value, size.height.value, pal.bg, cornerDp = minOf(30f, size.height.value / 2)) }
+    if (size.height >= 100.dp && size.width < 300.dp) { // a tablet's short one: the count over Collect
+        Box(GlanceModifier.fillMaxSize().background(ImageProvider(card)).clickable(OPEN_APP)) {
+            Column(GlanceModifier.fillMaxSize().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+                    Text(if (s.missionsTotal == 0) "No missions yet" else "${s.missionsDone} of ${s.missionsTotal}", style = TextStyle(color = ColorProvider(pal.ink), fontSize = 16.sp, fontWeight = FontWeight.Bold), modifier = GlanceModifier.defaultWeight(), maxLines = 1)
+                    if (s.missionsTotal > 0) Text("missions", style = TextStyle(color = ColorProvider(pal.muted), fontSize = 12.5.sp), maxLines = 1)
+                }
+                Spacer(GlanceModifier.height(10.dp))
+                if (s.collectTotal > 0) Pill("Collect +${s.collectTotal}", pal.orange, pal.onOrange, actionRunCallback<CollectAction>(), GlanceModifier.fillMaxWidth(), icon = R.drawable.w_treat, height = 40.dp, textSize = 14.sp)
+                else Text(if (s.missionsTotal == 0) "They come with the day" else s.missionNext.ifEmpty { "All done for today" }, style = TextStyle(color = ColorProvider(pal.muted), fontSize = 12.sp), maxLines = 2)
+            }
+        }
+        return
+    }
     Box(GlanceModifier.fillMaxSize().background(ImageProvider(card)).clickable(OPEN_APP)) {
         Row(GlanceModifier.fillMaxSize().padding(start = 16.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (s.missionsTotal > 0) {

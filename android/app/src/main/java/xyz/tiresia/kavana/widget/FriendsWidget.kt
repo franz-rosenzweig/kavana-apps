@@ -141,24 +141,26 @@ private fun FriendLeft(ctx: Context, leftMs: Long, color: Color) {
 fun FriendsContent(s: Snap) {
     val ctx = LocalContext.current
     val size = LocalSize.current
-    val dark = isDark(ctx)
-    val night = true // the table is a night scene on the café wall, like the board's
-    val wallTheme = if (dark) s.theme else "night"
+    // the night wall at night or in dark mode, as on the evening board; by day the café's own wall and a light table, as on the tablet's
+    val night = isDark(ctx) || isNight(clockNow(s))
+    val wallTheme = if (night) "night" else s.theme
     val fs = s.friends ?: Friends.get(ctx) // read afresh each time it draws: a copy kept from before never saw a refresh
     val now = System.currentTimeMillis()
-    val ink = Color(0xFFF2EDE6)
-    val muted = Color(0xFFB7AEA5)
-    val teal = Color(0xFF5FD0C0)
+    val light = WidgetArt.lightInk(wallTheme, night)
+    val ink = if (light) Color(0xFFF2EDE6) else Color(0xFF2B211A)
+    val muted = if (light) Color(0xFFB7AEA5) else Color(0xFF6B6158)
+    val teal = if (night) Color(0xFF5FD0C0) else Color(0xFF2C8A7E)
+    val onTeal = if (night) Color(0xFF10302B) else Color.White
     val rows = remember(fs) { fs.rows.sortedBy { when (it.status) { "focusing" -> 0; "paused" -> 1; "break" -> 2; "idle" -> 3; else -> 4 } }.take(3) }
     val shown = if (fs.signedIn && fs.sharing) rows else emptyList()
-    val bg = remember(size) { WidgetArt.wall(ctx, size.width.value, size.height.value, "night", true) }
+    val bg = remember(size, wallTheme, night) { WidgetArt.wall(ctx, size.width.value, size.height.value, wallTheme, night) }
     val tableSize = minOf(138f, size.height.value - 24f)
-    val table = remember(shown, tableSize) {
+    val table = remember(shown, tableSize, night) {
         PlayArt.table(ctx, tableSize, shown.map { r ->
             val art = Art.kitten(KITTENS[(r.name.hashCode() and 0x7fffffff) % KITTENS.size])
             Triple(art, when (r.status) { "focusing" -> 1f; "paused", "break" -> .75f; "idle" -> .55f; else -> .4f },
                 if (r.status == "focusing") ((r.end?.let { it - now } ?: r.left ?: 0L) / 3_600_000f).coerceIn(.05f, 1f) else null)
-        }, true, teal)
+        }, night, teal)
     }
     Box(GlanceModifier.fillMaxSize().background(ImageProvider(bg)).clickable(OPEN_APP)) {
         Row(GlanceModifier.fillMaxSize().padding(start = 14.dp, end = 16.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -171,7 +173,7 @@ fun FriendsContent(s: Snap) {
                     for ((i, r) in shown.withIndex()) {
                         if (i > 0) Spacer(GlanceModifier.height(8.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(GlanceModifier.size(8.dp).background(ColorProvider(when (r.status) { "focusing" -> teal; "paused", "break" -> Color(0xFFFFCF8A); else -> Color(0xFF6F6678) })).cornerRadius(4.dp)) {}
+                            Box(GlanceModifier.size(8.dp).background(ColorProvider(when (r.status) { "focusing" -> teal; "paused", "break" -> if (night) Color(0xFFFFCF8A) else Color(0xFFE9B25A); else -> if (night) Color(0xFF6F6678) else Color(0xFFB8ACA0) })).cornerRadius(4.dp)) {}
                             Spacer(GlanceModifier.width(8.dp))
                             Text(r.display.ifBlank { r.name }, style = TextStyle(color = ColorProvider(ink), fontSize = 13.sp, fontWeight = FontWeight.Bold), maxLines = 1)
                             Spacer(GlanceModifier.width(8.dp))
@@ -188,8 +190,8 @@ fun FriendsContent(s: Snap) {
                     }, style = TextStyle(color = ColorProvider(ink), fontSize = 13.sp), maxLines = 4)
                 }
                 Spacer(GlanceModifier.defaultWeight())
-                if (fs.signedIn) Pill("Refresh", teal, Color(0xFF10302B), actionRunCallback<FriendsRefreshAction>(), GlanceModifier.fillMaxWidth(), height = 38.dp, textSize = 14.sp)
-                else Pill("Open Chataltul", teal, Color(0xFF10302B), OPEN_APP, GlanceModifier.fillMaxWidth(), height = 38.dp, textSize = 14.sp)
+                if (fs.signedIn) Pill("Refresh", teal, onTeal, actionRunCallback<FriendsRefreshAction>(), GlanceModifier.fillMaxWidth(), height = 38.dp, textSize = 14.sp)
+                else Pill("Open Chataltul", teal, onTeal, OPEN_APP, GlanceModifier.fillMaxWidth(), height = 38.dp, textSize = 14.sp)
             }
         }
     }

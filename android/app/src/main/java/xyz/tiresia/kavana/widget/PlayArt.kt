@@ -138,7 +138,7 @@ object PlayArt {
             val sillTop = h - 32f * u
             drawRoundRect(Brush.verticalGradient(listOf(sill.first, sill.second), startY = sillTop, endY = h - 14f * u), Offset(14f * u, sillTop), Size(sillRight - 14f * u, 18f * u), CornerRadius(9f * u))
             val cs = if (wide) 128f * u else 124f * u
-            val cx = (if (wide) 36f * u else 22f * u) + cs / 2
+            val cx = if (wide) 36f * u + cs / 2 else w / 2 // centred on the sill (a tablet's 2 x 2 is wider than tall)
             val bottom = h - 22f * u - hop
             val mid = if (wide) Offset(cx, h - 22f * u - cs / 2) else Offset(84f * u, 108f * u)
             if (pose == Pose.PURR || pose == Pose.DREAM) rings(mid, u)
@@ -162,7 +162,7 @@ object PlayArt {
                         heart(126f * u, 52f * u, .83f * u, RED)
                         heart(44f * u, 36f * u, .58f * u, PINK)
                         heart(96f * u, 20f * u, .42f * u, RED, .8f)
-                        purrBadge(w - 12f * u, 12f * u, u)
+                        if (w < h * 1.25f) purrBadge(w - 12f * u, 12f * u, u) // (a wider tile has the bubble there)
                     }
                 }
                 else -> {}
@@ -186,7 +186,7 @@ object PlayArt {
      * star), the days of your streak in amber with a line through them, the brightest star with a halo. Or, small, the
      * last two weeks: a star for every day that had one.
      */
-    fun constellation(ctx: Context, s: Snap, wDp: Float, hDp: Float, fortnight: Boolean, now: Long): Bitmap {
+    fun constellation(ctx: Context, s: Snap, wDp: Float, hDp: Float, fortnight: Boolean, now: Long, skyFrom: Float = .07f): Bitmap {
         val d = ctx.resources.displayMetrics.density
         val cal = Calendar.getInstance().apply { timeInMillis = now }
         val dim = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
@@ -200,7 +200,7 @@ object PlayArt {
             }
             val rnd = java.util.Random(11)
             repeat(14) { i -> drawCircle(Color.White.copy(alpha = .5f), (.7f + rnd.nextFloat() * .2f) * u, Offset(rnd.nextFloat() * w, if (i % 2 == 0) h * (.1f + rnd.nextFloat() * .16f) else h * (.84f + rnd.nextFloat() * .12f))) }
-            val x0 = w * .07f; val x1 = w * .95f; val y0 = h * .36f; val y1 = h * .78f
+            val x0 = w * skyFrom; val x1 = w * .95f; val y0 = if (skyFrom > .2f) h * .2f else h * .36f; val y1 = if (skyFrom > .2f) h * .85f else h * .78f
             fun radius(min: Int) = (2f + 2.2f * min(min, 90) / 90f) * u
             val pts = if (!fortnight) s.stars.map { st ->
                 val c = Calendar.getInstance().apply { timeInMillis = st.t }
@@ -271,14 +271,16 @@ object PlayArt {
      * ring (the time they have left, out of an hour), a break a little dimmer, one not focusing dimmer still.
      */
     fun table(ctx: Context, sizeDp: Float, kittens: List<Triple<String, Float, Float?>>, dark: Boolean, ringColor: Color): Bitmap {
+        val top = if (dark) Color(0xFF5A4E63) else Color(0xFFE9D4B3)
+        val edge = if (dark) Color(0xFF3A3340) else Color(0xFFCFAE80)
         val d = ctx.resources.displayMetrics.density
         val px = (sizeDp * d).toInt()
         val imgs = kittens.map { WidgetArt.cat(ctx, it.first) }
         return WidgetArt.render(px, px, d) {
             val u = size.minDimension / 138f
             val c = Offset(69f * u, 69f * u)
-            drawCircle(Brush.radialGradient(listOf(Color(0xFF5A4E63), Color(0xFF3A3340)), center = Offset(c.x - 8f * u, c.y - 10f * u), radius = 60f * u), 47f * u, c)
-            drawCircle(Color.White.copy(alpha = .07f), 45f * u, c, style = Stroke(4f * u))
+            drawCircle(Brush.radialGradient(listOf(top, edge), center = Offset(c.x - 8f * u, c.y - 10f * u), radius = 60f * u), 47f * u, c)
+            drawCircle(Color.White.copy(alpha = if (dark) .07f else .3f), 45f * u, c, style = Stroke(4f * u))
             val spots = listOf(Triple(46f, 30f, 40f), Triple(104f, 78f, 44f), Triple(42f, 108f, 48f))
             kittens.forEachIndexed { i, k ->
                 if (i >= spots.size) return@forEachIndexed

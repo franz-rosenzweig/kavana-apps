@@ -221,7 +221,9 @@ fun PetContent(s: Snap, stateMode: Int) {
                     if (mode == WMode.READY) Pill("Start 25", Color(0xFF2C8A7E), Color.White, startAction(25), GlanceModifier.fillMaxWidth(), height = (38f * k).dp, textSize = 14.sp)
                 }
             }
-            else -> Box(GlanceModifier.fillMaxSize().clickable(pet)) {}
+            else -> Box(GlanceModifier.fillMaxSize().clickable(pet).padding(end = 14.dp, top = 12.dp), contentAlignment = Alignment.TopEnd) {
+                if (size.width >= size.height * 1.25f) Bubble(when { night -> if (m == 2) "Prrr…" else "Shh."; m == 1 -> "Mrrp!"; m == 2 -> "Prrrr…"; else -> "Mrrp?" })
+            }
         }
     }
 }
