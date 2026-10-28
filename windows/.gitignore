@@ -1,0 +1,5 @@
+bin/
+obj/
+# made by tools/convert-art.py and tools/make-icon.ps1 before each build
+art/
+Chataltul/Assets/Chataltul.ico

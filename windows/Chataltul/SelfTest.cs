@@ -1,0 +1,565 @@
+using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
+using System.Runtime.InteropServices.WindowsRuntime;
+using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Chataltul.Core;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media.Imaging;
+
+namespace Chataltul;
+
+/// <summary>
+/// The self-test (windows/selftest.ps1): the real app wired up on a scratch folder, with every window far off
+/// the screen, no tray icon, no notification, and no reading of the real front window or any browser. What a
+/// person would press is called the way the buttons call it, and the clock is moved on instead of waited for.
+/// The windows are drawn to PNG files (--shots). On a machine of its own (the workflow: --onscreen, --browser)
+/// it also looks at real pixels: the windows are see-through where they don't paint, clicks go through the
+/// cat's empty corners, Leave anyway is held with a real mouse, and a real browser's address is read.
+/// The Mac's is mac/SelfTest.
+/// </summary>
+static class SelfTest
+{
+    sealed record Check(string Name, bool Ok, string Detail);
+    static readonly List<Check> Checks = [];
+    static readonly object Gate = new();
+    const long MIN = 60_000;
+    static bool finished;
+
+    static void Add(string name, bool ok, string detail = "")
+    {
+        lock (Gate) Checks.Add(new Check(name, ok, detail));
+        Log.Write($"{(ok ? "ok  " : "FAIL")} {name}{(detail.Length > 0 ? $" ({detail})" : "")}");
+    }
+
+    public static void FailEarly(string problem)
+    {
+        Add("the app started", false, problem);
+        Finish();
+    }
+
+    static Task Spin(int ms = 200) => Task.Delay(ms);
+
+    public static async Task Run(Controller app)
+    {
+        // never longer than three minutes, whatever hangs
+        _ = Task.Delay(TimeSpan.FromMinutes(3)).ContinueWith(_ => Ui.Post(() => Finish("it took more than three minutes")));
+        try
+        {
+            await Spin(500);
+            await Live(app);
+            await Pictures(app);
+            if (App.Options.OnScreen) await OnScreen(app);
+            if (App.Options.Browser) await Browsers();
+        }
+        catch (Exception e) { Add("the self-test ran to the end", false, e.ToString()); }
+        Finish();
+    }
+
+    static WinSettings Fresh() => new()
+    {
+        Blocklist = new Blocklist([new ListedApp("fake.exe", "Fake")], ["example.test"]),
+        Welcomed = true,
+        BrowserNoticeShown = true,
+    };
+
+    static readonly FrontApp Writer = new(new IntPtr(0x7001), 7001, "writer.exe", "Writer");
+    static readonly FrontApp FakeApp = new(new IntPtr(0x7002), 7002, "fake.exe", "Fake");
+    static readonly FrontApp Chrome = new(new IntPtr(0x7003), 7003, "chrome.exe", "Chrome");
+
+    static async Task Live(Controller app)
+    {
+        var store = app.Store;
+        var idle = 1_000L;
+        app.Away.IdleOverride = () => idle;
+        store.ResetForTest(Fresh());
+        var list = store.Settings.Blocklist;
+        var hitApp = list.Hit("fake.exe");
+        var hitSite = list.Hit("https://www.example.test/page?x=1", "Chrome");
+
+        // ---- the engine and what the app carries
+        Add("the engine loaded the web's files", store.State.Cats.Count > 10, $"{store.State.Cats.Count} cats");
+        Add("the cats come with their names", store.Cat("pepper").Name == "Milo", store.Cat("pepper").Name);
+        Add("the paintings are in the app, as PNG", File.Exists(Path.Join(AppContext.BaseDirectory, "art", "cats", "miso-1.png")));
+        Add("the engine's commit is recorded", File.Exists(Path.Join(AppContext.BaseDirectory, "js", "WEB_COMMIT")));
+        Add("the listed app and site are found", hitApp != null && hitSite?.Target.Label == "example.test");
+
+        // ---- shortcuts
+        Add("shortcuts: start and park are registered", app.Hotkeys.IsSet("start") && app.Hotkeys.IsSet("park"), app.ShortcutProblem ?? "");
+        Add("shortcuts: Yes and Drifted aren't taken while nothing waits", !app.Hotkeys.IsSet("yes") && !app.Hotkeys.IsSet("drifted"));
+
+        // ---- the start shortcut: open, then start
+        app.StartShortcut();
+        await Spin();
+        Add("start shortcut: the popover opens on the ready card", app.Popover.IsShown && app.Popover.Pane == "ready", app.Popover.Pane);
+        Add("the popover takes the front, the cat never does", (Native.ExStyle(app.Popover.Win.Hwnd) & Native.WS_EX_NOACTIVATE) == 0 && (Native.ExStyle(app.Cat.Win.Hwnd) & Native.WS_EX_NOACTIVATE) != 0);
+        await Shot(app.Popover.Win.Content, "popover-ready");
+        app.StartShortcut();
+        await Spin();
+        Add("start shortcut again: a block starts and the popover goes", store.Active != null && !app.Popover.IsShown);
+        Add("the kitten is growing", store.Active?.Kitten == "growing");
+        Add("the tray shows it focusing", TrayState.Of(store.Active, store.Awaiting, store.OnBreak, Clock.Now) is TrayState.Focusing { Pending: false });
+        Add("the doc is saved in the data folder", File.Exists(Path.Join(store.Folder, "doc.json")));
+
+        // ---- the speed bump on an app: held Leave anyway
+        Add("speed bump: this block may be guarded", app.Bumpable);
+        app.Looked(null, Writer);
+        app.Looked(hitApp, FakeApp);
+        await Spin();
+        Add("speed bump: the card comes up over a listed app", app.Bump.IsShown && app.Bump.Card?.CatName == "Miso");
+        Add("speed bump: it counts 15 seconds", app.Bump.Line == "Come back within 15 seconds, or Miso wanders off.", app.Bump.Line);
+        await Shot(app.Bump.Win.Content, "speedbump");
+        var hold = app.Bump.Hold!;
+        var t0 = Clock.Now;
+        hold.Down(t0);
+        hold.Up(t0 + 150);
+        Add("a plain press on Leave anyway doesn't send the kitten off", store.Active?.Kitten == "growing" && app.Bump.IsShown && hold.Words == "Hold to leave", hold.Words);
+        hold.Down(t0 + 1_000);
+        hold.Check(t0 + 2_500);
+        hold.Up(t0 + 2_500);
+        Add("holding it for a second and a half doesn't either", store.Active?.Kitten == "growing" && app.Bump.IsShown);
+        hold.Down(t0 + 3_000);
+        hold.Check(t0 + 5_100);
+        await Spin();
+        Add("held for two seconds: the kitten wandered off", store.Active is { Kitten: "gone", GoneWhy: "away" }, store.Active?.Kitten ?? "no block");
+        Add("held: the block keeps going", store.Active != null);
+        Add("held: the card is gone", !app.Bump.IsShown);
+        Add("held: the cat says so", app.Cat.Kind == "gone", app.Cat.Kind ?? "");
+        await Shot(app.Cat.Win.Content, "cat-wandered");
+        app.Looked(hitApp, FakeApp);
+        await Spin();
+        Add("the cat doesn't come up again for that block", !app.Bump.IsShown);
+        Add("it isn't guarded any more", !app.Bumpable);
+
+        store.ResetForTest(Fresh());
+        app.Speed = new SpeedBump();
+        store.Start("Cancel soon");
+        Add("a stop in the first ten seconds takes the block back", store.Stop() && store.Active == null && store.State.History.Count == 0);
+
+        // ---- the 15 seconds run out, on a site
+        store.Start("Second block");
+        app.Looked(null, Writer);
+        app.Looked(hitSite, Chrome);
+        await Spin();
+        Add("a listed site brings the card", app.Bump.IsShown && app.Bump.Card?.Target.Label == "example.test");
+        if (app.Bump.Card is { } card)
+        {
+            app.Second(card.ShownAt + 14_000);
+            Add("14 seconds in, the card is still there", app.Bump.IsShown && store.Active?.Kitten == "growing");
+            app.Second(card.ShownAt + 15_000);
+            await Spin();
+            Add("15 seconds: the kitten wandered off", store.Active is { Kitten: "gone", GoneWhy: "away" });
+            Add("15 seconds: the card is gone and the cat says so", !app.Bump.IsShown && app.Cat.Kind == "gone");
+        }
+
+        // ---- Back to work
+        store.ResetForTest(Fresh());
+        app.Speed = new SpeedBump();
+        app.Cat.Hide();
+        store.Start("Third block");
+        app.Looked(null, Writer);
+        app.Looked(hitApp, FakeApp);
+        await Spin();
+        app.Bump.BackToWork();
+        await Spin();
+        Add("Back to work: the card goes and the kitten stays", !app.Bump.IsShown && store.Active?.Kitten == "growing");
+        Add("Back to work goes to the window they were in", app.Previous == Writer.Hwnd);
+        app.Looked(hitApp, FakeApp);
+        Add("it doesn't come up again while that app stays in front", !app.Bump.IsShown);
+        app.Looked(null, Writer);
+        app.Looked(hitApp, FakeApp);
+        await Spin();
+        Add("it does after they left it and came back", app.Bump.IsShown);
+        app.Looked(null, Writer);
+        await Spin();
+        Add("leaving the listed app takes the card away", !app.Bump.IsShown);
+
+        // ---- a check-in: the cat in the corner
+        var start = store.Active!.Start;
+        Clock.Offset += start + 15 * MIN + 1_000 - Clock.Now;
+        app.Second(Clock.Now);
+        await Spin();
+        Add("check-in: the engine has it waiting", store.Active?.Pending == 1, $"{store.Active?.Pending}");
+        Add("check-in: the cat comes up in the corner", app.Cat.IsShown && app.Cat.Kind == "checkin", app.Cat.Kind ?? "");
+        Add("check-in: it names the block", app.Cat.Model?.Title == "Boo! Still on: Third block?", app.Cat.Model?.Title ?? "");
+        Add("check-in: Yes and Drifted are taken while it waits", app.Hotkeys.IsSet("yes") && app.Hotkeys.IsSet("drifted"));
+        Add("check-in: the tray icon has its orange dot", TrayState.Of(store.Active, store.Awaiting, store.OnBreak, Clock.Now) is TrayState.Focusing { Pending: true });
+        await Shot(app.Cat.Win.Content, "cat-checkin");
+        Add("the floating windows are on top and out of the taskbar and Alt+Tab",
+            new[] { app.Popover.Win, app.Cat.Win, app.Bump.Win }.All(w => (Native.ExStyle(w.Hwnd) & Native.WS_EX_TOOLWINDOW) != 0 && (Native.ExStyle(w.Hwnd) & Native.WS_EX_TOPMOST) != 0),
+            string.Join(", ", new[] { app.Popover.Win, app.Cat.Win, app.Bump.Win }.Select(w => $"{Native.ExStyle(w.Hwnd):x}")));
+        app.Popover.Show();
+        await Spin();
+        Add("check-in: the popover has Yes and Drifted too", app.Popover.Pane == "focus" && app.Popover.Buttons.ContainsKey("Yes"));
+        await Shot(app.Popover.Win.Content, "popover-checkin");
+        app.Popover.Hide();
+        app.Cat.Press("Drifted");
+        await Spin();
+        Add("Drifted counts", store.Active?.Drifts == 1, $"{store.Active?.Drifts}");
+        Add("then the cat asks what pulled you away", app.Cat.Kind == "reason");
+        await Shot(app.Cat.Win.Content, "cat-reason");
+        app.Cat.Press("Phone");
+        await Spin();
+        Add("the reason goes and Yes and Drifted are let go", app.Cat.Kind == null && !app.Hotkeys.IsSet("yes") && !app.Hotkeys.IsSet("drifted"));
+
+        // ---- away from the PC
+        idle = 3 * MIN;
+        app.Away.Sample(Clock.Now);
+        idle = 1_000;
+        app.Away.Sample(Clock.Now);
+        await Spin();
+        Add("away: back after three minutes, it asks", store.AwayPrompt?.Minutes == 3, $"{store.AwayPrompt?.Minutes}");
+        Add("away: the popover opens on the welcome back card", app.Popover.IsShown && app.Popover.Pane == "away", app.Popover.Pane);
+        await Shot(app.Popover.Win.Content, "popover-away");
+        Add("away: Take them off is hidden while the engine can't", !app.Popover.Buttons.ContainsKey("Take them off") == !store.State.CanTakeOff);
+        app.Popover.Buttons["Count them"]();
+        await Spin();
+        Add("Count them: back to the block, the kitten still there", store.AwayPrompt == null && app.Popover.Pane == "focus" && store.Active?.Kitten == "growing");
+        await Shot(app.Popover.Win.Content, "popover-focus");
+        app.Popover.Hide();
+
+        // ---- park a thought
+        app.ShowPark();
+        await Spin();
+        Add("park: the field opens", app.Park.IsShown);
+        await Shot(app.Park.Win.Content, "park");
+        app.Park.Park("Reply to that email");
+        await Spin();
+        Add("park: the thought is on the block and in Later", store.Active?.Parked.Contains("Reply to that email") == true && store.State.View.Later.FirstOrDefault()?.Text == "Reply to that email");
+        Add("park: the field closes", !app.Park.IsShown);
+
+        // ---- the end
+        Clock.Offset += store.Active!.End + 1_000 - Clock.Now;
+        app.Second(Clock.Now);
+        await Spin();
+        Add("the end: the kitten came home", store.Awaiting?.Kitten == "home", store.Awaiting?.Kitten ?? "none");
+        Add("the end: the cat asks how it went", app.Cat.Kind == "end" && app.Cat.Model?.Buttons.Any(b => b.Label == "Done") == true, app.Cat.Kind ?? "");
+        Add("the end: the tray says came home", TrayState.Of(store.Active, store.Awaiting, store.OnBreak, Clock.Now) is TrayState.Home);
+        await Shot(app.Cat.Win.Content, "cat-end");
+        app.Popover.Show();
+        await Spin();
+        Add("the popover asks how it went", app.Popover.Pane == "home");
+        await Shot(app.Popover.Win.Content, "popover-home");
+        app.Cat.Press("Done");
+        await Spin();
+        var filed = store.State.History.FirstOrDefault();
+        Add("Done files it", filed?.Outcome == "done" && store.Awaiting == null, filed?.Outcome ?? "");
+        Add("the reason for the drift is kept with the block", filed?.Whys.Contains("phone") == true);
+        Add("the popover is ready again, with a break offered", app.Popover.Pane == "ready" && store.State.View.BreakOffer != null);
+        if (app.Popover.Buttons.TryGetValue("Start break", out var startBreak)) startBreak();
+        await Spin();
+        Add("a break starts", store.OnBreak != null && app.Popover.Pane == "break", app.Popover.Pane);
+        await Shot(app.Popover.Win.Content, "popover-break");
+        Add("the tray shows the break", TrayState.Of(store.Active, store.Awaiting, store.OnBreak, Clock.Now) is TrayState.OnBreak);
+        app.Popover.Buttons["End break"]();
+        await Spin();
+        Add("End break ends it", store.OnBreak == null && app.Popover.Pane == "ready");
+        app.Popover.Hide();
+
+        // ---- a long break: longer than the engine's 15 minutes, the app keeps its end
+        store.StartBreak(20);
+        Add("a 20-minute break runs 20 minutes", store.OnBreak is { } lb && lb.End - lb.Start == 20 * MIN, store.OnBreak is { } x ? $"{(x.End - x.Start) / MIN} min" : "none");
+        store.StopBreak();
+
+        // ---- the engine's settings from Settings
+        store.SetEngine(new() { ["interval"] = 30 });
+        Add("a setting goes to the engine", store.EngineSettings.Interval == 30);
+        store.SetEngine(new() { ["interval"] = 15 });
+    }
+
+    /// <summary>Every screen, in light and in dark, and the tray icon in each state.</summary>
+    static async Task Pictures(Controller app)
+    {
+        var store = app.Store;
+        var dir = App.Options.Shots;
+        // the tray icon
+        var states = new (string, TrayState)[]
+        {
+            ("ready", new TrayState.Ready()), ("focusing", new TrayState.Focusing(0.6, "14:59", false)), ("checkin", new TrayState.Focusing(0.4, "09:59", true)),
+            ("paused", new TrayState.Paused(0.5, "12:30")), ("break", new TrayState.OnBreak(0.7, "03:30")), ("home", new TrayState.Home()),
+        };
+        var drawn = new HashSet<string>();
+        foreach (var (name, s) in states)
+            foreach (var dark in new[] { false, true })
+                foreach (var size in new[] { 16, 32 })
+                {
+                    var px = TrayArt.Draw(s, size, dark);
+                    drawn.Add(Convert.ToBase64String(px));
+                    if (dir != null && size == 32) File.WriteAllBytes(Path.Join(dir, $"tray-{name}-{(dark ? "dark" : "light")}.png"), Png.Encode(size, size, Png.FromBgra(px)));
+                }
+        Add("the tray icon has a picture for each state, size and taskbar", drawn.Count == states.Length * 4, $"{drawn.Count} pictures");
+        var icon = Native.Icon(TrayArt.Draw(new TrayState.Ready(), 16, true), 16);
+        Add("a tray picture makes a Windows icon", icon != IntPtr.Zero);
+        if (icon != IntPtr.Zero) Native.DestroyIcon(icon);
+
+        // the windows, in dark too
+        store.ResetForTest(Fresh());
+        foreach (var dark in new[] { false, true })
+        {
+            Palette.Force = dark;
+            app.Speed = new SpeedBump();
+            var theme = dark ? "dark" : "light";
+            app.Popover.Show();
+            await Spin();
+            await Shot(app.Popover.Win.Content, $"popover-ready-{theme}");
+            store.Start("Write the intro");
+            await Spin();
+            await Shot(app.Popover.Win.Content, $"popover-focus-{theme}");
+            app.Popover.Hide();
+            app.Looked(null, Writer);
+            app.Looked(store.Settings.Blocklist.Hit("fake.exe"), FakeApp);
+            await Spin();
+            await Shot(app.Bump.Win.Content, $"speedbump-{theme}");
+            app.Bump.BackToWork();
+            store.Stop();
+            app.Cat.Show("checkin", new CatCardModel("pepper", "Boo! Still on: Write the intro?")
+            {
+                Label = "Check-in", Body = "10 min left · answer here, no need to switch apps",
+                Buttons = [new("Yes", () => { }, true, V.Glyph.Check), new("Drifted", () => { }, false, V.Glyph.Drift)],
+                Hint = "Or press Ctrl+Alt+Y for Yes, Ctrl+Alt+D for Drifted",
+            }, 30);
+            await Spin();
+            await Shot(app.Cat.Win.Content, $"cat-checkin-{theme}");
+            app.Cat.Hide();
+            foreach (var pane in new[] { "general", "blocks", "blocklist", "shortcuts" })
+            {
+                app.Settings.Show(pane);
+                await Spin(300);
+                await Shot(app.Settings.Window.Content as FrameworkElement, $"settings-{pane}-{theme}");
+            }
+            if (!dark)
+            {
+                app.Settings.Zoom(1.5f);
+                await Spin(400);
+                Add("Settings' text grows with Ctrl+Plus (the same call)", app.Settings.ZoomFactor > 1.4f, $"{app.Settings.ZoomFactor:0.00}");
+                await Shot(app.Settings.Window.Content as FrameworkElement, "settings-shortcuts-bigger-text");
+                app.Settings.Zoom(1f);
+                await Spin(300);
+            }
+            app.Settings.Hide();
+            if (store.Awaiting is { } w) store.Outcome(w.Id, null);
+            app.Speed = new SpeedBump();
+        }
+        Palette.Force = false;
+    }
+
+    /// <summary>On a desktop of its own: real pixels, real clicks.</summary>
+    static async Task OnScreen(Controller app)
+    {
+        var store = app.Store;
+        store.ResetForTest(Fresh());
+        app.Speed = new SpeedBump();
+        // a magenta wall behind everything, to see through to
+        var wall = new Floating("Chataltul self-test wall", activates: false, Backdrop.None);
+        wall.Root.Background = Palette.B(Palette.C(0xFF00FF));
+        var work = Native.WorkAreaAt(new Native.POINT { X = 10, Y = 10 });
+        wall.Move(work.Left, work.Top, work.Width, work.Height);
+        wall.Show();
+        Native.SetCursorPos(work.Left + work.Width / 2, work.Top + work.Height / 2);
+        await Spin(400);
+
+        app.Cat.Show("checkin", new CatCardModel("miso", "Boo! Still focusing?") { Label = "Check-in", Buttons = [new("Yes", () => { }, true), new("Drifted", () => { })] }, 30);
+        await Spin(800);
+        var cat = app.Cat.Win.Bounds;
+        var corner = new Native.POINT { X = cat.Left + 6, Y = cat.Top + 6 };
+        var seen = Native.ScreenPixel(corner.X, corner.Y);
+        Add("the cat's window is see-through where it doesn't paint", Near(seen, 0xFF00FF), $"{seen:x6} at {corner.X},{corner.Y}");
+        var under = Native.GetAncestor(Native.WindowFromPoint(corner), Native.GA_ROOT);
+        Add("a click there goes through to the window underneath", under != app.Cat.Win.Hwnd, under == wall.Hwnd ? "the wall" : $"{under:x}");
+        var onCard = new Native.POINT { X = cat.Right - 40, Y = cat.Top + 40 };
+        var cardPixel = Native.ScreenPixel(onCard.X, onCard.Y);
+        Add("the card itself is drawn", !Near(cardPixel, 0xFF00FF), $"{cardPixel:x6}");
+        Add("the cat doesn't take the front", Native.GetForegroundWindow() != app.Cat.Win.Hwnd);
+        app.Cat.Hide();
+
+        app.Popover.Show();
+        await Spin(800);
+        var pop = app.Popover.Win.Bounds;
+        var popCorner = Native.ScreenPixel(pop.Left + 1, pop.Top + 1);
+        Add("the popover's rounded corners show what's behind", Near(popCorner, 0xFF00FF), $"{popCorner:x6}");
+        app.Popover.Hide();
+
+        // Leave anyway, held with the real mouse for two and a half seconds
+        store.Start("Held for real");
+        app.Looked(null, Writer);
+        app.Looked(store.Settings.Blocklist.Hit("fake.exe"), FakeApp);
+        await Spin(800);
+        var dim = Native.ScreenPixel(work.Left + 4, work.Top + 4);
+        Add("the speed bump dims the screen and lets it show through", !Near(dim, 0xFF00FF) && (dim >> 16 & 0xFF) > 0x40 && (dim & 0xFF) > 0x40, $"{dim:x6}");
+        if (app.Bump.Hold is { } hold)
+        {
+            var b = app.Bump.Win.Bounds;
+            var r = app.Bump.Win.BoundsOf(hold.View);
+            var scale = Native.GetDpiForWindow(app.Bump.Win.Hwnd) / 96.0;
+            var x = b.Left + (int)((r.X + r.Width / 2) * scale);
+            var y = b.Top + (int)((r.Y + r.Height / 2) * scale);
+            Native.Press(x, y, true);
+            await Task.Delay(700);
+            Native.Press(x, y, false);
+            await Spin(300);
+            Add("a real press of under a second doesn't leave", store.Active?.Kitten == "growing" && app.Bump.IsShown);
+            Native.Press(x, y, true);
+            await Task.Delay(2_500);
+            Native.Press(x, y, false);
+            await Spin(500);
+            Add("held for real for two seconds, it does", store.Active?.Kitten == "gone", store.Active?.Kitten ?? "");
+        }
+        store.Stop();
+        wall.Hide();
+    }
+
+    static bool Near(uint rgb, uint want) =>
+        Math.Abs((int)(rgb >> 16 & 0xFF) - (int)(want >> 16 & 0xFF)) < 24 && Math.Abs((int)(rgb >> 8 & 0xFF) - (int)(want >> 8 & 0xFF)) < 24 && Math.Abs((int)(rgb & 0xFF) - (int)(want & 0xFF)) < 24;
+
+    /// <summary>A real browser on a page of this machine, and its address read with UI Automation.</summary>
+    static async Task Browsers()
+    {
+        var server = new TcpListener(IPAddress.Loopback, 0);
+        server.Start();
+        var port = ((IPEndPoint)server.LocalEndpoint).Port;
+        _ = Task.Run(async () =>
+        {
+            var page = Encoding.UTF8.GetBytes("<!doctype html><title>Chataltul self-test</title><p>A page for the self-test.</p>");
+            while (true)
+            {
+                try
+                {
+                    using var c = await server.AcceptTcpClientAsync();
+                    using var s = c.GetStream();
+                    var buffer = new byte[4096];
+                    _ = await s.ReadAsync(buffer);
+                    var head = Encoding.ASCII.GetBytes($"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {page.Length}\r\nConnection: close\r\n\r\n");
+                    await s.WriteAsync(head);
+                    await s.WriteAsync(page);
+                }
+                catch (Exception) { return; }
+            }
+        });
+        var url = $"http://127.0.0.1:{port}/chataltul-selftest";
+        var pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var pf86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        var candidates = new (string Exe, string Path, Func<string, string> Args)[]
+        {
+            ("msedge.exe", Path.Join(pf86, @"Microsoft\Edge\Application\msedge.exe"), dir => $"--no-first-run --no-default-browser-check --user-data-dir=\"{dir}\" --new-window {url}"),
+            ("chrome.exe", Path.Join(pf, @"Google\Chrome\Application\chrome.exe"), dir => $"--no-first-run --no-default-browser-check --user-data-dir=\"{dir}\" --new-window {url}"),
+            ("firefox.exe", Path.Join(pf, @"Mozilla Firefox\firefox.exe"), dir => $"-no-remote -profile \"{dir}\" -new-window {url}"),
+        };
+        var reader = new BrowserReader();
+        await Spin(500);
+        foreach (var (exe, path, args) in candidates)
+        {
+            var browser = Browser.With(exe)!;
+            if (!File.Exists(path)) { Add($"the address in {browser.Name} is read", true, "not installed here: skipped"); continue; }
+            var profile = Path.Join(Path.GetTempPath(), $"chataltul-{exe}-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(profile);
+            // a new Firefox profile opens its welcome pages first; these keep it to the page asked for
+            if (browser.Gecko)
+                File.WriteAllText(Path.Join(profile, "user.js"), string.Join("\n",
+                    "user_pref(\"browser.aboutwelcome.enabled\", false);", "user_pref(\"browser.startup.homepage_override.mstone\", \"ignore\");",
+                    "user_pref(\"startup.homepage_welcome_url\", \"\");", "user_pref(\"datareporting.policy.firstRunURL\", \"\");",
+                    "user_pref(\"browser.shell.checkDefaultBrowser\", false);", "user_pref(\"browser.startup.firstrunSkipsHomepage\", true);"));
+            Process? p = null;
+            var began = DateTime.Now.AddSeconds(-1);
+            try
+            {
+                p = Process.Start(new ProcessStartInfo(path, args(profile)) { UseShellExecute = false });
+                string? got = null;
+                var end = DateTime.UtcNow.AddSeconds(30);
+                while (DateTime.UtcNow < end && got?.Contains("127.0.0.1") != true)
+                {
+                    await Spin(1_000);
+                    var hwnd = WindowOf(exe, "Chataltul self-test");
+                    if (hwnd == IntPtr.Zero) continue;
+                    var done = new TaskCompletionSource<string?>();
+                    void Got(IntPtr h, Browser b, string? u) { if (h == hwnd) done.TrySetResult(u); }
+                    reader.Read += Got;
+                    reader.Ask(hwnd, browser);
+                    got = await Task.WhenAny(done.Task, Task.Delay(5_000)) == done.Task ? done.Task.Result : null;
+                    reader.Read -= Got;
+                }
+                var host = got != null ? Blocklist.Host(got) : null;
+                Add($"the address in {browser.Name} is read", host == "127.0.0.1", got ?? "nothing read");
+            }
+            catch (Exception e) { Add($"the address in {browser.Name} is read", false, e.Message); }
+            finally
+            {
+                try { p?.Kill(true); } catch (Exception) { }
+                foreach (var proc in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(exe)))
+                    try { if (proc.StartTime >= began) proc.Kill(true); } catch (Exception) { }
+            }
+        }
+        reader.Dispose();
+        server.Stop();
+    }
+
+    /// <summary>A visible top-level window of this program whose title has these words (the page's title), if one is open.</summary>
+    static IntPtr WindowOf(string exe, string title)
+    {
+        var found = IntPtr.Zero;
+        Native.EnumWindows((h, _) =>
+        {
+            var n = Native.GetWindowTextLength(h);
+            if (!Native.IsWindowVisible(h) || n == 0) return true;
+            var text = new StringBuilder(n + 1);
+            Native.GetWindowText(h, text, text.Capacity);
+            if (!text.ToString().Contains(title, StringComparison.Ordinal)) return true;
+            if (FrontApp.Of(h) is { } a && a.Exe == exe) { found = h; return false; }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
+
+    /// <summary>A window's content drawn to a PNG file in --shots.</summary>
+    static async Task Shot(FrameworkElement? e, string name)
+    {
+        if (App.Options.Shots is not { } dir || e == null) return;
+        try
+        {
+            Directory.CreateDirectory(dir);
+            await Spin(150);
+            var r = new RenderTargetBitmap();
+            await r.RenderAsync(e);
+            var bgra = (await r.GetPixelsAsync()).ToArray();
+            // premultiplied BGRA to straight RGBA
+            var rgba = new byte[bgra.Length];
+            for (var i = 0; i < bgra.Length; i += 4)
+            {
+                var a = bgra[i + 3];
+                byte Un(byte v) => a == 0 ? (byte)0 : (byte)Math.Min(255, v * 255 / a);
+                rgba[i] = Un(bgra[i + 2]); rgba[i + 1] = Un(bgra[i + 1]); rgba[i + 2] = Un(bgra[i]); rgba[i + 3] = a;
+            }
+            File.WriteAllBytes(Path.Join(dir, $"{name}.png"), Png.Encode(r.PixelWidth, r.PixelHeight, rgba));
+            Add($"drawn: {name}", r.PixelWidth > 0 && r.PixelHeight > 0, $"{r.PixelWidth} x {r.PixelHeight}");
+        }
+        catch (Exception x) { Add($"drawn: {name}", false, x.Message); }
+    }
+
+    static void Finish(string? problem = null)
+    {
+        if (finished) return;
+        finished = true;
+        Check[] checks;
+        lock (Gate)
+        {
+            if (problem != null) Checks.Add(new Check("the self-test ran to the end", false, problem));
+            checks = [.. Checks];
+        }
+        var ok = checks.Length > 0 && checks.All(c => c.Ok);
+        var report = new JsonObject
+        {
+            ["ok"] = ok,
+            ["version"] = App.Version,
+            ["checks"] = new JsonArray(checks.Select(c => (JsonNode?)new JsonObject { ["name"] = c.Name, ["ok"] = c.Ok, ["detail"] = c.Detail }).ToArray()),
+        };
+        try
+        {
+            if (App.Options.Out is { } path)
+                File.WriteAllText(path, report.ToJsonString(new JsonSerializerOptions { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
+        }
+        catch (Exception e) { Log.Write($"self-test results: {e.Message}"); }
+        Environment.Exit(ok ? 0 : 1);
+    }
+}

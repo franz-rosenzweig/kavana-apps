@@ -1,6 +1,6 @@
 # Chataltul apps
 
-These are the native apps for Chataltul (חתלתול, Hebrew for kitten), my focus app. It used to be called Kavana, which is why the repos and the web address still say kavana. The web version lives at https://stuffs.tiresia.xyz/kavana/ (code in franz-rosenzweig/kavana), and this repo is the native side of it: Android, and now the Mac.
+These are the native apps for Chataltul (חתלתול, Hebrew for kitten), my focus app. It used to be called Kavana, which is why the repos and the web address still say kavana. The web version lives at https://stuffs.tiresia.xyz/kavana/ (code in franz-rosenzweig/kavana), and this repo is the native side of it: Android, the Mac, and now Windows.
 
 ## Android (android/)
 
@@ -109,6 +109,9 @@ cd mac
 
 It needs macOS 14 or newer, Xcode's command line tools and `brew install xcodegen`. `project.yml` is the XcodeGen spec for Xcode, and `build.sh` reads the same settings. The engine files, the paintings and the sound list come from the web repo with `mac/tools/sync-web.sh` (it records the commit in `Resources/js/WEB_COMMIT`): never edit the copies. `mac/selftest.sh` tests everything without me at the keyboard: `core` (the engine, its pings, the cat names in them, the away op, the speed bump's, wait it out's and the lock's rules, the schedules and allowances, the breaks and the numbers in Today, the sound list), `ui` (every screen drawn to a PNG, and the real app wired up with its windows far off the screen), `sync` (signing in and syncing against a sandbox copy of the web server on this Mac, never the real one), and `launch`. More in [mac/README.md](mac/README.md).
 
+## Windows (windows/)
+
+Chataltul for Windows is a native Windows app, written in C# and WinUI 3, and built by GitHub Actions on GitHub's Windows machines. Version 0.1, not released yet, is the part that keeps me focused, like the Mac's first: a kitten in the notification area with a ring that empties, the popover with Focus, Break and Long, check-ins as the cat peeking up in the corner of the screen (Yes and Drifted, or Ctrl+Alt+Y and Ctrl+Alt+D from anywhere), the speed bump over the apps and sites on my list (in Chrome, Edge, Brave, Vivaldi, Opera, Arc, Firefox and Zen), park a thought with Ctrl+Alt+P, start a block with Ctrl+Alt+Space, and away from the PC. It runs the same engine as the Mac: the web's `engine.js` with the Mac's `bridge.js`, in Jint inside the app. Windows asks for no permission for any of it, and nothing leaves the PC. How it is put together, built and tested is in [windows/README.md](windows/README.md); what 0.2 and 0.3 add is in [PLAN-windows.md](PLAN-windows.md).
 ## Living cats (motion/)
 
 The motion study and its tools: `warp.js` (the web's living cats, a copy of what's in the web app), `rig.json` (every picture's eyes, head, neck, ears, tail and ground line), `tools/eyes.js` and `tools/rig.js` (find them in new pictures, with hand fixes for what the finder misses) and `tools/folds.js` (checks no motion folds a picture over).

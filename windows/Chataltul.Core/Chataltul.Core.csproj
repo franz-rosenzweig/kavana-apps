@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Chataltul for Windows without a window (windows/README.md): the web's engine in Jint and what it
+       hands back, the rules of the speed bump, the hold, the away prompt and the pings, the blocklist, the
+       settings, and the drawing of the tray icon. The app (windows/Chataltul) and the core tests
+       (windows/Tests) both use it. Plain net10.0, so the tests run on any machine with the SDK.
+       The Mac's is mac/Chataltul/Core. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Chataltul.Core</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Jint" Version="4.16.4" />
+  </ItemGroup>
+</Project>

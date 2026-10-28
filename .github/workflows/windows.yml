@@ -1,0 +1,93 @@
+# Chataltul for Windows (windows/README.md), on GitHub's Windows machines: the core tests (the web's engine
+# headless in Jint, and the rules of the speed bump, the hold, the away prompt, the blocklist), the paintings as
+# PNG, the app, its self-test on a desktop of its own (real pixels, a real mouse, real browsers), and the
+# installer, kept with the run. A tag windows-vX.Y.Z also makes the GitHub release, which is never the
+# repository's Latest (Obtainium watches the Android ones).
+name: Windows
+on:
+  push:
+    branches: [main, 'windows*']
+    tags: ['windows-v*']
+    paths: ['windows/**', 'mac/Chataltul/Resources/**', 'mac/docs/engine-takeoff.patch', '.github/workflows/windows.yml']
+  pull_request:
+    paths: ['windows/**', 'mac/Chataltul/Resources/**', 'mac/docs/engine-takeoff.patch', '.github/workflows/windows.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: The version
+        id: version
+        shell: pwsh
+        run: |
+          $v = if ($env:GITHUB_REF -like 'refs/tags/windows-v*') { $env:GITHUB_REF_NAME -replace '^windows-v', '' }
+               else { ([xml](Get-Content windows/Chataltul/Chataltul.csproj)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1 }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: The core tests
+        run: dotnet run --project windows/Tests -c Release -- --repo "${{ github.workspace }}"
+
+      - name: The paintings as PNG, and the icon
+        shell: pwsh
+        run: |
+          python -m pip install --quiet pillow
+          python windows/tools/convert-art.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          powershell -NoProfile -File windows/tools/make-icon.ps1
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: The app builds
+        run: dotnet publish windows/Chataltul/Chataltul.csproj -c Release -r win-x64 -p:Platform=x64 -p:Version=${{ steps.version.outputs.version }} -o build/Chataltul
+
+      - name: The self-test
+        shell: pwsh
+        run: windows/selftest.ps1 -App build/Chataltul/Chataltul.exe -OnScreen -Browser -Launch
+
+      - name: The installer
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y | Out-Null
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q "/DVersion=${{ steps.version.outputs.version }}" "/DSource=$PWD\build\Chataltul" windows\installer.iss
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          Compress-Archive -Path build\Chataltul\* -DestinationPath "build\out\Chataltul-${{ steps.version.outputs.version }}-portable.zip"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Chataltul-${{ steps.version.outputs.version }}-windows
+          path: |
+            build/out/*
+            build/selftest/*
+          if-no-files-found: warn
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/windows-v')
+    needs: windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: The release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --latest=false --title "Chataltul for Windows ${GITHUB_REF_NAME#windows-v}" \
+            --notes "Chataltul for Windows. Run the Setup to install it for you alone (no administrator needed), or unzip the portable copy anywhere. Windows warns about an app from an unknown publisher the first time: More info → Run anyway." \
+            dist/*/out/Chataltul-*-Setup.exe dist/*/out/Chataltul-*-portable.zip

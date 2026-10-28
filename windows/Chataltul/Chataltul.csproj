@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Chataltul for Windows (windows/README.md): a tray app in WinUI 3, with the web's engine running in
+       Jint (Chataltul.Core). Unpackaged and self-contained: the folder dotnet publish makes runs as it is, and
+       the installer only copies it. The engine's files are the Mac's (mac/Chataltul/Resources/js, synced from
+       the web by mac/tools/sync-web.sh), and the paintings are the Mac's made into PNG by tools/convert-art.py. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>Chataltul</RootNamespace>
+    <AssemblyName>Chataltul</AssemblyName>
+    <Version>0.1.0</Version>
+    <Product>Chataltul</Product>
+    <AssemblyTitle>Chataltul</AssemblyTitle>
+    <Company>franz-rosenzweig</Company>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Program.cs has its own Main: it keeps a second copy from starting -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+  </PropertyGroup>
+
+  <!-- windows/tools/make-icon.ps1 makes it from the Mac's AppIcon.icns -->
+  <PropertyGroup Condition="Exists('Assets\Chataltul.ico')">
+    <ApplicationIcon>Assets\Chataltul.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260921001" />
+    <PackageReference Include="Interop.UIAutomationClient" Version="10.19041.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Chataltul.Core\Chataltul.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\Chataltul.ico" Condition="Exists('Assets\Chataltul.ico')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\mac\Chataltul\Resources\js\*.js;..\..\mac\Chataltul\Resources\js\WEB_COMMIT" LinkBase="js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\art\**\*.png" LinkBase="art" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

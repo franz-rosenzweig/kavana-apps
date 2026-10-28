@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The core tests, a plain program like mac/Tests (windows/README.md says how to run them). The engine
+       runs headless in Jint, as in the app. Plain net10.0, so they run on Linux and macOS too. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Chataltul.Core\Chataltul.Core.csproj" />
+  </ItemGroup>
+</Project>
