@@ -71,6 +71,8 @@ static class SelfTest
         Blocklist = new Blocklist([new ListedApp("fake.exe", "Fake")], ["example.test"]),
         Welcomed = true,
         BrowserNoticeShown = true,
+        // a full-screen break takes the front and hides the popover; TheBreaks turns it on
+        Breaks = new BreakSettings { FullScreen = false },
     };
 
     static readonly FrontApp Writer = new(new IntPtr(0x7001), 7001, "writer.exe", "Writer");
@@ -263,7 +265,7 @@ static class SelfTest
         Add("the tray shows the break", TrayState.Of(store.Active, store.Awaiting, store.OnBreak, Clock.Now) is TrayState.OnBreak);
         app.Popover.Buttons["End break"]();
         await Spin();
-        Add("End break ends it", store.OnBreak == null && app.Popover.Pane == "ready");
+        Add("End break ends it", store.OnBreak == null && app.Popover.Pane == "ready", app.Popover.Pane);
         app.Popover.Hide();
 
         // ---- a long break: longer than the engine's 15 minutes, the app keeps its end
@@ -608,6 +610,7 @@ static class SelfTest
     {
         var store = app.Store;
         store.ResetForTest(Fresh());
+        store.ChangeSettings(s => s.Breaks.FullScreen = true);
         app.Cat.Hide();
         store.StartBreak(5);
         await Spin(400);
