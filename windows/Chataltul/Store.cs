@@ -289,7 +289,7 @@ sealed class Store
     public void ApplyPreset(CyclePreset p) => ChangeSettings(s =>
     {
         s.Cycle.Preset = p;
-        if (Cycles.Minutes(p) is { } m) { s.FocusMinutes = m.Focus; s.Cycle.ShortBreak = m.Rest; }
+        if (Cycles.Minutes(p) is { } m) { s.FocusMinutes = m.Focus; s.Cycle.ShortBreak = m.Break; }
     });
 
     /// <summary>What in the mix can play now (owned, two at most), and its name: "Rain + Purring".</summary>

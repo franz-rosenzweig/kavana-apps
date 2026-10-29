@@ -15,8 +15,8 @@ public static class Cycles
         CyclePreset.Pomodoro => "25 on, 5 off", CyclePreset.FiftyTwo => "52 on, 17 off", CyclePreset.Deep => "90 on, 20 off", _ => "a stopwatch, break by feel",
     };
 
-    /// <summary>Minutes to focus and to break; Flowtime has no set length.</summary>
-    public static (int Focus, int Rest)? Minutes(CyclePreset p) => p switch
+    /// <summary>Minutes to focus and to break; Flowtime has no set length. (A tuple can't call its part Rest: C# keeps that name.)</summary>
+    public static (int Focus, int Break)? Minutes(CyclePreset p) => p switch
     {
         CyclePreset.Pomodoro => (25, 5), CyclePreset.FiftyTwo => (52, 17), CyclePreset.Deep => (90, 20), _ => null,
     };
