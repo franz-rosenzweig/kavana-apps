@@ -58,6 +58,7 @@ static class SelfTest
             await TheLists(app);
             await TheBreaks(app);
             await TheSounds(app);
+            await TheReports(app);
             if (App.Options.Sync is { } server) await TheAccount(app, server, App.Options.Outbox);
             if (App.Options.OnScreen) await OnScreen(app);
             if (App.Options.Browser) await Browsers();
@@ -715,6 +716,62 @@ static class SelfTest
         app.Widgets.RemoveAll();
         store.Stop();
         Add("the end of the block stops them", app.Sound.Playing.Count == 0);
+        store.ResetForTest(Fresh());
+    }
+
+    /// <summary>Where each block went, the week in review and its question, export, and what runs at a block's start and end.</summary>
+    static async Task TheReports(Controller app)
+    {
+        var store = app.Store;
+        store.ResetForTest(Fresh());
+        store.ChangeSettings(s => { s.RunAtStart = @"C:\focus-on.lnk"; s.RunAtEnd = @"C:\focus-off.lnk"; });
+        var ranBefore = Outside.Ran.Count;
+        store.Start("Write the intro", 25);
+        Add("a block's start runs what was named", Outside.Ran.Skip(ranBefore).SequenceEqual([@"C:\focus-on.lnk"]), string.Join(", ", Outside.Ran.Skip(ranBefore)));
+        // where it went: 40 seconds in a writer, 10 in a browser on a site that's on the list
+        var edge = new FrontApp(new IntPtr(0x7004), 7004, "msedge.exe", "Microsoft Edge");
+        app.TimingFront = () => (Writer, null);
+        for (var i = 0; i < 40; i++) app.Second(Clock.Now);
+        app.TimingFront = () => (edge, "example.test");
+        for (var i = 0; i < 10; i++) app.Second(Clock.Now);
+        app.TimingFront = null;
+        var b = store.Active!;
+        var rows = store.WentRows([b.Id]);
+        Add("each second of the block is noted, by app", rows.Count == 2 && rows[0].Name == "Writer" && rows[0].Ms == 40_000, string.Join(", ", rows.Select(r => $"{r.Label} {r.Ms}")));
+        Add("a browser's second notes the site, and it's marked as on the list", rows.Count == 2 && rows[1].Label == "Microsoft Edge: example.test" && rows[1].Distraction);
+        Clock.Offset += b.End + 1_000 - Clock.Now;
+        app.Second(Clock.Now);
+        await Spin();
+        Add("its end runs the other", Outside.Ran.LastOrDefault() == @"C:\focus-off.lnk", Outside.Ran.LastOrDefault() ?? "");
+        app.Popover.Show();
+        await Spin(300);
+        Add("the popover shows where it went", app.Popover.Pane == "home");
+        await Shot(app.Popover.Win.Content, "popover-home-where-it-went");
+        app.Popover.Hide();
+        if (store.Awaiting is { } w) store.Outcome(w.Id, "done");
+        store.SaveTiming();
+        Add("it's kept in timing.json on this PC", File.Exists(Path.Join(store.Folder, "timing.json")));
+
+        // the week in review, a question, export
+        HomeBlock(store, "Another", Clock.Now - 3 * 60 * MIN, 50, "partly");
+        foreach (var dark in new[] { false, true })
+        {
+            Palette.Force = dark;
+            app.OpenWindow("today", Span.Week);
+            await Spin(500);
+            await Shot(app.Main.Window.Content as FrameworkElement, $"window-week-review-{(dark ? "dark" : "light")}");
+        }
+        Palette.Force = false;
+        app.OpenWindow("today", Span.Day);
+        await Spin(400);
+        await Shot(app.Main.Window.Content as FrameworkElement, "window-today-where-it-went");
+        foreach (var e in new[] { "Export blocks", "Export where it went", "Export the review" })
+            if (app.Main.Buttons.TryGetValue(e, out var act)) act();
+        await Spin(300);
+        Add("export: the blocks, where it went, the review", Reports.Saved.Count(n => n.EndsWith("-blocks.csv") || n.EndsWith("-where-it-went.csv") || n.EndsWith("-review.md")) >= 3, string.Join(", ", Reports.Saved));
+        app.Main.Hide();
+        store.ForgetTiming();
+        Add("forgetting where the blocks went empties it, file and all", store.Timing.IsEmpty && !File.Exists(Path.Join(store.Folder, "timing.json")));
         store.ResetForTest(Fresh());
     }
 

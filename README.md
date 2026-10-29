@@ -140,9 +140,10 @@ Chataltul for Windows is a native Windows app, written in C# and WinUI 3, and bu
 
 - **0.1, the part that keeps me focused**, like the Mac's first: a kitten in the notification area with a ring that empties, the popover with Focus, Break and Long, check-ins as the cat peeking up in the corner of the screen (Yes and Drifted, or Ctrl+Alt+Y and Ctrl+Alt+D from anywhere), the speed bump over the apps and sites on my list (in Chrome, Edge, Brave, Vivaldi, Opera and Arc; Firefox and Zen are tried but not yet confirmed), park a thought with Ctrl+Alt+P, start a block with Ctrl+Alt+Space, and away from the PC.
 - **0.2**: signing in by email code and syncing with the web, as on the phone and the Mac; the app window with Today (day, week, month, year), the café in 3D, History and Later; widgets on the desktop, the phone's set as Windows cards (the Window, Quick start, Today, Later, Pet the cat, a cat with a day, Streak, Daily goal, Missions, Constellation, this week as weather, your café, sound); and Start 25, Start 50, Park a thought and Open the café on the taskbar's jump list. Without an account nothing leaves the PC.
-- **0.3, not released yet**: the Mac's full Blocklist (lists with the speed bump, wait it out or locked, watched outside blocks with an allowance, and the ready-made lists of sites from the same public lists, kept as the same hashes), breaks on every screen with the cycles and eye breaks, and the web's sounds, two at once.
+- **0.3**: the Mac's full Blocklist (lists with the speed bump, wait it out or locked, watched outside blocks with an allowance, and the ready-made lists of sites from the same public lists, kept as the same hashes), breaks on every screen with the cycles and eye breaks, and the web's sounds, two at once.
+- **0.4, not released yet**: the reports. Where each block went, app by app (and a site's name in a browser), kept on this PC only; the week in review with a few words made on the PC and questions answered from the numbers; streaks with one pause a week; export as CSV and Markdown; and a program, shortcut or script to run at a block's start and end.
 
-How it is put together, built and tested is in [windows/README.md](windows/README.md); what 0.4 (the reports) adds is in [PLAN-windows.md](PLAN-windows.md).
+How it is put together, built and tested is in [windows/README.md](windows/README.md); what may come next is in [PLAN-windows.md](PLAN-windows.md).
 
 ## Living cats (motion/)
 

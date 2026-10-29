@@ -30,6 +30,8 @@ sealed class MainWindow
     readonly List<Action<long>> tickers = [];
     string laterText = "";
     bool typing;
+    /// <summary>"Ask about your week": what's asked, and the answer from the numbers.</summary>
+    string question = "", answer = "";
 
     static readonly (string Id, string Title, string Glyph)[] Panes =
     [
@@ -152,11 +154,51 @@ sealed class MainWindow
         var blocks = store.Blocks(p.From, p.To);
         var previous = Insights.Before(p);
         List<Hist> before = Span == Span.Day ? new() : store.Blocks(previous.From, previous.To);
-        var header = V.Spread(Heading(TodayTitle(p), TodaySubtitle(p)), Spans());
+        var header = V.Spread(Heading(TodayTitle(p), TodaySubtitle(p)), V.Row(8, Spans(), ExportMenu(blocks, p)));
+        if (Span == Span.Week)
+            return Page(header, Reports.Week(store, blocks, p, TagColor, question, answer, q => question = q, () => AskWeek(blocks, p), t => typing = t));
+        var went = store.Settings.RecordTiming ? Reports.WentPanel(store.WentRows(blocks.Select(b => b.Id))) : null;
         UIElement main;
-        if (Span == Span.Day) main = Columns(CafeCard(blocks, p), V.Col(14, Timeline(blocks), Hours(blocks)));
-        else main = Columns(CafeCard(blocks, p), V.Col(14, Chart(blocks, p), Tags(blocks)));
+        if (Span == Span.Day) main = Columns(CafeCard(blocks, p), V.Col(14, Timeline(blocks), Hours(blocks), went));
+        else main = Columns(CafeCard(blocks, p), V.Col(14, Chart(blocks, p), Tags(blocks), went));
         return Page(header, Stats(blocks, before, p), main);
+    }
+
+    /// <summary>"Ask about your week": answered from the week's numbers (there is no model on the PC to ask).</summary>
+    void AskWeek(IReadOnlyList<Hist> blocks, Period p)
+    {
+        var q = question.Trim();
+        if (q.Length == 0) return;
+        answer = Review.Answer(q, Review.Facts(blocks, p, store.EngineSettings.Goal, store.StreakWithPause));
+        typing = false;
+        Build();
+    }
+
+    /// <summary>Export: the blocks as a spreadsheet (CSV), where the time went as a spreadsheet, the review in words (Markdown).</summary>
+    UIElement ExportMenu(List<Hist> blocks, Period p)
+    {
+        var stem = $"chataltul-{Span.ToString().ToLowerInvariant()}-{p.Start:yyyy-MM-dd}";
+        var went = store.Settings.RecordTiming ? store.WentRows(blocks.Select(b => b.Id)) : new List<WentRow>();
+        var hwnd = shell.Hwnd;
+        void Blocks() => _ = Reports.Save(hwnd, $"{stem}-blocks.csv", Export.BlocksCsv(blocks, id => store.Cat(id).Name), "A spreadsheet", ".csv");
+        void WentFile() => _ = Reports.Save(hwnd, $"{stem}-where-it-went.csv", Export.WentCsv(went), "A spreadsheet", ".csv");
+        void Words()
+        {
+            var f = Review.Facts(blocks, p, store.EngineSettings.Goal, store.StreakWithPause);
+            var range = $"{p.Start:d MMM yyyy} to {p.Last:d MMM yyyy}";
+            _ = Reports.Save(hwnd, $"{stem}-review.md", Export.ReviewMarkdown(TodayTitle(p), range, Review.Summary(f), f, went), "Markdown", ".md");
+        }
+        Buttons["Export blocks"] = Blocks;
+        Buttons["Export where it went"] = WentFile;
+        Buttons["Export the review"] = Words;
+        var menu = new MenuFlyout();
+        foreach (var (text, act) in new (string, Action)[] { ("The blocks, as a spreadsheet (CSV)", Blocks), ("Where the time went, as a spreadsheet (CSV)", WentFile), ("The review in words (Markdown)", Words) })
+        {
+            var item = new MenuFlyoutItem { Text = text };
+            item.Click += (_, _) => act();
+            menu.Items.Add(item);
+        }
+        return new DropDownButton { Content = "Export", Flyout = menu };
     }
 
     /// <summary>Day, Week, Month, Year: a selector bar, as Windows' own apps switch views.</summary>
@@ -209,12 +251,12 @@ sealed class MainWindow
         if (Span == Span.Day)
         {
             var drifts = Insights.Drifts(blocks);
-            var streak = store.Streak;
+            var streak = store.StreakWithPause;
             return V.Even(14,
                 Tile(Format.FmtMin(m), goal > 0 ? $"focused, goal {Format.FmtMin(goal)}" : "focused"),
                 Tile(home.ToString(), home == 1 ? "cat came home" : "cats came home"),
                 Tile(drifts.ToString(), "drifted"),
-                Tile(streak == 1 ? "1 day" : $"{streak} days", "in a row"));
+                Tile(Format.Plural(streak.Days, "day"), "in a row" + (streak.PausesLeft > 0 ? " · 1 pause left" : "")));
         }
         var o = Insights.Outcomes(blocks);
         var prev = Insights.Compare(m, Insights.Minutes(before));

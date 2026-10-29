@@ -39,6 +39,7 @@ sealed class Controller
     GuardHit? currentHit;
     FrontApp? currentApp;
     string? eyeBlockId;
+    bool tracked;
     long usageSaved;
     /// <summary>The window that was in front before something on the list: where Back to work goes.</summary>
     public IntPtr Previous { get; private set; }
@@ -149,6 +150,7 @@ sealed class Controller
         Tray?.Remove();
         Hotkeys?.ClearAll();
         Watcher?.Dispose();
+        Store.SaveTiming();
         Microsoft.UI.Xaml.Application.Current.Exit();
     }
 
@@ -374,7 +376,7 @@ sealed class Controller
         main?.Tick(now);
         Widgets.Tick(now);
         if (seconds % 2 == 0) Away.Sample(now);
-        if (Bumpable || currentHit != null || WatchesOutsideBlocks) Watcher.Look();
+        if (Bumpable || currentHit != null || WatchesOutsideBlocks || Store.Settings.RecordTiming && Store.Running) Watcher.Look();
         // an allowance counts the seconds spent on a list outside a block
         if (currentHit is { } h && currentApp is { } app)
         {
@@ -389,6 +391,22 @@ sealed class Controller
         var guarded = currentHit is { } g && EnforcementFor(g.List) is { Mode: not GuardMode.SpeedBump };
         ApplyOther(Other.Tick(now, guarded));
         BreaksSecond(now);
+        RecordTiming();
+    }
+
+    /// <summary>What is in front for where-it-went (the self-test says what). Chataltul's own windows aren't a place the time went.</summary>
+    public Func<(FrontApp App, string? Domain)?>? TimingFront { get; set; }
+
+    /// <summary>Where the block goes: the app in front each second, and for a browser the site's name. Not while the PC is idle.</summary>
+    void RecordTiming()
+    {
+        if (!Store.Settings.RecordTiming || !Store.Running || Store.Active is not { } b) { Store.SaveTiming(); return; }
+        if (Native.IdleMs() >= Math.Max(1, Store.Settings.AwayAfterMin) * 60_000L && TimingFront == null) return;
+        (FrontApp App, string? Domain)? front = TimingFront != null ? TimingFront() : Watcher.Current is { } c ? (c, Watcher.RecentDomain(c.Hwnd)) : null;
+        if (front is not { } f) return;
+        // a site is kept under its browser's own name, so it lands on that browser's line
+        Store.AddTiming(b, f.App.Exe, f.App.Name, 1000, f.Domain is { } d && Browser.With(f.App.Exe) != null ? (d, f.App.Name) : null);
+        if (seconds % 15 == 0) Store.SaveTiming();
     }
 
     /// <summary>A list is watched outside blocks too (on weekdays, or always): the front is looked at each second.</summary>
@@ -401,7 +419,16 @@ sealed class Controller
     void TrackEyeBlock(UiState st)
     {
         var id = st.View.Active?.Id;
+        var launching = !tracked;
+        tracked = true;
         if (id == eyeBlockId) return;
+        // a block started or ended: what the person named runs (to turn Do not disturb on and off, say);
+        // a block already going at launch started before, and ran it then
+        if (!launching)
+        {
+            if (id != null) Outside.Run(Store.Settings.RunAtStart);
+            else if (eyeBlockId != null) Outside.Run(Store.Settings.RunAtEnd);
+        }
         eyeBlockId = id;
         if (st.View.Active is { } b) Eye.BlockStarted(b.Start); else Eye.BlockEnded();
     }
@@ -539,7 +566,8 @@ sealed class Controller
         Cat.Show("browser", new CatCardModel(Store.ShownCat.Id, $"I can see which site is open in {browser.Name}.")
         {
             Label = "So you know",
-            Body = "Your list has websites on it, so I look at the address of the front tab during a block. I only ever note the site's name, and nothing leaves this PC.",
+            Body = (Store.Settings.Blocklist.WatchesSites ? "Your list has websites on it, so I look" : "To note where each block goes, I look")
+                + " at the address of the front tab during a block. I only ever note the site's name, and nothing leaves this PC.",
             Buttons = [new("OK", () => Cat.Hide("browser"), true), new("Settings", () => { Cat.Hide("browser"); OpenSettings("blocklist"); })],
         }, 60);
     }

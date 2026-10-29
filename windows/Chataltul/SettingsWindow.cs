@@ -138,12 +138,29 @@ sealed class SettingsWindow
         var web = commit[..Math.Min(7, commit.Length)];
         var folder = new Button { Content = "Open the folder" };
         folder.Click += (_, _) => Outside.Open(store.Folder);
+        var forget = new Button { Content = "Forget where my blocks went", IsEnabled = !store.Timing.IsEmpty };
+        forget.Click += (_, _) => { store.ForgetTiming(); Build(); };
+        var runStart = TypedBox("runStart", @"A program, a shortcut, a script or a link", 420, () => { });
+        runStart.Header = "When a block starts, run";
+        runStart.Text = store.Settings.RunAtStart;
+        runStart.LostFocus += (_, _) => Quietly(s => s.RunAtStart = runStart.Text.Trim());
+        var runEnd = TypedBox("runEnd", @"A program, a shortcut, a script or a link", 420, () => { });
+        runEnd.Header = "When it ends, run";
+        runEnd.Text = store.Settings.RunAtEnd;
+        runEnd.LostFocus += (_, _) => Quietly(s => s.RunAtEnd = runEnd.Text.Trim());
         return Col(
             Heading("General"),
             Switch("Open Chataltul when I sign in to Windows", Startup.IsOn, on => Startup.Set(on)),
             Switch("Cats and treats (the kitten that grows in each block)", store.State.CatsOn, on => Engine("cat", on)),
             Switch("The cat peeks up in the corner of the screen for check-ins", store.Settings.CatInCorner, on => Quietly(s => s.CatInCorner = on)),
             Note("Off, check-ins come as Windows notifications only."),
+            Section("Where the time goes"),
+            Switch("Note which app each block's time goes to", store.Settings.RecordTiming, on => Quietly(s => s.RecordTiming = on)),
+            Note("While a block runs, Chataltul notes which app is in front and, in a browser, the site's name (never the address or the page). It shows when a block comes home and in Today. It stays in a file on this PC and is never sent anywhere, not even with an account."),
+            forget,
+            Section("At a block's start and end"),
+            Note("Windows doesn't let an app turn Do not disturb on itself, but you can: name a shortcut or a script that does it (or anything else) and Chataltul runs it when a block starts, and the other one when it ends."),
+            runStart, runEnd,
             Section("Where your things are"),
             Note($"The doc, these settings and the log are in {store.Folder}. " + (app.Sync.SignedIn
                 ? "Signed in, your blocks, Later, cats and settings are also kept by the web app's server."

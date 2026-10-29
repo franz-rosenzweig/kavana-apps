@@ -343,6 +343,106 @@ fs.Cookie = null;
 Check("and forgotten", !File.Exists(sessionFile));
 Equal("the settings know the web app's server", new WinSettings().Server, "https://stuffs.tiresia.xyz/kavana/");
 
+// ---------------------------------------------------------------- the reports (the Mac's tests)
+Section("where it went");
+var wlog = new TimingLog();
+for (var i = 0; i < 41; i++) wlog.Add("b1", t, "writer.exe", "Writer", 60_000);
+for (var i = 0; i < 4; i++) wlog.Add("b1", t, "msedge.exe", "Microsoft Edge", 60_000, ("youtube.com", "Microsoft Edge"));
+for (var i = 0; i < 2; i++) wlog.Add("b1", t, "msedge.exe", "Microsoft Edge", 60_000, ("library.example", "Microsoft Edge"));
+for (var i = 0; i < 3; i++) wlog.Add("b1", t, "olk.exe", "Outlook", 60_000);
+Equal("a block's time adds up by app", wlog.Blocks["b1"].TotalMs, 50 * MIN);
+Equal("and by site", wlog.Blocks["b1"].Sites["youtube.com"].Ms, 4 * MIN);
+var wrows = Went.Rows(wlog.For(["b1", "nope"]), new Blocklist([new ListedApp("olk.exe", "Outlook")], ["youtube.com"]));
+Equal("the biggest is first", wrows.FirstOrDefault()?.Name, "Writer");
+Equal("the shares add up to the whole", (int)Math.Round(wrows.Sum(r => r.Share) * 100), 100);
+Equal("a browser's line names its sites", wrows.FirstOrDefault(r => r.Name == "Microsoft Edge")?.Label, "Microsoft Edge: youtube.com, library.example");
+Same("what is on a list is marked", wrows.Where(r => r.Distraction).Select(r => r.Name).Order(), ["Microsoft Edge", "Outlook"]);
+Equal("a block with no record has no rows", Went.Rows([]).Count, 0);
+var manyApps = new TimingLog();
+foreach (var (mins, k) in new[] { 50, 40, 30, 20, 10, 5, 3, 2 }.Select((x, j) => (x, j))) manyApps.Add("m", t, $"a{k}.exe", $"App {k}", mins * MIN);
+var folded = Went.Rows(manyApps.For(["m"]), limit: 4);
+Equal("more than the limit folds the rest into one line, called Other", (folded.Count, folded[^1].Name), (4, "Other"));
+Equal("a ready-made list marks a site too", Went.Rows(wlog.For(["b1"]), new Blocklist { Lists = [new GuardList { Categories = ["social"] }] },
+    new FakeMatcher(new() { ["social"] = ["youtube.com"] })).First(r => r.Name == "Microsoft Edge").Distraction, true);
+wlog.Prune(t + 1);
+Check("old blocks are pruned", wlog.IsEmpty);
+var tFolder = Path.Join(Path.GetTempPath(), $"chataltul-timing-{Guid.NewGuid():N}");
+Directory.CreateDirectory(tFolder);
+var tl = new TimingLog();
+tl.Add("z", t, "x.exe", "X", 5000);
+tl.Write(tFolder);
+Equal("it survives the file", TimingLog.Read(tFolder).Blocks["z"].Apps["x.exe"].Ms, 5000L);
+TimingLog.Erase(tFolder);
+Check("and can be erased", TimingLog.Read(tFolder).IsEmpty);
+
+Section("streaks with a pause");
+Hist DayHist(int y, int mo, int d) => new(HistJson($"s{y}{mo}{d}", new DateTime(y, mo, d, 10, 0, 0, DateTimeKind.Local), 30, null));
+// Monday 26 October 2026 is a Monday
+var fri = new DateTime(2026, 10, 30, 12, 0, 0, DateTimeKind.Local);
+var sun = new DateTime(2026, 11, 1, 12, 0, 0, DateTimeKind.Local);
+var sk = Streaks.WithPause([DayHist(2026, 10, 26), DayHist(2026, 10, 27), DayHist(2026, 10, 28), DayHist(2026, 10, 29), DayHist(2026, 10, 30)], fri);
+Equal("Monday to Friday is five in a row, with the week's pause still there", (sk.Days, sk.PausesLeft), (5, 1));
+sk = Streaks.WithPause([DayHist(2026, 10, 26), DayHist(2026, 10, 27), DayHist(2026, 10, 28), DayHist(2026, 10, 29), DayHist(2026, 10, 30), DayHist(2026, 11, 1)], sun);
+Equal("a missed Saturday is carried over by the week's pause", (sk.Days, sk.PausedDays.Count, sk.PausesLeft), (6, 1, 0));
+Equal("which was Saturday", sk.PausedDays[0].DayOfWeek, DayOfWeek.Saturday);
+Equal("only one pause a week: the second miss ends it", Streaks.WithPause([DayHist(2026, 10, 26), DayHist(2026, 10, 28), DayHist(2026, 10, 30)], fri).Days, 2);
+Equal("two missed days in a row end it", Streaks.WithPause([DayHist(2026, 10, 26), DayHist(2026, 10, 27), DayHist(2026, 10, 30)], fri).Days, 1);
+sk = Streaks.WithPause([DayHist(2026, 10, 28), DayHist(2026, 10, 29)], new DateTime(2026, 10, 30, 8, 0, 0, DateTimeKind.Local));
+Equal("today isn't over: yesterday still counts, no pause used", (sk.Days, sk.PausesLeft), (2, 1));
+sk = Streaks.WithPause([DayHist(2026, 10, 22), DayHist(2026, 10, 23), DayHist(2026, 10, 25), DayHist(2026, 10, 26)], new DateTime(2026, 10, 26, 12, 0, 0, DateTimeKind.Local));
+Equal("a pause in last week is that week's, and this week's is still there", (sk.Days, sk.PausedDays.Count, sk.PausesLeft), (4, 1, 1));
+Equal("no blocks, no streak", Streaks.WithPause([], fri).Days, 0);
+
+Section("the week in words");
+var wkPeriod = Insights.PeriodOf(Span.Week, new DateTime(2026, 10, 28, 12, 0, 0, DateTimeKind.Local));
+Hist WH(DateTime d, int min, string? tag, int drifts = 0, string[]? whys = null, string? outcome = "done") =>
+    new(JsonDocument.Parse(JsonSerializer.Serialize(new { id = $"w{Format.Ms(d)}", start = Format.Ms(d), actual = min, minutes = min, kitten = "home", drifts, whys = whys ?? Array.Empty<string>(), tag, outcome, cat = "miso", intention = "" })).RootElement);
+DateTime D(int day, int hour) => new(2026, 10, day, hour, 0, 0, DateTimeKind.Local);
+var weekBlocks = new List<Hist>
+{
+    WH(D(26, 10), 120, "Writing"), WH(D(27, 10), 150, "Writing"), WH(D(27, 16), 40, "Work", 1, ["web"]),
+    WH(D(28, 16), 60, "Reading", 2, ["web", "phone"]), WH(D(29, 15), 60, "Writing", 1, ["web"], "partly"), WH(D(30, 11), 90, "Writing"),
+};
+var wf = Review.Facts(weekBlocks, wkPeriod, 120, new StreakInfo(5, [], 1));
+Equal("the week's minutes", wf.Minutes, 520);
+Equal("best on Tuesday", wf.BestDay?.Name, "Tuesday");
+Equal("Writing took most", wf.TopTag, "Writing");
+Equal("the web pulled most, 3 times", (wf.Reasons[0].Id, wf.Reasons[0].Times), ("web", 3));
+Equal("the drifts were late in the day", wf.LateDrifts, true);
+Equal("days that met the goal", wf.DaysMet, 2);
+var said = Review.Summary(wf);
+Check("the summary starts with a verdict and the numbers", said.StartsWith("An uneven week: 8 h 40 min over 6 blocks, best on Tuesday."), said);
+Check("and names the tag", said.Contains("Writing took most of it."));
+Check("and what pulled away, and when", said.Contains("usually the web, mostly in blocks that began after 3 PM"));
+Check("and suggests the speed bump", said.Contains("might want the speed bump on"));
+Check("a week with no blocks says so", Review.Summary(new WeekFacts()).StartsWith("No blocks yet"));
+Check("a phone drift is out of reach", Review.Summary(Review.Facts([WH(D(26, 10), 60, null, 1, ["phone"])], wkPeriod, 0, wf.Streak)).Contains("out of Chataltul's reach"));
+Equal("best day question", Review.Answer("which day was my best day?", wf), "Your best day was Tuesday, with 3 h 10 min.");
+Equal("total question", Review.Answer("How much did I do?", wf), "8 h 40 min over 6 blocks.");
+Equal("hours is the total, not the best hour", Review.Answer("How many hours did I focus?", wf), "8 h 40 min over 6 blocks.");
+Check("when did I drift is about drifting", Review.Answer("When did I drift?", wf).StartsWith("What pulled you away"), Review.Answer("When did I drift?", wf));
+Check("distraction question", Review.Answer("what distracted me", wf).StartsWith("What pulled you away: the web 3 times"), Review.Answer("what distracted me", wf));
+Check("tag question", Review.Answer("what did I work on most", wf).Contains("Writing"));
+Check("streak question", Review.Answer("what's my streak", wf).Contains("5 days in a row"));
+Check("a question it can't answer says what it can", Review.Answer("why is the sky blue", wf).Contains("I can answer"));
+var stacked = Insights.SlotsByTag(weekBlocks, wkPeriod);
+Equal("stacked by tag: Tuesday has Writing and Work", (stacked[1].GetValueOrDefault("Writing"), stacked[1].GetValueOrDefault("Work")), (150, 40));
+Equal("and each day adds up to the day", stacked[1].Values.Sum(), Insights.Slots(weekBlocks, wkPeriod)[1]);
+
+Section("export");
+Equal("a plain field is left alone", Export.Field("hello"), "hello");
+Equal("a comma gets quotes", Export.Field("a, b"), "\"a, b\"");
+Equal("a quote is doubled", Export.Field("say \"hi\""), "\"say \"\"hi\"\"\"");
+var csvText = Export.BlocksCsv(weekBlocks, id => id == "miso" ? "Miso" : id);
+Equal("a header and a row for each block", csvText.TrimEnd('\n').Split('\n').Length, 7);
+Check("the header names the columns", csvText.StartsWith("start,minutes,title,tag,how it went,drifts,what pulled away,cat,the kitten,note\n"));
+Check("a row has the time, the length and the tag", csvText.Contains("2026-10-27T10:00:00") && csvText.Contains(",150,Writing,Writing,done,0,,Miso,came home,"), csvText.Split('\n')[2]);
+Check("the reasons are in words", csvText.Contains("The web; Phone"));
+Equal("where it went as CSV", Export.WentCsv([new WentRow("Writer", 41 * MIN, 0.82, [], false)]), "app,minutes,share\nWriter,41,82%\n");
+var md = Export.ReviewMarkdown("This week", "26 to 1 November", said, wf, [new WentRow("Writer", 41 * MIN, 0.82, [], false)]);
+Check("the review as Markdown", md.StartsWith("# This week\n") && md.Contains("## What pulled you away") && md.Contains("Kept only on this PC"));
+Check("remembering is on, and nothing runs at a block's start or end", new WinSettings() is { RecordTiming: true, RunAtStart: "", RunAtEnd: "" });
+
 // ---------------------------------------------------------------- lists that do more than the speed bump (the Mac's tests)
 Section("what a list asks for, and when");
 var dist = new GuardList { Id = "d", Name = "Distractions", Apps = [new ListedApp("discord.exe", "Discord")], Sites = ["youtube.com"] };

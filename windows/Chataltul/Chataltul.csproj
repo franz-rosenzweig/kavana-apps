@@ -9,7 +9,7 @@
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace>Chataltul</RootNamespace>
     <AssemblyName>Chataltul</AssemblyName>
-    <Version>0.3.0</Version>
+    <Version>0.4.0</Version>
     <Product>Chataltul</Product>
     <AssemblyTitle>Chataltul</AssemblyTitle>
     <Company>franz-rosenzweig</Company>

@@ -57,6 +57,29 @@ static class Outside
         try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
         catch (Exception e) { Log.Write($"open {url}: {e.Message}"); }
     }
+
+    /// <summary>What the person named to run when a block starts or ends: a program, a shortcut, a script or a link, as Windows opens it.</summary>
+    public static readonly List<string> Ran = [];
+
+    public static void Run(string what)
+    {
+        var w = what.Trim();
+        if (w.Length == 0) return;
+        Ran.Add(w);
+        if (App.Options.SelfTest) return;
+        var (file, args) = Split(w);
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(file, args) { UseShellExecute = true }); }
+        catch (Exception e) { Log.Write($"run {w}: {e.Message}"); }
+    }
+
+    /// <summary>A program and what follows it: a quoted path, a path or link as it is, else up to the first space.</summary>
+    static (string File, string Args) Split(string w)
+    {
+        if (w.StartsWith('"') && w.IndexOf('"', 1) is var q and > 0) return (w[1..q], w[(q + 1)..].Trim());
+        if (!w.Contains(' ') || w.Contains("://") || File.Exists(w) || Directory.Exists(w)) return (w, "");
+        var space = w.IndexOf(' ');
+        return (w[..space], w[(space + 1)..].Trim());
+    }
 }
 
 /// <summary>The UI thread's clock and queue.</summary>

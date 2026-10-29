@@ -94,6 +94,11 @@ public sealed class WinSettings
     public BreakSettings Breaks { get; set; } = new();
     /// <summary>The sounds to focus to, at most two at once, each with its volume.</summary>
     public List<MixEntry> Mix { get; set; } = [];
+    /// <summary>Remember which apps (and sites) a block's time went to. Kept in timing.json on this PC, never sent anywhere.</summary>
+    public bool RecordTiming { get; set; } = true;
+    /// <summary>A program (or a link, or a command) to run when a block starts and when it ends: to turn Do not disturb on and off, say.</summary>
+    public string RunAtStart { get; set; } = "";
+    public string RunAtEnd { get; set; } = "";
     /// <summary>The speed bump on or off. On, but with an empty list, it never comes up.</summary>
     public bool SpeedBump { get; set; } = true;
     /// <summary>Read the address of the front tab in a browser, to find the sites on the list.</summary>

@@ -27,7 +27,7 @@ Constellation, the week as weather, the café), since Windows' Widgets board onl
 and the taskbar's jump list (Start 25, Start 50, Park a thought, Open the café). What it does is in
 [windows/README.md](windows/README.md).
 
-## 0.3: the full Blocklist, breaks on every screen, the sounds (windows/, now)
+## 0.3: the full Blocklist, breaks on every screen, the sounds (green 29 October)
 
 The Mac's 0.2, on Windows:
 - **The full Blocklist**: lists with a color each, and for each one the speed bump, **wait it out** (30
@@ -49,7 +49,7 @@ The Mac's 0.2, on Windows:
   when a kitten comes home (Windows' media player; the list is the Mac's `sounds.json`, made from the web's
   `sounds.js`), and the Sound widget.
 
-## 0.4: the reports
+## 0.4: the reports (windows/, now)
 
 - **Where each block went**, app by app (and a site's name in a browser, never the address), noted each
   second while a block runs and the PC isn't idle; the top three when a block comes home, and "Where your
@@ -60,8 +60,8 @@ The Mac's 0.2, on Windows:
   numbers (Windows has no model on the PC to ask, so the Mac's fallback answers are the answers).
 - **Streaks with a pause** (one missed day a week), and **export**: the blocks and where the time went as
   CSV, the review as Markdown.
-- **Focus Assist**: Windows' Do not disturb on while a block runs, if it can be set from an app; else the
-  two boxes for programs to run at a block's start and end, as the Mac has for Shortcuts.
+- **At a block's start and end**: Windows doesn't let an app turn Do not disturb on, so there are two boxes
+  for a program, shortcut, script or link to run then, as the Mac has for Shortcuts.
 
 ## Later, for any of them
 
@@ -71,6 +71,7 @@ Friends, the friends' table widget and napping together (the account's parts abo
 phone and the Mac); signing the app so Windows knows the publisher, which would also let it be a packaged app
 with widgets on Windows' own Widgets board (the Microsoft Store signs for free, after an ID check); an ARM64
 build; updates from the releases.
+
 ## What only I can do
 
 1. Say go for each push and each release (the repo is public: the Actions minutes cost nothing).

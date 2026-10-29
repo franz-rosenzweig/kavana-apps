@@ -4,7 +4,7 @@ The native Windows app for my focus app: a kitten in the notification area, a ti
 that walks over the apps and sites that distract me. Like the Mac and Android apps it runs the web app's own
 `engine.js`, here in [Jint](https://github.com/sebastienros/jint) inside the app, and draws everything
 itself in WinUI 3, so the kittens, the treats and the check-ins follow the same rules on every device.
-It is built by GitHub Actions only; nothing is built on my PCs. What comes after 0.3 is in
+It is built by GitHub Actions only; nothing is built on my PCs. What comes after 0.4 is in
 [PLAN-windows.md](../PLAN-windows.md).
 
 It looks like Windows 11, not like the Mac: the popover is a flyout like the ones Windows' own tray icons open
@@ -110,7 +110,28 @@ have no place on Windows.
   noise are made on the PC. They play while a block runs, fade in and out, and stop on a pause. A kitten that
   comes home meows. There's a Sound widget too.
 
-What 0.3 doesn't have yet: the reports (where each block went, the week in review), which are next.
+## Version 0.4: the reports
+
+- **Where each block went, app by app.** While a block runs, Chataltul notes which app is in front each second
+  and, in a browser, the site's name (never the address or the page); not while the PC is idle or the block is
+  paused. When a block comes home the popover shows where it went (the bar and the top three, with what's on a
+  list in the caution color), and Today adds "Where your blocks went" for a day, a month or a year. It's kept in
+  `timing.json` on this PC, it isn't in the doc the sync carries, and Settings → General turns it off and forgets
+  it all.
+- **The week in review** (Today on Week, or the popover's chart button): a few words about the week made on this
+  PC (a good, uneven or quiet week, the hours and blocks, the best day, what took most of it, what usually pulled
+  me away and when, and what might help), each day stacked by tag against the goal, the streak, how the blocks
+  went and what pulled me away. **Ask about your week** answers a few kinds of question (best day, when I focus,
+  how much, what pulled me away, tags, streak) from the numbers; Windows has no model on the PC to ask.
+- **Streaks with a pause**: one missed day a week doesn't break the streak (weeks start on Monday); two in a row
+  still end it. Today shows "5 days · in a row · 1 pause left". The web's own streak has no pause, so the two can
+  differ.
+- **Export** from Today: the blocks as a spreadsheet (CSV), where the time went as a spreadsheet, the review in
+  words as Markdown.
+- **At a block's start and end**, Settings → General can run a program, a shortcut, a script or a link, with
+  what follows it as its arguments (quote a path with spaces): Windows doesn't let an app turn Do not disturb
+  on, but a shortcut that does can be named here. A block already going when Chataltul starts doesn't run it
+  again.
 
 ## Layout
 
@@ -124,7 +145,8 @@ windows/
                          SyncClient (the account's API), Insights (the numbers in Today), Widgets (which there are,
                          and what they draw from the history), GuardPolicy (wait it out, locked, schedules,
                          allowances), DomainSet, Categories and ListStore (the ready-made lists), Breaks (cycles, eye
-                         breaks), Sounds (the web's list), Png, Art, Format
+                         breaks), Sounds (the web's list), Timing (where each block went), Review (streaks with a
+                         pause, the week in words, answers, export), Png, Art, Format
   Chataltul/             the app, WinUI 3 (Windows App SDK 1.8), unpackaged and self-contained:
                          Program (one at a time), App, Controller (puts it together), Store (the one model),
                          MessageWindow (the tray icon, the shortcuts, lock, sleep and sign-out), Watcher (the
@@ -134,7 +156,8 @@ windows/
                          window: Mica, the tall title bar, the text-size keys), SettingsWindow, MainWindow (the app
                          window), CafeView (the café in 3D, in Win2D), DesktopWidgets (the widgets and their host),
                          SyncController (+ the session in Credential Manager), JumpList, BreakScreen, SoundPlayer, Busy (a
-                         call or something full screen), Theme, SelfTest
+                         call or something full screen), Reports (where it went, the week in review, export),
+                         Theme, SelfTest
   Tests/Program.cs       the core tests
   tools/                 convert-art.py (the paintings as PNG), make-icon.ps1 (Chataltul.ico from the Mac's icon)
   selftest.ps1           the self-test of the built app

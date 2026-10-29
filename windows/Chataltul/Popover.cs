@@ -161,7 +161,8 @@ sealed class Popover
     // ---------------------------------------------------------------- shared pieces
 
     UIElement Header(string left) =>
-        V.Spread(V.Caption(left), V.Row(0, IconBtn("", () => app.OpenWindow(null), "Today and the café"), IconBtn(V.Glyph.Settings, () => app.OpenSettings(null), "Settings")));
+        V.Spread(V.Caption(left), V.Row(0, IconBtn("", () => app.OpenWindow("today", Span.Week), "Your week"),
+            IconBtn("", () => app.OpenWindow(null), "Today and the café"), IconBtn(V.Glyph.Settings, () => app.OpenSettings(null), "Settings")));
 
     UIElement Footer(string left, bool quit = false)
     {
@@ -508,7 +509,8 @@ sealed class Popover
             Btn("Not really", () => FileIt(b, "notreally"), "Not really", stretch: true));
         var how = V.Col(8, V.Strong("How did it go?"), field, outcomes);
         var perDay = store.Settings.Cycle.PerDay;
-        return V.Col(14, top, how, Offered(store.BreakAfter(), () => { FileIt(b, null); store.StartBreak(store.BreakAfter()); }),
+        var went = store.Settings.RecordTiming ? Reports.WentLine(store.WentRows([b.Id])) : null;
+        return V.Col(14, top, went, how, Offered(store.BreakAfter(), () => { FileIt(b, null); store.StartBreak(store.BreakAfter()); }),
             Footer($"{store.BlocksToday} of {perDay} blocks · {Format.FmtMin(store.State.Stats.Today)} today"));
     }
 

@@ -33,6 +33,9 @@ sealed class Store
     public SoundCatalog Sounds { get; }
     /// <summary>A break that was postponed comes back at this time, with this many minutes.</summary>
     public (long At, int Minutes)? Postponed { get; set; }
+    /// <summary>Where each block went, app by app (timing.json): kept only on this PC.</summary>
+    public TimingLog Timing { get; private set; }
+    bool timingDirty;
 
     /// <summary>"You were away from the PC": waiting for Count them or Take them off.</summary>
     public AwayReturn? AwayPrompt { get; private set; }
@@ -63,6 +66,9 @@ sealed class Store
         // the self-test never goes to the web for a list: it puts its own in place
         Categories = new CategoryStore(Path.Join(folder, "lists"), network: !App.Options.SelfTest) { Custom = Settings.CustomLists };
         Usage = DayUsage.Read(folder);
+        Timing = TimingLog.Read(folder);
+        // a year of where-it-went is plenty
+        Timing.Prune(Clock.Now - 366 * 86_400_000L);
         var soundsFile = Path.Join(AppContext.BaseDirectory, "sounds.json");
         try { Sounds = SoundCatalog.Load(soundsFile); }
         catch (Exception e) { Log.Write($"sounds.json: {e.Message}"); Sounds = new SoundCatalog(); }
@@ -88,6 +94,7 @@ sealed class Store
         Settings = settings ?? new WinSettings();
         Categories.Custom = Settings.CustomLists;
         Usage = new DayUsage();
+        Timing = new TimingLog();
         LongBreakEnd = null;
         AwayPrompt = null;
         Postponed = null;
@@ -280,6 +287,36 @@ sealed class Store
 
     /// <summary>Fetches the ready-made lists that are switched on and not here yet, or last looked at over a week ago.</summary>
     public void RefreshLists(bool force = false) => _ = Categories.Refresh(Settings.Blocklist.CategoryIds, force);
+
+    // ---------- where it went, and the streak with its pause
+
+    public void AddTiming(Block b, string exe, string name, long ms, (string Domain, string Browser)? site)
+    {
+        Timing.Add(b.Id, b.Start, exe, name, ms, site);
+        timingDirty = true;
+    }
+
+    public void SaveTiming()
+    {
+        if (!timingDirty) return;
+        timingDirty = false;
+        Timing.Write(Folder);
+    }
+
+    /// <summary>Forgets where every block went (Settings' button).</summary>
+    public void ForgetTiming()
+    {
+        Timing = new TimingLog();
+        timingDirty = false;
+        TimingLog.Erase(Folder);
+    }
+
+    /// <summary>The apps and sites these blocks went to, biggest first, with what's on a list marked.</summary>
+    public List<WentRow> WentRows(IEnumerable<string> blockIds) =>
+        Went.Rows(Timing.For(blockIds), Settings.Blocklist, Categories);
+
+    /// <summary>Days in a row, with one missed day a week carried over (the web's own streak has no pause).</summary>
+    public StreakInfo StreakWithPause => Streaks.WithPause(State.History, DateTime.Now);
 
     // ---------- the cycle and the sounds
 

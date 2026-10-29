@@ -109,7 +109,9 @@ sealed class Watcher : IDisposable
     {
         var list = store.Settings.Blocklist;
         if (list.Hit(app.Exe) is { } h) { Front?.Invoke(h, app); return; }
-        if (Browser.With(app.Exe) is { } browser && store.Settings.ReadBrowsers && list.WatchesSites && !Disabled)
+        // a browser is read for the sites on the lists, or (where each block went) for the site a block is spending time on
+        var wanted = list.WatchesSites || store.Settings.RecordTiming && store.Running;
+        if (Browser.With(app.Exe) is { } browser && store.Settings.ReadBrowsers && wanted && !Disabled)
         {
             // the last address read in this window answers now; a fresh one is asked for
             if (lastUrl.TryGetValue(app.Hwnd, out var last) && Clock.Now - last.At < 5_000)
@@ -131,6 +133,10 @@ sealed class Watcher : IDisposable
         if (Native.GetForegroundWindow() != hwnd || Current is not { } app || app.Hwnd != hwnd) return;
         Front?.Invoke(store.Settings.Blocklist.Hit(url, browser.Name, store.Categories), app);
     }
+
+    /// <summary>The site this browser window was last read on, if that was within the last few seconds: where a block's second went.</summary>
+    public string? RecentDomain(IntPtr hwnd, long within = 5_000) =>
+        lastUrl.TryGetValue(hwnd, out var last) && Clock.Now - last.At < within ? Blocklist.Host(last.Url) : null;
 
     /// <summary>Brings a window back to the front.</summary>
     public static void Activate(IntPtr hwnd)
