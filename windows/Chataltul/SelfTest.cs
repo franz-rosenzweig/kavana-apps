@@ -579,7 +579,6 @@ static class SelfTest
         sync.SignIn(email, good);
         Add("account: the right code signs in", await Wait(() => sync.SignedIn), sync.Message ?? "");
         Add("account: as that email", sync.Account?.Email == email, sync.Account?.Email ?? "");
-        Add("account: this PC's block went up with the sign-in", await Wait(async () => (await ServerTitles()).Contains("On this PC")));
         app.Settings.Show("account");
         await Spin(400);
         await Shot(app.Settings.Window.Content as FrameworkElement, "settings-account-signed-in");
@@ -594,6 +593,8 @@ static class SelfTest
             await other.Api("POST", "api/email/signin", new JsonObject { ["email"] = email, ["code"] = CodeFor(email, outbox, since2) });
         }
         catch (Exception e) { Add("account: a second device signs in", false, e.Message); return; }
+        // the second device reads the server's copy, so only now can it be seen there
+        Add("account: this PC's block went up with the sign-in", await Wait(async () => (await ServerTitles()).Contains("On this PC")));
         var theirs = await ServerDoc();
         engine2.Load(theirs?["doc"]?.ToJsonString());
         var t2 = Format.NowMs();
