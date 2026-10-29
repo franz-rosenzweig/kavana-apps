@@ -45,4 +45,11 @@ public static class Files
         System.IO.File.WriteAllText(temp, text, new UTF8Encoding(false));
         System.IO.File.Move(temp, path, overwrite: true);
     }
+
+    public static void WriteBytesWhole(string path, byte[] bytes)
+    {
+        var temp = $"{path}.{Environment.ProcessId}.tmp";
+        System.IO.File.WriteAllBytes(temp, bytes);
+        System.IO.File.Move(temp, path, overwrite: true);
+    }
 }

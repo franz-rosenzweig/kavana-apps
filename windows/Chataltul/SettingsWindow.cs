@@ -36,7 +36,7 @@ sealed class SettingsWindow
 
     static readonly (string Id, string Title, string Glyph)[] Panes =
     [
-        ("general", "General", ""), ("blocks", "Blocks and check-ins", ""), ("blocklist", "Blocklist", ""), ("widgets", "Widgets", "\uECA5"), ("shortcuts", "Shortcuts", ""), ("account", "Account and sync", "\uE77B"),
+        ("general", "General", ""), ("blocks", "Blocks and check-ins", ""), ("blocklist", "Blocklist", ""), ("breaks", "Breaks", "\uE708"), ("widgets", "Widgets", "\uECA5"), ("shortcuts", "Shortcuts", ""), ("account", "Account and sync", "\uE77B"),
     ];
 
     // what is being typed on the account page, kept when the page is built again
@@ -87,6 +87,7 @@ sealed class SettingsWindow
         {
             "blocks" => Blocks(),
             "blocklist" => BlocklistPane(),
+            "breaks" => BreaksPane(),
             "widgets" => WidgetsPane(),
             "shortcuts" => Shortcuts(),
             "account" => AccountPane(),
@@ -193,64 +194,305 @@ sealed class SettingsWindow
 
     // ---------------------------------------------------------------- the blocklist
 
+    /// <summary>The colors a list can have, for its dot (the Mac's listColors).</summary>
+    static readonly (uint Rgb, string Name)[] ListColors = [(0xE98A3C, "Orange"), (0x2C8A7E, "Teal"), (0x7C5CC4, "Violet"), (0x2F7FD8, "Blue"), (0xD94F70, "Pink"), (0x5E9E3A, "Green")];
+
+    /// <summary>A list's name, link and allowed site being typed, kept while the page is built again.</summary>
+    readonly Dictionary<string, string> typed = [];
+    string Typed(string key) => typed.GetValueOrDefault(key, "");
+
+    /// <summary>A list arrived or failed (on the lists' own thread): the page shows it.</summary>
+    public void ListsChanged() { if (IsShown && Pane == "blocklist" && !typing) Build(); }
+
     UIElement BlocklistPane()
     {
-        var list = store.Settings.Blocklist;
-        var apps = new StackPanel { Spacing = 6 };
-        foreach (var a in list.Apps.ToList())
-            apps.Children.Add(Item($"{a.Name}", a.Exe, () => store.ChangeSettings(s => s.Blocklist.RemoveApp(a.Exe))));
-        if (!list.Apps.Any()) apps.Children.Add(Note("No apps yet."));
+        var b = store.Settings.Blocklist;
+        var lists = new StackPanel { Spacing = 10 };
+        foreach (var l in b.Lists.ToList()) lists.Children.Add(ListCard(l, b.Lists.Count > 1));
+        var addList = new Button { Content = "Add a list" };
+        addList.Click += (_, _) => store.ChangeSettings(s => s.Blocklist.Lists.Add(new GuardList { Name = $"List {s.Blocklist.Lists.Count + 1}", Color = s.Blocklist.Lists.Count % ListColors.Length }));
+        return Col(
+            Heading("Blocklist"),
+            Switch("Watch my lists: the cat comes up over what's on them", store.Settings.SpeedBump, on => Quietly(s => s.SpeedBump = on)),
+            Note("Each list says what happens when something on it opens. The speed bump: the cat walks over it, 15 seconds to come back, or hold Leave anyway and your kitten wanders off. Wait it out: 30 seconds with the cat before it opens, every time. Locked: it doesn't open until the block ends, the block can't be stopped after its first ten seconds, and Chataltul won't quit meanwhile."),
+            lists,
+            addList,
+            Section("Browsers"),
+            Switch("Look at the site open in my browser", store.Settings.ReadBrowsers, on => Quietly(s => s.ReadBrowsers = on)),
+            Note("In " + string.Join(", ", Browser.All.Where(x => !x.Gecko).Select(x => x.Name)) + ", Chataltul reads the address of the front tab to find the sites on your lists (Firefox and Zen are tried too). It only ever uses the site's name, and nothing leaves this PC."),
+            Section("Where the ready-made lists come from"),
+            Note("UT1, the Université Toulouse Capitole's blacklists (CC BY-SA 4.0); StevenBlack's hosts files (MIT); Hagezi's DNS blocklists (GPL-3.0). None is bundled: a list is downloaded over https when it's switched on and looked at again about once a week. Only the site that hosts a list sees that it was downloaded. What's kept is a short code for each site, not the names."));
+    }
 
+    void EditList(string id, Action<GuardList> edit, bool quietly = false)
+    {
+        void Change(WinSettings s) { if (s.Blocklist.Lists.FirstOrDefault(x => x.Id == id) is { } l) edit(l); }
+        if (quietly) Quietly(Change); else store.ChangeSettings(Change);
+    }
+
+    UIElement ListCard(GuardList l, bool removable)
+    {
+        var dot = new Microsoft.UI.Xaml.Shapes.Ellipse { Width = 12, Height = 12, Fill = new SolidColorBrush(Palette.C(ListColors[Math.Clamp(l.Color, 0, ListColors.Length - 1)].Rgb)), VerticalAlignment = VerticalAlignment.Center };
+        var what = new List<string>();
+        if (l.Apps.Count > 0) what.Add(Format.Plural(l.Apps.Count, "app"));
+        if (l.Sites.Count > 0) what.Add(Format.Plural(l.Sites.Count, "site"));
+        if (l.Categories.Count > 0) what.Add(Format.Plural(l.Categories.Count, "ready-made list"));
+        var mode = l.Mode switch { GuardMode.WaitItOut => "wait it out", GuardMode.Locked => "locked", _ => "the speed bump" };
+        var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+        header.Children.Add(dot);
+        header.Children.Add(new TextBlock { Text = l.Name, FontSize = 14, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+        header.Children.Add(new TextBlock { Text = (what.Count == 0 ? "empty" : string.Join(", ", what)) + $" · {mode}", FontSize = 12, Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center });
+
+        var name = new TextBox { Header = "Name", Text = l.Name, MinWidth = 220 };
+        name.LostFocus += (_, _) => { var n = name.Text.Trim(); if (n.Length > 0 && n != l.Name) EditList(l.Id, x => x.Name = n); };
+        var color = Choice("Color", ListColors.Select((c, i) => (i, c.Name)), l.Color, i => EditList(l.Id, x => x.Color = i));
+        var modeBox = Choice("When something on it opens", new[] { (GuardMode.SpeedBump, "The speed bump"), (GuardMode.WaitItOut, "Wait it out (30 seconds)"), (GuardMode.Locked, "Locked until the block ends") },
+            l.Mode, m => EditList(l.Id, x => x.Mode = m));
+        var when = Choice("Watched", new[] { (GuardWhen.Kinds.Blocks, "During my blocks"), (GuardWhen.Kinds.Weekdays, "And on weekdays between two times"), (GuardWhen.Kinds.Always, "Always") },
+            l.When.Kind, k => EditList(l.Id, x => x.When.Kind = k));
+        UIElement? hours = null;
+        if (l.When.Kind == GuardWhen.Kinds.Weekdays)
+        {
+            var from = new TimePicker { Header = "From", Time = TimeSpan.FromMinutes(l.When.FromMin), MinuteIncrement = 15 };
+            var to = new TimePicker { Header = "To", Time = TimeSpan.FromMinutes(l.When.ToMin), MinuteIncrement = 15 };
+            from.SelectedTimeChanged += (_, e) => { if (e.NewTime is { } t) EditList(l.Id, x => x.When.FromMin = (int)t.TotalMinutes, quietly: true); };
+            to.SelectedTimeChanged += (_, e) => { if (e.NewTime is { } t) EditList(l.Id, x => x.When.ToMin = (int)t.TotalMinutes, quietly: true); };
+            hours = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Children = { from, to } };
+        }
+        UIElement? allowance = null;
+        if (l.When.Kind != GuardWhen.Kinds.Blocks)
+        {
+            var box = new NumberBox
+            {
+                Header = "Minutes a day allowed outside blocks (0: none)", Value = l.AllowanceMin, Minimum = 0, Maximum = 600, SmallChange = 5,
+                SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline, MinWidth = 220, HorizontalAlignment = HorizontalAlignment.Left,
+            };
+            box.ValueChanged += (_, e) => { if (!double.IsNaN(e.NewValue)) EditList(l.Id, x => x.AllowanceMin = Math.Clamp((int)e.NewValue, 0, 600), quietly: true); };
+            var used = l.AllowanceMin > 0 ? Note($"{Format.FmtMin((int)(store.UsedMs(l.Id) / 60_000))} of it used today. When it's used up, the list stops everything on it for the rest of the day.") : null;
+            allowance = Col(box, used);
+        }
+
+        // apps
+        var apps = new StackPanel { Spacing = 6 };
+        foreach (var a in l.Apps.ToList()) apps.Children.Add(Item(a.Name, a.Exe, () => EditList(l.Id, x => x.Apps.RemoveAll(y => y.Exe == a.Exe))));
+        if (l.Apps.Count == 0) apps.Children.Add(Note("No apps."));
         var add = new DropDownButton { Content = "Add an app" };
         var menu = new MenuFlyout { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom };
         menu.Opening += (_, _) =>
         {
             menu.Items.Clear();
-            foreach (var (exe, name) in RunningApps())
+            foreach (var (exe, appName) in RunningApps())
             {
-                var item = new MenuFlyoutItem { Text = $"{name}  ({exe})" };
-                item.Click += (_, _) => store.ChangeSettings(s => s.Blocklist.AddApp(new ListedApp(exe, name)));
+                var item = new MenuFlyoutItem { Text = $"{appName}  ({exe})" };
+                item.Click += (_, _) => store.ChangeSettings(s => s.Blocklist.AddApp(new ListedApp(exe, appName), l.Id));
                 menu.Items.Add(item);
             }
             if (menu.Items.Count == 0) menu.Items.Add(new MenuFlyoutItem { Text = "No other apps are open", IsEnabled = false });
             menu.Items.Add(new MenuFlyoutSeparator());
             var browse = new MenuFlyoutItem { Text = "Find a program…" };
-            browse.Click += async (_, _) => await Browse();
+            browse.Click += async (_, _) => await Browse(l.Id);
             menu.Items.Add(browse);
         };
         add.Flyout = menu;
 
+        // sites
         var sites = new StackPanel { Spacing = 6 };
-        foreach (var d in list.Sites.ToList())
-            sites.Children.Add(Item(d, null, () => store.ChangeSettings(s => s.Blocklist.RemoveSite(d))));
-        if (!list.Sites.Any()) sites.Children.Add(Note("No sites yet."));
-        var siteBox = new TextBox { PlaceholderText = "youtube.com", MinWidth = 260 };
-        var addSite = new Button { Content = "Add" };
+        foreach (var d in l.Sites.ToList()) sites.Children.Add(Item(d, null, () => EditList(l.Id, x => x.Sites.Remove(d))));
+        if (l.Sites.Count == 0) sites.Children.Add(Note("No sites typed in."));
         var problem = Note("");
-        void AddSite()
+        var siteBox = TypedBox($"site:{l.Id}", "youtube.com", 260, () =>
         {
-            var typed = siteBox.Text;
-            if (Blocklist.NormalizeDomain(typed) == null) { problem.Text = "That isn't a site's address."; return; }
-            store.ChangeSettings(s => s.Blocklist.AddSite(typed));
-        }
-        addSite.Click += (_, _) => AddSite();
-        siteBox.KeyDown += (_, e) => { if (e.Key == VirtualKey.Enter) { e.Handled = true; AddSite(); } };
-        var siteRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { siteBox, addSite } };
+            var t = Typed($"site:{l.Id}");
+            if (Blocklist.NormalizeDomain(t) == null) { problem.Text = "That isn't a site's address."; return; }
+            typed.Remove($"site:{l.Id}");
+            store.ChangeSettings(s => s.Blocklist.AddSite(t, l.Id));
+        });
+        var addSite = new Button { Content = "Add" };
+        addSite.Click += (_, _) => { var t = Typed($"site:{l.Id}"); if (Blocklist.NormalizeDomain(t) != null) { typed.Remove($"site:{l.Id}"); store.ChangeSettings(s => s.Blocklist.AddSite(t, l.Id)); } else problem.Text = "That isn't a site's address."; };
 
-        return Col(
-            Heading("Blocklist"),
-            Switch("The speed bump: the cat walks over these during a block", store.Settings.SpeedBump, on => Quietly(s => s.SpeedBump = on)),
-            Note("While a block runs and one of these comes to the front, the cat comes up: 15 seconds to come back, or hold Leave anyway, and your kitten wanders off. Once it has, the cat doesn't come up again for that block."),
-            Section("Apps"),
-            apps,
-            add,
-            Section("Websites"),
-            sites,
-            siteRow,
-            problem,
+        var remove = removable ? new HyperlinkButton { Content = $"Take the {l.Name} list away" } : null;
+        if (remove != null) remove.Click += (_, _) => store.ChangeSettings(s => s.Blocklist.Lists.RemoveAll(x => x.Id == l.Id));
+
+        var body = Col(
+            new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Children = { name, color } },
+            modeBox, when, hours, allowance,
+            Section("Apps"), apps, add,
+            Section("Websites"), sites, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { siteBox, addSite } }, problem,
             Note("A site covers its subdomains (youtube.com covers m.youtube.com)."),
-            Switch("Look at the site open in my browser", store.Settings.ReadBrowsers, on => Quietly(s => s.ReadBrowsers = on)),
-            Note("In " + string.Join(", ", Browser.All.Where(b => !b.Gecko).Select(b => b.Name)) + ", Chataltul reads the address of the front tab to find the sites on your list (Firefox and Zen are tried too). It only ever uses the site's name, and nothing leaves this PC."));
+            Section("Ready-made lists"), ReadyMade(l),
+            remove);
+        var exp = new Expander
+        {
+            Header = header, Content = body, IsExpanded = store.Settings.Blocklist.Lists.Count == 1 || expanded.Contains(l.Id),
+            HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left, MinWidth = 560,
+        };
+        exp.Expanding += (_, _) => expanded.Add(l.Id);
+        exp.Collapsed += (_, _) => expanded.Remove(l.Id);
+        return exp;
+    }
+
+    /// <summary>Which lists are open on the page, kept while it is built again.</summary>
+    readonly HashSet<string> expanded = [];
+
+    TextBox TypedBox(string key, string placeholder, double width, Action submit)
+    {
+        var box = new TextBox { PlaceholderText = placeholder, Text = Typed(key), MinWidth = width };
+        box.TextChanged += (_, _) => typed[key] = box.Text;
+        box.GotFocus += (_, _) => typing = true;
+        box.LostFocus += (_, _) => typing = false;
+        box.KeyDown += (_, e) => { if (e.Key == VirtualKey.Enter) { e.Handled = true; typing = false; submit(); } };
+        return box;
+    }
+
+    /// <summary>The ready-made lists a list can switch on, each with how it stands; the sites always let through; a list from a link.</summary>
+    UIElement ReadyMade(GuardList l)
+    {
+        var rows = new StackPanel { Spacing = 4 };
+        foreach (var c in Catalog.All.Concat(store.Settings.CustomLists))
+        {
+            var on = l.Categories.Contains(c.Id);
+            var box = new CheckBox { Content = c.Name, IsChecked = on, MinWidth = 180 };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(box, $"{c.Name} in {l.Name}");
+            box.Click += (_, _) =>
+            {
+                var now = box.IsChecked == true;
+                EditList(l.Id, x => { x.Categories.Remove(c.Id); if (now) x.Categories.Add(c.Id); });
+                if (now) _ = store.Categories.Refresh([c.Id]);
+            };
+            var state = store.Categories.State(c.Id) switch
+            {
+                CategoryState.Working => "Downloading…",
+                CategoryState.Ready r => $"{r.Sites:N0} sites · checked {Format.Local(r.Updated):d MMM}",
+                CategoryState.Failed f => f.Sites > 0 ? $"Couldn't update ({f.Why}); the copy here still works" : $"Couldn't download it: {f.Why}",
+                CategoryState.None n => n.SizeKB > 0 ? $"About {Size(n.SizeKB)} to download" : "Not downloaded yet",
+                _ => "",
+            };
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+            row.Children.Add(box);
+            row.Children.Add(new TextBlock { Text = state, FontSize = 12, Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center });
+            if (c.Custom)
+            {
+                var drop = new HyperlinkButton { Content = "Remove", FontSize = 12, Padding = new Thickness(4, 0, 4, 0) };
+                drop.Click += (_, _) =>
+                {
+                    store.ChangeSettings(s => { s.CustomLists.RemoveAll(x => x.Id == c.Id); foreach (var gl in s.Blocklist.Lists) gl.Categories.Remove(c.Id); });
+                    store.Categories.Remove(c.Sources.Select(x => x.Id));
+                };
+                row.Children.Add(drop);
+            }
+            rows.Children.Add(row);
+        }
+        var retry = new HyperlinkButton { Content = "Look for new versions now", FontSize = 12 };
+        retry.Click += (_, _) => store.RefreshLists(force: true);
+
+        var allow = new StackPanel { Spacing = 6 };
+        foreach (var a in l.Allow.ToList()) allow.Children.Add(Item(a, null, () => EditList(l.Id, x => x.Allow.Remove(a))));
+        void AddAllow()
+        {
+            if (Blocklist.NormalizeDomain(Typed($"allow:{l.Id}")) is not { } d) return;
+            typed.Remove($"allow:{l.Id}");
+            EditList(l.Id, x => { if (!x.Allow.Contains(d)) x.Allow.Add(d); });
+        }
+        var allowBox = TypedBox($"allow:{l.Id}", "linkedin.com", 220, AddAllow);
+        var allowAdd = new Button { Content = "Always allow" };
+        allowAdd.Click += (_, _) => AddAllow();
+
+        void AddLink()
+        {
+            if (Catalog.Custom(Typed("linkname"), Typed("link")) is not { } c)
+            {
+                linkProblem = "That isn't an https link to a list.";
+                Build();
+                return;
+            }
+            typed.Remove("linkname"); typed.Remove("link");
+            linkProblem = null;
+            store.ChangeSettings(s => { s.CustomLists.Add(c); s.Blocklist.Lists.FirstOrDefault(x => x.Id == l.Id)?.Categories.Add(c.Id); });
+            _ = store.Categories.Refresh([c.Id]);
+        }
+        var linkName = TypedBox("linkname", "A name (optional)", 160, AddLink);
+        var link = TypedBox("link", "https://… a hosts file, a list of domains or an AdGuard list", 320, AddLink);
+        var linkAdd = new Button { Content = "Add the list" };
+        linkAdd.Click += (_, _) => AddLink();
+        return Col(
+            Note("On top of the sites typed in: whole kinds of sites, from public lists."),
+            rows, retry,
+            Note("Always allow: a site the ready-made lists never stop (and its subdomains), like linkedin.com out of Social media."),
+            allow, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { allowBox, allowAdd } },
+            Note("Add a list from a link: any https link to a hosts file, a plain list of domains or an AdGuard list."),
+            new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { linkName, link, linkAdd } },
+            linkProblem is { } p ? Note(p) : null);
+    }
+
+    string? linkProblem;
+
+    static string Size(int kb) => kb >= 1000 ? $"{kb / 1000.0:0.#} MB" : $"{kb} KB";
+
+    async Task Browse(string listId)
+    {
+        var picker = new Windows.Storage.Pickers.FileOpenPicker { SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.ComputerFolder };
+        picker.FileTypeFilter.Add(".exe");
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(Window));
+        var file = await picker.PickSingleFileAsync();
+        if (file == null) return;
+        store.ChangeSettings(s => s.Blocklist.AddApp(new ListedApp(file.Path, FrontApp.NameOf(file.Path)), listId));
+    }
+
+    // ---------------------------------------------------------------- breaks
+
+    UIElement BreaksPane()
+    {
+        var s = store.Settings;
+        var bs = s.Breaks;
+        var presets = new Grid { ColumnSpacing = 8, MaxWidth = 620, HorizontalAlignment = HorizontalAlignment.Left };
+        var all = Enum.GetValues<CyclePreset>();
+        for (var i = 0; i < all.Length; i++)
+        {
+            var p = all[i];
+            presets.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var card = new Microsoft.UI.Xaml.Controls.Primitives.ToggleButton
+            {
+                IsChecked = store.Preset == p, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(12),
+                Content = new StackPanel { Spacing = 2, Children = { new TextBlock { Text = Cycles.Title(p), FontWeight = FontWeights.SemiBold }, new TextBlock { Text = Cycles.Summary(p), FontSize = 12, Opacity = 0.8, TextWrapping = TextWrapping.WrapWholeWords } } },
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(card, Cycles.Title(p));
+            card.Click += (_, _) => store.ApplyPreset(p);
+            Grid.SetColumn(card, i);
+            presets.Children.Add(card);
+        }
+        var ideas = new StackPanel { Spacing = 6 };
+        foreach (var idea in bs.Ideas.ToList()) ideas.Children.Add(Item(idea, null, () => store.ChangeSettings(x => x.Breaks.Ideas.Remove(idea))));
+        void AddIdea()
+        {
+            var t = Typed("idea").Trim();
+            typed.Remove("idea");
+            if (t.Length > 0 && !store.Settings.Breaks.Ideas.Contains(t)) store.ChangeSettings(x => x.Breaks.Ideas.Add(t)); else Build();
+        }
+        var ideaBox = TypedBox("idea", "+ Add your own", 260, AddIdea);
+        var ideaAdd = new Button { Content = "Add" };
+        ideaAdd.Click += (_, _) => AddIdea();
+        var usual = new HyperlinkButton { Content = "Back to the usual ones" };
+        usual.Click += (_, _) => store.ChangeSettings(x => x.Breaks.Ideas = [.. BreakSettings.DefaultIdeas]);
+        return Col(
+            Heading("Breaks"),
+            Note("When to stop, and how firmly Chataltul asks."),
+            Section("Cycle"),
+            presets,
+            Choice("A long break after", new[] { 2, 3, 4, 5, 6 }.Select(n => (n, $"{n} blocks")), s.Cycle.LongAfter, n => Quietly(x => x.Cycle.LongAfter = n)),
+            Choice("A long break is", new[] { 10, 15, 20, 25, 30 }.Select(n => (n, $"{n} min")), s.Cycle.LongBreak, n => Quietly(x => x.Cycle.LongBreak = n)),
+            Choice("When a block is filed", new[] { (BreakStart.Offer, "Offer the break"), (BreakStart.Auto, "Start it as soon as the kitten is home") }, bs.Start, v => Quietly(x => x.Breaks.Start = v)),
+            Switch($"Full-screen breaks: the screen goes calm, with {store.Cat(null).Name} stretching", bs.FullScreen, on => Quietly(x => x.Breaks.FullScreen = on)),
+            Switch("Strict breaks: no Postpone and no Skip", bs.Strict, on => Quietly(x => x.Breaks.Strict = on)),
+            Choice("Postpone a break by", new[] { 3, 5, 10 }.Select(n => (n, $"{n} min")), bs.PostponeMin, n => Quietly(x => x.Breaks.PostponeMin = n)),
+            Section("Eye breaks"),
+            Switch($"Eye breaks during a block: every {bs.EyeEveryMin} min, {bs.EyeSeconds} seconds looking far away", bs.EyeBreaks, on => Quietly(x => x.Breaks.EyeBreaks = on)),
+            Choice("Every", new[] { 15, 20, 30, 45 }.Select(n => (n, $"{n} min")), bs.EyeEveryMin, n => Quietly(x => x.Breaks.EyeEveryMin = n)),
+            Choice("For", new[] { 10, 20, 30 }.Select(n => (n, $"{n} seconds")), bs.EyeSeconds, n => Quietly(x => x.Breaks.EyeSeconds = n)),
+            Switch("Wait during calls and full-screen video: eye breaks and check-ins hold until you're done", bs.WaitDuringCalls, on => Quietly(x => x.Breaks.WaitDuringCalls = on)),
+            Section("Break ideas"),
+            ideas,
+            new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { ideaBox, ideaAdd } },
+            usual);
     }
 
     UIElement Item(string title, string? detail, Action remove)
@@ -286,16 +528,6 @@ sealed class SettingsWindow
     }
 
     static readonly HashSet<string> Skip = ["explorer.exe", "textinputhost.exe", "shellexperiencehost.exe", "searchhost.exe", "startmenuexperiencehost.exe", "applicationframehost.exe", "lockapp.exe"];
-
-    async Task Browse()
-    {
-        var picker = new Windows.Storage.Pickers.FileOpenPicker { SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.ComputerFolder };
-        picker.FileTypeFilter.Add(".exe");
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(Window));
-        var file = await picker.PickSingleFileAsync();
-        if (file == null) return;
-        store.ChangeSettings(s => s.Blocklist.AddApp(new ListedApp(file.Path, FrontApp.NameOf(file.Path))));
-    }
 
     // ---------------------------------------------------------------- shortcuts
 
@@ -380,7 +612,8 @@ sealed class SettingsWindow
             var size = k.Sizes[0];
             var row = new Grid { ColumnSpacing = 12, MaxWidth = 620, HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 520 };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            // the sizes' column is there for every row, so the Add buttons line up
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var words = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             words.Children.Add(new TextBlock { Text = k.Title, FontSize = 14 });

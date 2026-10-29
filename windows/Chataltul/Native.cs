@@ -192,6 +192,25 @@ static class Native
     [StructLayout(LayoutKind.Sequential)]
     public struct COPYDATASTRUCT { public IntPtr dwData; public int cbData; public IntPtr lpData; }
 
+    // ---- breaks: every screen, and whether the PC is busy with something full screen
+    public delegate bool MonitorEnumProc(IntPtr monitor, IntPtr dc, ref RECT rect, IntPtr data);
+    [DllImport("user32.dll")] public static extern bool EnumDisplayMonitors(IntPtr dc, IntPtr clip, MonitorEnumProc proc, IntPtr data);
+    [DllImport("shell32.dll")] public static extern int SHQueryUserNotificationState(out int state);
+    public const int QUNS_BUSY = 2, QUNS_RUNNING_D3D_FULL_SCREEN = 3, QUNS_PRESENTATION_MODE = 4;
+
+    /// <summary>Every screen: its whole area, and whether it is the main one (where the taskbar's Start is).</summary>
+    public static List<(RECT Area, bool Primary)> Screens()
+    {
+        var list = new List<(RECT, bool)>();
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr m, IntPtr dc, ref RECT r, IntPtr data) =>
+        {
+            var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+            if (GetMonitorInfo(m, ref info)) list.Add((info.rcMonitor, (info.dwFlags & 1) != 0));
+            return true;
+        }, IntPtr.Zero);
+        return list;
+    }
+
     // ---- helpers
 
     public static long ExStyle(IntPtr hwnd) => (long)GetWindowLongPtr(hwnd, GWL_EXSTYLE);

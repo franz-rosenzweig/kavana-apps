@@ -4,7 +4,7 @@ The native Windows app for my focus app: a kitten in the notification area, a ti
 that walks over the apps and sites that distract me. Like the Mac and Android apps it runs the web app's own
 `engine.js`, here in [Jint](https://github.com/sebastienros/jint) inside the app, and draws everything
 itself in WinUI 3, so the kittens, the treats and the check-ins follow the same rules on every device.
-It is built by GitHub Actions only; nothing is built on my PCs. What comes after 0.2 is in
+It is built by GitHub Actions only; nothing is built on my PCs. What comes after 0.3 is in
 [PLAN-windows.md](../PLAN-windows.md).
 
 It looks like Windows 11, not like the Mac: the popover is a flyout like the ones Windows' own tray icons open
@@ -53,6 +53,64 @@ window, the kitten's ring.
   during a block, the cat says so plainly, once, and Settings can turn it off. It only ever uses the site's
   name, and it stays on the PC.
 
+## Version 0.2: the account, the app window and the widgets
+
+- **Sign in by email code, and sync with the web**, the same API as the phone and the Mac (Settings → Account
+  and sync): type an email, Chataltul emails a 6-digit code, and that's it (a name and a password work too, and
+  a password can be set afterwards). This PC's blocks come along into the account, and from then on the web, the
+  phone, the Mac and this PC have the same blocks, Later, cats and settings: a change goes up a moment after it's
+  made, and what was done elsewhere comes in when Chataltul starts and every 30 seconds, merged by the engine
+  exactly as the web merges it. Signing out takes the account's history off the PC (it's safe on the server);
+  the account can be deleted from here too. The session is kept in Windows' Credential Manager, for this Windows
+  account alone. Without an account nothing leaves the PC, and the widgets' places never do either way.
+- **The app window** (from the popover's new button, the tray's right-click, or the jump list): Today, with
+  Day, Week, Month and Year (what was focused and how it compares with the period before, cats that came home,
+  drifts or wanderings off, days in a row, the café of that period, the timeline of the day and when I focus
+  most, or each day's or month's bar and the time by tag), the **Café** in 3D (drawn natively from the web's
+  paintings and laid out by the web's own table, with the light of the time of day: drag to turn it, click a
+  cat for its name), **History** and **Later** (add, tick off, start a block with one). It has Mica, a tall
+  title bar and the text-size keys, like Settings, and Blocklist, the shop and Settings at the bottom.
+- **Widgets on the desktop**, like the phone's on its home screen (Settings → Widgets, or the tray's
+  right-click): the Window (in three sizes: ready with Start, 15 and 50; focusing with the countdown, Pause,
+  park a thought and Stop; a check-in with Yes and Drifted; came home with Done, Partly and Not really; paused;
+  a break), Quick start (15, 25, 50, a stopwatch), Today (the goal as a ring, the streak with a paw for each day,
+  the missions and Collect), Later, Pet the cat (a click hops, another purrs; asleep after ten at night, Boo if
+  I've met Boo), A cat with a day (a clock), Streak, Daily goal, Missions, Constellation (a star for each block
+  that came home this month), This week as weather and Your café. They sit on the desktop under every window,
+  never take the keyboard, move by dragging, and a right-click has their size and Remove. "Hide block titles"
+  keeps what a block is called off them.
+- **The jump list**: a right-click on Chataltul's taskbar button or Start menu entry has Start 25, Start 50,
+  Park a thought and Open the café.
+
+Windows' own Widgets board (Win+W) only takes widgets from a signed, packaged app, so these widgets are
+Chataltul's own on the desktop instead; the phone's lock-screen countdown, Quick Settings tiles and live wallpaper
+have no place on Windows.
+
+## Version 0.3: the full Blocklist, breaks on every screen, the sounds
+
+- **The full Blocklist** (Settings → Blocklist): lists, each with a color, its apps and sites, and what happens
+  when one is opened: the **speed bump**, **wait it out** (30 seconds with the cat before it opens, every time,
+  though a visit that waited may stay a while) or **locked** (it doesn't open until the block ends, the block
+  can't be stopped after its first ten seconds, and Chataltul refuses to quit meanwhile). A list can also be
+  watched outside blocks: on weekdays between two times, or always, with an allowance of minutes a day; when the
+  allowance is used up, it stops for the rest of the day.
+- **The ready-made lists**: each list can switch on Adult, Social media, Dating, Gambling, Games, Video and music,
+  News or Shopping, on top of the sites typed in. They are the Mac's public lists (UT1, StevenBlack, Hagezi),
+  none of them bundled: switched on, a list is downloaded over https and looked at again about once a week, kept as
+  the Mac's sorted 64-bit hashes (FNV-1a and its mixer, so the same list gives the same file), and a download that
+  goes wrong never replaces the copy already here. **Always allow** keeps a site out of them, and **Add a list from
+  a link** takes any https hosts file, list of domains or AdGuard list.
+- **Breaks on every screen**: a soft full-screen break on each monitor, the night sky, the cat stretching, an idea
+  from my own list, the time left, Postpone and Skip (or neither, with strict breaks). The cycle can be Pomodoro,
+  52 / 17, Deep work or Flowtime (a stopwatch, with a break a fifth as long), and a break can start by itself when
+  the kitten is home. **Eye breaks**, every 20 minutes of a block, are a 20-second card in the corner. They and the
+  check-ins wait while a call is on (an app has the microphone) or something is full screen.
+- **The sounds**: the web's 39, up to two at once, each with its volume, from the popover's sound button. A
+  recording downloads from the web app the first time it's picked and stays in the app's folder; brown and white
+  noise are made on the PC. They play while a block runs, fade in and out, and stop on a pause. A kitten that
+  comes home meows. There's a Sound widget too.
+
+What 0.3 doesn't have yet: the reports (where each block went, the week in review), which are next.
 
 ## Layout
 
@@ -64,7 +122,9 @@ windows/
                          ready-made lists in one file shape, and the browsers), WinSettings (windows.json, the
                          shortcuts, the widgets' places), TrayArt (the tray icon, drawn with no drawing library),
                          SyncClient (the account's API), Insights (the numbers in Today), Widgets (which there are,
-                         and what they draw from the history), Png, Art, Format
+                         and what they draw from the history), GuardPolicy (wait it out, locked, schedules,
+                         allowances), DomainSet, Categories and ListStore (the ready-made lists), Breaks (cycles, eye
+                         breaks), Sounds (the web's list), Png, Art, Format
   Chataltul/             the app, WinUI 3 (Windows App SDK 1.8), unpackaged and self-contained:
                          Program (one at a time), App, Controller (puts it together), Store (the one model),
                          MessageWindow (the tray icon, the shortcuts, lock, sleep and sign-out), Watcher (the
@@ -73,7 +133,8 @@ windows/
                          the park field), RoundWindow (the round window with the cat), MicaShell (a Windows 11
                          window: Mica, the tall title bar, the text-size keys), SettingsWindow, MainWindow (the app
                          window), CafeView (the café in 3D, in Win2D), DesktopWidgets (the widgets and their host),
-                         SyncController (+ the session in Credential Manager), JumpList, Theme, SelfTest
+                         SyncController (+ the session in Credential Manager), JumpList, BreakScreen, SoundPlayer, Busy (a
+                         call or something full screen), Theme, SelfTest
   Tests/Program.cs       the core tests
   tools/                 convert-art.py (the paintings as PNG), make-icon.ps1 (Chataltul.ico from the Mac's icon)
   selftest.ps1           the self-test of the built app

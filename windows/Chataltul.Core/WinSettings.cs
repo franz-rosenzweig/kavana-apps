@@ -77,6 +77,8 @@ public sealed class Cycle
     public int LongAfter { get; set; } = 4;
     /// <summary>The dashes in the popover: how many blocks make a day.</summary>
     public int PerDay { get; set; } = 6;
+    /// <summary>Pomodoro, 52 / 17, Deep work or Flowtime (a stopwatch, with a break a fifth as long).</summary>
+    public CyclePreset Preset { get; set; } = CyclePreset.Pomodoro;
 
     /// <summary>Is the break after this many blocks today the long one?</summary>
     public bool IsLong(int afterBlocks) => LongAfter > 0 && afterBlocks > 0 && afterBlocks % LongAfter == 0;
@@ -86,6 +88,12 @@ public sealed class Cycle
 public sealed class WinSettings
 {
     public Blocklist Blocklist { get; set; } = Blocklist.Starter();
+    /// <summary>Lists from the web the person added by their link, next to the ready-made ones.</summary>
+    public List<ListCategory> CustomLists { get; set; } = [];
+    /// <summary>How breaks start, how firm they are, the eye breaks, the ideas.</summary>
+    public BreakSettings Breaks { get; set; } = new();
+    /// <summary>The sounds to focus to, at most two at once, each with its volume.</summary>
+    public List<MixEntry> Mix { get; set; } = [];
     /// <summary>The speed bump on or off. On, but with an empty list, it never comes up.</summary>
     public bool SpeedBump { get; set; } = true;
     /// <summary>Read the address of the front tab in a browser, to find the sites on the list.</summary>

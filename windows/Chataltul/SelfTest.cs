@@ -45,8 +45,8 @@ static class SelfTest
 
     public static async Task Run(Controller app)
     {
-        // never longer than six minutes, whatever hangs
-        _ = Task.Delay(TimeSpan.FromMinutes(6)).ContinueWith(_ => Ui.Post(() => Finish("it took more than six minutes")));
+        // never longer than eight minutes, whatever hangs
+        _ = Task.Delay(TimeSpan.FromMinutes(8)).ContinueWith(_ => Ui.Post(() => Finish("it took more than eight minutes")));
         try
         {
             await Spin(500);
@@ -55,6 +55,9 @@ static class SelfTest
             await TheWindow(app);
             await TheWidgets(app);
             await JumpTasks(app);
+            await TheLists(app);
+            await TheBreaks(app);
+            await TheSounds(app);
             if (App.Options.Sync is { } server) await TheAccount(app, server, App.Options.Outbox);
             if (App.Options.OnScreen) await OnScreen(app);
             if (App.Options.Browser) await Browsers();
@@ -328,7 +331,7 @@ static class SelfTest
             await Spin();
             await Shot(app.Cat.Win.Content, $"cat-checkin-{theme}");
             app.Cat.Hide();
-            foreach (var pane in new[] { "general", "blocks", "blocklist", "widgets", "shortcuts", "account" })
+            foreach (var pane in new[] { "general", "blocks", "blocklist", "breaks", "widgets", "shortcuts", "account" })
             {
                 app.Settings.Show(pane);
                 await Spin(300);
@@ -512,6 +515,206 @@ static class SelfTest
         store.Stop();
     }
 
+    /// <summary>The full Blocklist: a ready-made list, wait it out, locked, and an allowance outside blocks.</summary>
+    static async Task TheLists(Controller app)
+    {
+        var store = app.Store;
+        // a ready-made list put in place (the self-test never downloads one): Social media, with an allowed site
+        var social = Catalog.Category("social")!;
+        foreach (var s in social.Sources) store.Categories.Install(["tiktok.example", "chirp.example", "work.example"], s.Id);
+        var list = new GuardList { Id = "s", Name = "Social", Color = 1, Categories = ["social"], Allow = ["work.example"] };
+        store.ResetForTest(new WinSettings { Blocklist = new Blocklist { Lists = [list] }, Welcomed = true, BrowserNoticeShown = true });
+        app.Speed = new SpeedBump();
+        app.Other = new OtherGuard();
+        Add("a ready-made list is here", store.Categories.State("social") is CategoryState.Ready { Sites: > 0 });
+        var hit = store.Settings.Blocklist.Hit("https://m.tiktok.example/feed", "Chrome", store.Categories);
+        Add("a site only a ready-made list names is on the list", hit?.Target is SiteTarget { Domain: "tiktok.example" });
+        Add("an allowed site isn't", store.Settings.Blocklist.Hit("https://work.example/", "Chrome", store.Categories) == null);
+        store.Start("Lists");
+        app.Looked(null, Writer);
+        app.Looked(hit, Chrome);
+        await Spin();
+        Add("the speed bump comes up over it", app.Bump.IsShown && app.Bump.Card?.Target.Label == "tiktok.example");
+        app.Bump.BackToWork();
+        store.Stop();
+        app.Settings.Show("blocklist");
+        await Spin(400);
+        await Shot(app.Settings.Window.Content as FrameworkElement, "settings-blocklist-lists");
+        app.Settings.Hide();
+
+        // wait it out: 30 seconds with the cat, then it opens
+        store.ChangeSettings(s => s.Blocklist.Lists[0].Mode = GuardMode.WaitItOut);
+        store.Start("Wait");
+        app.Looked(null, Writer);
+        app.Looked(hit, Chrome);
+        await Spin();
+        Add("wait it out: the cat comes up with the wait", app.Bump.IsShown && app.Bump.Other?.Kind == OtherKind.WaitItOut && app.Bump.Card == null, app.Bump.Other?.Kind.ToString() ?? "none");
+        Add("wait it out: it counts down", app.Bump.Line.StartsWith("tiktok.example opens in 30 seconds"), app.Bump.Line);
+        await Shot(app.Bump.Win.Content, "wait-it-out");
+        if (app.Bump.Other is { } wait)
+        {
+            app.Second(wait.ShownAt + 30_000);
+            await Spin();
+            Add("after 30 seconds it opens, and the kitten stays", !app.Bump.IsShown && store.Active?.Kitten == "growing");
+        }
+        store.Stop();
+
+        // locked: it doesn't open, the block can't be stopped, Chataltul won't quit
+        store.ChangeSettings(s => s.Blocklist.Lists[0].Mode = GuardMode.Locked);
+        app.Other = new OtherGuard();
+        store.Start("Locked");
+        Clock.Offset += 11_000;
+        app.Looked(null, Writer);
+        app.Looked(hit, Chrome);
+        await Spin();
+        Add("locked: the lock comes up", app.Bump.Other?.Kind == OtherKind.Locked && app.Bump.Other?.Title.StartsWith("Locked until") == true, app.Bump.Other?.Title ?? "none");
+        await Shot(app.Bump.Win.Content, "locked");
+        app.Second(Clock.Now + 5 * MIN);
+        Add("locked: it doesn't open by itself", app.Bump.IsShown);
+        Add("locked: the block can't be stopped", !store.Stop() && store.Active != null && store.LockedUntil != null);
+        app.Quit();
+        Add("locked: Chataltul won't quit, and says why", app.Cat.Kind == "say" && app.Cat.Model?.Title.StartsWith("Locked until") == true, app.Cat.Model?.Title ?? "");
+        app.Bump.BackToWorkOther();
+        await Spin();
+        Add("Back to work takes the lock away, and goes back", !app.Bump.IsShown);
+        Clock.Offset += store.Active!.End + 1_000 - Clock.Now;
+        app.Second(Clock.Now);
+        if (store.Awaiting is { } done) store.Outcome(done.Id, "done");
+
+        // an allowance outside blocks: free until it's used up, then used up for the day
+        store.ChangeSettings(s => { var l = s.Blocklist.Lists[0]; l.Mode = GuardMode.SpeedBump; l.When.Kind = GuardWhen.Kinds.Always; l.AllowanceMin = 1; });
+        app.Other = new OtherGuard();
+        app.Cat.Hide();
+        app.Looked(null, Writer);
+        app.Looked(hit, Chrome);
+        Add("outside a block, inside the allowance: nothing comes up", !app.Bump.IsShown);
+        var before = store.UsedMs("s");
+        app.Second(Clock.Now);
+        Add("and each second there counts", store.UsedMs("s") == before + 1000, $"{before} then {store.UsedMs("s")}");
+        store.AddUsage("s", 60_000);
+        app.Looked(hit, Chrome);
+        await Spin();
+        Add("used up: it stops for the day", app.Bump.Other?.Kind == OtherKind.UsedUp, app.Bump.Other?.Kind.ToString() ?? "none");
+        await Shot(app.Bump.Win.Content, "used-up");
+        app.Looked(null, Writer);
+        await Spin();
+        Add("leaving it takes the card away", !app.Bump.IsShown);
+        app.Other = new OtherGuard();
+        store.ResetForTest(Fresh());
+    }
+
+    /// <summary>Breaks on every screen, Postpone and Skip, strict ones, the cycles, the auto break, and eye breaks.</summary>
+    static async Task TheBreaks(Controller app)
+    {
+        var store = app.Store;
+        store.ResetForTest(Fresh());
+        app.Cat.Hide();
+        store.StartBreak(5);
+        await Spin(400);
+        Add("a break covers every screen", app.BreakScreen.IsShown && app.BreakScreen.Main != null);
+        Add("with Postpone and Skip", app.BreakScreen.Buttons.ContainsKey("Postpone 5 min") && app.BreakScreen.Buttons.ContainsKey("Skip this break"));
+        await Shot(app.BreakScreen.Main?.Content, "break-screen");
+        app.BreakScreen.Buttons["Postpone 5 min"]();
+        await Spin();
+        Add("Postpone: the break goes, and the screens with it", store.OnBreak == null && !app.BreakScreen.IsShown && store.Postponed != null);
+        Clock.Offset += 5 * MIN + 1_000;
+        app.Second(Clock.Now);
+        await Spin(400);
+        Add("five minutes later it's back", store.OnBreak != null && app.BreakScreen.IsShown);
+        app.BreakScreen.Buttons["Skip this break"]();
+        await Spin();
+        Add("Skip ends it", store.OnBreak == null && !app.BreakScreen.IsShown);
+        store.ChangeSettings(s => s.Breaks.Strict = true);
+        store.StartBreak(10);
+        await Spin(400);
+        Add("strict breaks have no Postpone and no Skip", app.BreakScreen.IsShown && app.BreakScreen.Buttons.Count == 1 && app.BreakScreen.Buttons.ContainsKey("Edit ideas"));
+        store.StopBreak();
+        await Spin();
+        store.ChangeSettings(s => { s.Breaks.Strict = false; s.Breaks.FullScreen = false; });
+        store.StartBreak(5);
+        Add("without full-screen breaks, a break is only the popover's", !app.BreakScreen.IsShown);
+        store.StopBreak();
+
+        // the cycles: Flowtime is a stopwatch, its break a fifth of the stretch
+        store.ApplyPreset(CyclePreset.FiftyTwo);
+        Add("52 / 17 sets the lengths", store.Settings.FocusMinutes == 52 && store.Settings.Cycle.ShortBreak == 17);
+        store.ApplyPreset(CyclePreset.Flow);
+        app.Popover.Show(focusTitle: true);
+        await Spin();
+        app.Popover.StartPressed();
+        Add("Flowtime starts a stopwatch", store.Active?.Stopwatch == true);
+        app.Popover.Hide();
+        Clock.Offset += 50 * MIN;
+        Add("its break is a fifth of the stretch", store.BreakAfter(store.Active) == 10, $"{store.BreakAfter(store.Active)}");
+        store.Stop();
+        if (store.Awaiting is { } flow) store.Outcome(flow.Id, "done");
+        store.ApplyPreset(CyclePreset.Pomodoro);
+
+        // the break starts by itself when the kitten comes home
+        store.ChangeSettings(s => s.Breaks.Start = BreakStart.Auto);
+        store.Start("Auto", 25);
+        Clock.Offset += store.Active!.End + 1_000 - Clock.Now;
+        app.Second(Clock.Now);
+        await Spin();
+        Add("auto: the break starts when the kitten is home", store.OnBreak != null);
+        store.StopBreak();
+        if (store.Awaiting is { } w) store.Outcome(w.Id, "done");
+        store.ChangeSettings(s => s.Breaks.Start = BreakStart.Offer);
+
+        // eye breaks: every 20 minutes of a block, waiting while a call is on
+        app.Cat.Hide();
+        store.SetEngine(new() { ["interval"] = 0 });   // no check-in to stand in the eye break's way
+        store.Start("Eyes", 50);
+        var start = store.Active!.Start;
+        app.Second(Clock.Now);
+        Busy.Override = () => true;
+        Clock.Offset += start + 20 * MIN + 1_000 - Clock.Now;
+        app.Second(Clock.Now);
+        Add("an eye break waits while a call is on", app.Cat.Kind != "eye");
+        Busy.Override = () => false;
+        app.Second(Clock.Now + 1_000);
+        await Spin();
+        Add("and comes when it's over", app.Cat.Kind == "eye" && app.Cat.Model?.Title == "Look at something far away.", app.Cat.Kind ?? "");
+        await Shot(app.Cat.Win.Content, "cat-eye-break");
+        app.Cat.Press("Skip");
+        Add("Skip, and the next is a full 20 minutes away", app.Cat.Kind == null && app.Eye.NextAt > Clock.Now + 19 * MIN);
+        Busy.Override = null;
+        store.Stop();
+        store.ResetForTest(Fresh());
+    }
+
+    /// <summary>The sounds: the pane, two at once, a third not, a pause stops them, the noise made here. The recordings come with the account's server.</summary>
+    static async Task TheSounds(Controller app)
+    {
+        var store = app.Store;
+        store.ResetForTest(Fresh());
+        Add("the sound list is carried", store.Sounds.Kinds.Count > 30 && store.Sounds.Meows.Count == 3);
+        Add("and the meows", store.Sounds.Meows.All(m => File.Exists(Path.Join(AppContext.BaseDirectory, "audio", $"{m}.mp3"))));
+        app.Popover.ShowSounds();
+        await Spin(400);
+        Add("the popover has the sounds' pane", app.Popover.Pane == "sounds" && app.Popover.Buttons.ContainsKey("Brown noise"), string.Join(", ", app.Popover.Buttons.Keys.Take(6)));
+        await Shot(app.Popover.Win.Content, "popover-sounds");
+        if (app.Popover.Buttons.TryGetValue("Brown noise", out var brown)) brown();
+        app.Popover.Hide();
+        Add("a sound in the mix", store.Settings.Mix.Select(m => m.Id).SequenceEqual(["brown"]));
+        Add("nothing plays before a block", app.Sound.Playing.Count == 0);
+        store.Start("Sound");
+        await Spin();
+        Add("a block plays it, made on the PC", app.Sound.Playing.SequenceEqual(["brown"]) && File.Exists(Path.Join(app.Sound.Cache, "noise-brown.wav")));
+        store.ChangeSettings(s => s.Mix = [new("brown"), new("white"), new("purr")]);
+        Add("a third isn't played", app.Sound.Playing.Count <= 2);
+        store.Pause();
+        Add("a pause stops the sounds", app.Sound.Playing.Count == 0);
+        store.Resume();
+        var sound = app.Widgets.Add("sound");
+        await Spin();
+        await Shot(sound.Win.Content, "widget-sound-playing");
+        app.Widgets.RemoveAll();
+        store.Stop();
+        Add("the end of the block stops them", app.Sound.Playing.Count == 0);
+        store.ResetForTest(Fresh());
+    }
+
     /// <summary>The newest sign-in code mailed to this address, from the sandbox server's outbox.</summary>
     static string? CodeFor(string email, string outbox, long after)
     {
@@ -610,6 +813,15 @@ static class SelfTest
         // a change here goes up by itself
         HomeBlock(store, "Made after signing in", Clock.Now - 30 * MIN, 25);
         Add("account: a change here goes up on its own", await Wait(async () => (await ServerTitles()).Contains("Made after signing in")));
+
+        // a recording is downloaded from that server the first time it's picked, and kept
+        store.ChangeSettings(s => s.Mix = [new("purr")]);
+        store.Start("Sound check");
+        Add("sounds: a recording is downloaded from the server, and plays", await Wait(() => app.Sound.Playing.Contains("purr"), 40), string.Join(",", app.Sound.Playing));
+        var kept = Path.Join(app.Sound.Cache, "purr-1.mp3");
+        Add("sounds: it is kept in the app's folder", File.Exists(kept) && new FileInfo(kept).Length > 10_000);
+        store.Stop();
+        store.ChangeSettings(s => s.Mix = []);
 
         // signing out takes the account's history off this PC; it stays on the server
         sync.SignOut();

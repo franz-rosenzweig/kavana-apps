@@ -33,7 +33,7 @@ sealed class MainWindow
 
     static readonly (string Id, string Title, string Glyph)[] Panes =
     [
-        ("today", "Today", ""), ("cafe", "Café", ""), ("history", "History", ""), ("later", "Later", ""),
+        ("today", "Today", ""), ("cafe", "Café", ""), ("history", "History", ""), ("later", "Later", ""),
     ];
 
     public MainWindow(Store store, Controller app)

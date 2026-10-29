@@ -30,6 +30,16 @@ sealed class Controller
     /// <summary>A widget was added, moved, resized or taken away (Settings shows the list).</summary>
     public event Action? WidgetsChanged;
     public SpeedBump Speed { get; set; } = new();
+    /// <summary>Wait it out, locked and used up.</summary>
+    public OtherGuard Other { get; set; } = new();
+    public EyeBreakTimer Eye { get; private set; } = new();
+    public BreakScreen BreakScreen { get; private set; } = null!;
+    public SoundPlayer Sound { get; private set; } = null!;
+    /// <summary>The listed thing in front at the last look, and the app: an allowance counts while it stays.</summary>
+    GuardHit? currentHit;
+    FrontApp? currentApp;
+    string? eyeBlockId;
+    long usageSaved;
     /// <summary>The window that was in front before something on the list: where Back to work goes.</summary>
     public IntPtr Previous { get; private set; }
     /// <summary>What went wrong registering a shortcut, for Settings.</summary>
@@ -61,8 +71,11 @@ sealed class Controller
         Sync = new SyncController(Store, test ? new FileSession(Path.Join(Store.Folder, "session")) : new CredentialSession("xyz.tiresia.chataltul.session"));
         Widgets = new WidgetHost(Store, this);
         Widgets.Changed += () => WidgetsChanged?.Invoke();
+        BreakScreen = new BreakScreen(Store, this);
+        Sound = new SoundPlayer(Store, muted: test);
         taskbarDark = Palette.TaskbarDark();
 
+        Bump.BackToWorkOther = () => ApplyOther(Other.BackToWork());
         Bump.BackToWork = () => Apply(Speed.BackToWork());
         Bump.LeaveHeld = () => Apply(Speed.LeaveHeld(Clock.Now));
         Bump.EditList = () => OpenSettings("blocklist");
@@ -80,8 +93,15 @@ sealed class Controller
         Store.Due += Deliver;
         Store.Changed += Changed;
         Store.DocChanged += Sync.Queue;
+        // a list arriving (on a thread of its own) shows in Settings, and is matched from the next look
+        Store.Categories.Changed += () => Ui.Post(() => { settings?.ListsChanged(); WidgetsChanged?.Invoke(); });
+        if (!test)
+        {
+            Ui.After(TimeSpan.FromSeconds(30), () => Store.RefreshLists());
+            Ui.Every(TimeSpan.FromHours(6), () => Store.RefreshLists());
+        }
         Store.AwayPromptChanged += () => { if (Store.AwayPrompt != null) Popover.Show(); else Popover.Refresh(); };
-        Store.SettingsChanged += () => { RegisterShortcuts(); Popover.Refresh(); Widgets.Refresh(); };
+        Store.SettingsChanged += () => { RegisterShortcuts(); Sound.Update(Store.State); Popover.Refresh(); Widgets.Refresh(); BreakScreen.Update(); };
 
         if (!test && !Tray.Add()) Log.Write("no taskbar to put the icon in yet; it comes when Explorer starts");
         RegisterShortcuts();
@@ -117,7 +137,15 @@ sealed class Controller
 
     public void Quit(bool force = false)
     {
+        // a locked list keeps Chataltul on until the block ends: quitting would be the way round it
+        if (!force && Store.LockedUntil is { } until)
+        {
+            Say($"Locked until {Format.ClockTime(until)}.", "A locked list keeps Chataltul on until your block ends.", Store.State.Companion, 5);
+            return;
+        }
         clock?.Stop();
+        Sound?.StopAll();
+        BreakScreen?.Hide();
         Tray?.Remove();
         Hotkeys?.ClearAll();
         Watcher?.Dispose();
@@ -261,7 +289,10 @@ sealed class Controller
     void ShowPendingCheckin(UiState st)
     {
         if (st.View.Active is not { Pending: { } n } b || !CatShows) return;
-        if (!shownCheckins.Add($"{b.Id}:{n}")) return;
+        if (shownCheckins.Contains($"{b.Id}:{n}")) return;
+        // during a call or full-screen video it holds, and comes when the PC is free (each second looks again)
+        if (Store.Settings.Breaks.WaitDuringCalls && Busy.Now()) return;
+        shownCheckins.Add($"{b.Id}:{n}");
         ShowCheckin(b, n);
     }
 
@@ -289,6 +320,8 @@ sealed class Controller
                         Cat.Show("end", new CatCardModel(a.Cat, title) { Body = p.Body, Buttons = [new("Open Chataltul", () => { Cat.Hide(); Popover.Show(); }, true)] }, 30);
                     else if (st.View.Awaiting is { } w)
                     {
+                        Sound.Meow(w.Kitten == "home");
+                        if (Store.Settings.Breaks.Start == BreakStart.Auto && Store.OnBreak == null) Store.StartBreak(Store.BreakAfter(w));
                         var c = st.Cat(w.Cat);
                         var says = w.Kitten == "home" ? $"{c.Name} came home to your café. +{w.Treats} treats" : $"{c.Name} wandered off.";
                         var text = string.Join("\n", new[] { w.Intention.Length == 0 ? null : w.Intention, says }.Where(x => x != null));
@@ -323,8 +356,11 @@ sealed class Controller
         if (st.View.Active?.Pending == null) Cat.Hide("checkin");
         if (st.View.Active is not { Kitten: "growing", Paused: null }) Apply(Speed.Tick(BumpBlock(), Clock.Now));
         if (st.View.Active != null) Watcher.Look();
+        Sound.Update(st);
         main?.Refresh();
         Widgets.Refresh();
+        TrackEyeBlock(st);
+        BreakScreen.Update();
     }
 
     public void Second(long now)
@@ -338,9 +374,89 @@ sealed class Controller
         main?.Tick(now);
         Widgets.Tick(now);
         if (seconds % 2 == 0) Away.Sample(now);
-        if (Bumpable) Watcher.Look();
+        if (Bumpable || currentHit != null || WatchesOutsideBlocks) Watcher.Look();
+        // an allowance counts the seconds spent on a list outside a block
+        if (currentHit is { } h && currentApp is { } app)
+        {
+            if (GuardPolicy.CountsUsage(h.List, DateTime.Now, Store.Running ? Store.Active?.End : null, Store.UsedMs(h.List.Id)))
+            {
+                Store.AddUsage(h.List.Id, 1000);
+                if (now - usageSaved > 10_000) { Store.SaveUsage(); usageSaved = now; }
+            }
+            Looked(h, app);   // it may have been used up, or a window may have begun
+        }
         Apply(Speed.Tick(BumpBlock(), now));
+        var guarded = currentHit is { } g && EnforcementFor(g.List) is { Mode: not GuardMode.SpeedBump };
+        ApplyOther(Other.Tick(now, guarded));
+        BreaksSecond(now);
+    }
+
+    /// <summary>A list is watched outside blocks too (on weekdays, or always): the front is looked at each second.</summary>
+    bool WatchesOutsideBlocks => Store.Settings.SpeedBump
+        && Store.Settings.Blocklist.Lists.Any(l => l.When.Kind != GuardWhen.Kinds.Blocks && (l.Count > 0 || l.Categories.Count > 0));
+
+    // ---------------------------------------------------------------- breaks
+
+    /// <summary>A block started or ended: the eye breaks count from its start.</summary>
+    void TrackEyeBlock(UiState st)
+    {
+        var id = st.View.Active?.Id;
+        if (id == eyeBlockId) return;
+        eyeBlockId = id;
+        if (st.View.Active is { } b) Eye.BlockStarted(b.Start); else Eye.BlockEnded();
+    }
+
+    /// <summary>Once a second: a postponed break coming back, an eye break.</summary>
+    void BreaksSecond(long now)
+    {
         if (Store.Active?.Pending != null) ShowPendingCheckin(Store.State);
+        if (Store.Postponed is { } p && now >= p.At) { Store.Postponed = null; Store.StartBreak(p.Minutes); }
+        var bs = Store.Settings.Breaks;
+        if (!bs.EyeBreaks) return;
+        if (Eye.EveryMs != bs.EyeEveryMin * 60_000L || Eye.Seconds != bs.EyeSeconds)
+        {
+            var next = new EyeBreakTimer(bs.EyeEveryMin, bs.EyeSeconds);
+            if (Store.Active is { } a) next.BlockStarted(Eye.Since ?? a.Start);
+            Eye = next;
+        }
+        var busy = bs.WaitDuringCalls && Busy.Now();
+        if (Eye.Check(now, Store.Running, busy)) ShowEyeBreak();
+    }
+
+    public void ShowEyeBreak()
+    {
+        var bs = Store.Settings.Breaks;
+        if (!CatShows) { Eye.Finish(Clock.Now); return; }
+        Cat.Show("eye", new CatCardModel(Store.ShownCat.Id, "Look at something far away.")
+        {
+            Label = "Eye break",
+            Body = $"For {bs.EyeSeconds} seconds. Your eyes will thank you.",
+            Buttons = bs.Strict ? Array.Empty<CatButton>() : [new CatButton("Skip", EndEyeBreak)],
+        }, bs.EyeSeconds, () => Eye.Finish(Clock.Now));
+    }
+
+    void EndEyeBreak()
+    {
+        Cat.Hide("eye");
+        Eye.Finish(Clock.Now);
+    }
+
+    /// <summary>"Postpone 5 min": the break goes, and comes back.</summary>
+    public void PostponeBreak()
+    {
+        if (Store.OnBreak is not { } b) return;
+        var mins = Math.Max(1, b.Minutes);
+        Store.StopBreak();
+        var later = Store.Settings.Breaks.PostponeMin;
+        Store.Postponed = (Clock.Now + later * 60_000L, mins);
+        Say("Break postponed.", $"{later} minutes, then it's back.", Store.State.Companion, 4);
+    }
+
+    /// <summary>Stop was pressed while a locked list holds the block.</summary>
+    public void SayLocked()
+    {
+        if (Store.LockedUntil is { } until)
+            Say($"Locked until {Format.ClockTime(until)}.", "A locked list keeps your block going until it ends.", Store.State.Companion, 5);
     }
 
     // ---------------------------------------------------------------- the speed bump
@@ -355,14 +471,43 @@ sealed class Controller
         return new BumpBlock(b.Id, b.Paused != null, b.Kitten, b.Cat, Store.Cat(b.Cat).Name, b.Title, b.End);
     }
 
-    /// <summary>Something came to the front (or was looked at again): the speed bump may answer.</summary>
+    /// <summary>What a list asks for now: with the running block's end, and what its allowance has seen today.</summary>
+    public Enforcement? EnforcementFor(GuardList list) =>
+        GuardPolicy.For(list, DateTime.Now, Store.Running ? Store.Active?.End : null, Store.UsedMs(list.Id));
+
+    /// <summary>Something came to the front (or was looked at again): the speed bump, the wait or the lock may answer.</summary>
     public void Looked(GuardHit? hit, FrontApp app)
     {
+        currentHit = hit;
+        currentApp = app;
         if (hit == null) Previous = app.Hwnd;
         var now = Clock.Now;
-        if (!Store.Settings.SpeedBump) { Apply(Speed.Front(null, app.Exe, null, now)); return; }
-        // version 0.1 is the speed bump for every list (wait it out and locked come with 0.2)
-        Apply(Speed.Front(hit?.Target, hit == null ? app.Exe : null, BumpBlock(), now));
+        if (!Store.Settings.SpeedBump)
+        {
+            Apply(Speed.Front(null, app.Exe, null, now));
+            ApplyOther(Other.Front(null, null, app.Exe, "", "", now));
+            return;
+        }
+        var enf = hit != null ? EnforcementFor(hit.List) : null;
+        var bumpTarget = enf?.Mode == GuardMode.SpeedBump ? hit?.Target : null;
+        Apply(Speed.Front(bumpTarget, hit == null ? app.Exe : null, BumpBlock(), now));
+        var cat = Store.Active?.Cat ?? Store.State.Companion;
+        ApplyOther(Other.Front(hit, enf, app.Exe, cat, Store.Cat(cat).Name, now));
+    }
+
+    public void ApplyOther(List<OtherAction> actions)
+    {
+        foreach (var a in actions)
+            switch (a)
+            {
+                case OtherAction.Show s:
+                    Bump.ShowOther(s.Card);
+                    Cat.Hide();
+                    break;
+                case OtherAction.Update u: Bump.ShowOther(u.Card); break;
+                case OtherAction.Hide: Bump.HideOther(); break;
+                case OtherAction.Activate: Watcher.Activate(Previous); break;
+            }
     }
 
     public void Apply(List<BumpAction> actions)
@@ -376,7 +521,7 @@ sealed class Controller
                     Cat.Hide();
                     break;
                 case BumpAction.Update u: Bump.Update(u.Card); break;
-                case BumpAction.Hide: Bump.Hide(); break;
+                case BumpAction.Hide: Bump.HideBump(); break;
                 case BumpAction.Away w: Store.KittenLeaves(w.At, w.Grace); break;
                 case BumpAction.Wandered w:
                     Say($"{w.CatName} wandered off.", "Your block keeps going.", Store.Active?.Cat ?? Store.State.Companion, 4, "gone", Art.Gone);

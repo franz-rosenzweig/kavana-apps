@@ -35,6 +35,18 @@ public sealed class GuardWhen
     /// <summary>Minutes after midnight, for weekdays.</summary>
     public int FromMin { get; set; } = 9 * 60;
     public int ToMin { get; set; } = 17 * 60;
+
+    /// <summary>Is this moment (this PC's time) inside the window, outside any block?</summary>
+    public bool Covers(DateTime local) => Kind switch
+    {
+        Kinds.Always => true,
+        // Monday is 1, Friday 5
+        Kinds.Weekdays => (int)local.DayOfWeek is >= 1 and <= 5 && local.Hour * 60 + local.Minute is var m && m >= FromMin && m < ToMin,
+        _ => false,
+    };
+
+    /// <summary>When the window ends that day, for the card ("until 5:00 PM"); null when always.</summary>
+    public DateTime? End(DateTime local) => Kind == Kinds.Weekdays ? local.Date.AddMinutes(ToMin) : null;
 }
 
 /// <summary>
@@ -61,11 +73,25 @@ public sealed class GuardList
     [JsonIgnore] public int Count => Apps.Count + Sites.Count;
 
     /// <summary>The typed site this address is on, if any.</summary>
-    public string? Site(string url)
+    public string? Site(string url) => Site(url, null);
+
+    /// <summary>The typed site this address is on, else (unless it is allowed) the domain a ready-made list names for it.</summary>
+    public string? Site(string url, IDomainMatcher? matcher)
     {
         if (Blocklist.Host(url) is not { } host) return null;
-        return Sites.FirstOrDefault(s => host == s || host.EndsWith("." + s, StringComparison.Ordinal));
+        if (Sites.FirstOrDefault(s => host == s || host.EndsWith("." + s, StringComparison.Ordinal)) is { } typed) return typed;
+        if (matcher == null || Categories.Count == 0 || IsAllowed(host)) return null;
+        return matcher.Match(host, Categories);
     }
+
+    public bool IsAllowed(string host) => Allow.Any(a => host == a || host.EndsWith("." + a, StringComparison.Ordinal));
+}
+
+/// <summary>Something that can say which of the chosen categories a site belongs to (the downloaded lists, or a fake in the tests).</summary>
+public interface IDomainMatcher
+{
+    /// <summary>The listed domain this host falls under in one of these categories, or null.</summary>
+    string? Match(string host, IEnumerable<string> categories);
 }
 
 /// <summary>A list, and the thing on it that was found.</summary>
@@ -140,13 +166,22 @@ public sealed class Blocklist
         return null;
     }
 
-    /// <summary>The list that has the site this address is on, if any.</summary>
-    public GuardHit? Hit(string url, string browser)
+    /// <summary>
+    /// The list that has the site this address is on, if any. The typed sites of every list come before the
+    /// ready-made ones, so a site someone typed into one list isn't taken by another list's category.
+    /// </summary>
+    public GuardHit? Hit(string url, string browser, IDomainMatcher? matcher = null)
     {
         foreach (var l in Lists)
             if (l.Site(url) is { } d) return new GuardHit(l, new SiteTarget(d, browser));
+        if (matcher == null) return null;
+        foreach (var l in Lists)
+            if (l.Site(url, matcher) is { } d) return new GuardHit(l, new SiteTarget(d, browser));
         return null;
     }
+
+    /// <summary>The ready-made lists switched on in any list, each once.</summary>
+    [JsonIgnore] public List<string> CategoryIds => Lists.SelectMany(l => l.Categories).Distinct().ToList();
 
     /// <summary>"https://www.Reddit.com/r/cats?x=1" and "reddit.com/r/cats" both give "reddit.com".</summary>
     public static string? Host(string address)

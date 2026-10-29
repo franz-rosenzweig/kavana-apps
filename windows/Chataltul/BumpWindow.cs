@@ -87,8 +87,11 @@ sealed class BumpWindow
     public HoldButton? Hold { get; private set; }
 
     public BumpCard? Card { get; private set; }
+    /// <summary>Wait it out, locked or used up: shown when there's no speed bump card.</summary>
+    public OtherCard? Other { get; private set; }
     public long GraceMs { get; set; } = SpeedBump.DefaultGraceMs;
     public Action BackToWork { get; set; } = () => { };
+    public Action BackToWorkOther { get; set; } = () => { };
     public Action LeaveHeld { get; set; } = () => { };
     public Action EditList { get; set; } = () => { };
     public bool IsShown => Win.IsShown;
@@ -98,10 +101,45 @@ sealed class BumpWindow
     public void Show(BumpCard c)
     {
         Card = c;
+        Present();
+    }
+
+    /// <summary>Another listed thing came to the front while the card is up: the same card and countdown, a new name.</summary>
+    public void Update(BumpCard c)
+    {
+        if (!IsShown) { Show(c); return; }
+        Card = c;
+        Present();
+    }
+
+    public void ShowOther(OtherCard c)
+    {
+        Other = c;
+        Present();
+    }
+
+    /// <summary>The speed bump's card goes; the window stays if a wait or a lock is still up.</summary>
+    public void HideBump()
+    {
+        Card = null;
+        Hold = null;
+        if (Other != null) Present(); else Hide();
+    }
+
+    public void HideOther()
+    {
+        Other = null;
+        if (Card != null) Present(); else Hide();
+    }
+
+    void Present()
+    {
         Palette.Dark = Palette.SystemDark();
         Win.Root.RequestedTheme = Palette.Theme;
         Win.Root.Background = Palette.B(Palette.Scrim);
-        Win.Content = Build(c);
+        if (Card is { } c) Win.Content = Build(c);
+        else if (Other is { } o) Win.Content = BuildOther(o);
+        else { Hide(); return; }
         if (!Win.IsShown)
         {
             // everything but the taskbar, on the screen the pointer is on
@@ -113,20 +151,12 @@ sealed class BumpWindow
         Tick(Clock.Now);
     }
 
-    /// <summary>Another listed thing came to the front while the card is up: the same card and countdown, a new name.</summary>
-    public void Update(BumpCard c)
-    {
-        if (!IsShown) { Show(c); return; }
-        Card = c;
-        Win.Content = Build(c);
-        Tick(Clock.Now);
-    }
-
     public void Hide()
     {
         timer?.Stop();
         timer = null;
         Card = null;
+        Other = null;
         Hold = null;
         Win.Hide();
     }
@@ -168,11 +198,15 @@ sealed class BumpWindow
         var title = V.T("Boo! You're focusing.", 28, FontWeights.SemiBold, Palette.Text, align: TextAlignment.Center);
         title.HorizontalAlignment = HorizontalAlignment.Center;
         var words = V.Col(12, title, line, dial, block, V.Col(8, back, hold.View), hint, V.Divider(), foot);
+        return WithCat(words, c.Cat);
+    }
+
+    /// <summary>The card, with the cat walking in over its top, in the middle of the dimmed screen.</summary>
+    static FrameworkElement WithCat(UIElement words, string catId)
+    {
         var card = V.Surface(words, new Thickness(28, 88, 28, 20));
         card.Width = 440;
-
-        // the cat, walking in over the top of the card
-        var cat = V.Painting(Art.HasPose(c.Cat, "walk") ? Art.Pose(c.Cat, "walk") : Art.Portrait(c.Cat), 180);
+        var cat = V.Painting(Art.HasPose(catId, "walk") ? Art.Pose(catId, "walk") : Art.Portrait(catId), 180);
         cat.HorizontalAlignment = HorizontalAlignment.Center;
         cat.VerticalAlignment = VerticalAlignment.Top;
         cat.Margin = new Thickness(0, -88, 56, 0);
@@ -182,6 +216,50 @@ sealed class BumpWindow
         var all = new Grid { Background = Palette.B(Microsoft.UI.Colors.Transparent) };
         all.Children.Add(stack);
         return all;
+    }
+
+    /// <summary>
+    /// Wait it out (30 seconds with the cat, then it opens), locked (it doesn't open until the block ends) or used up
+    /// (today's allowance is spent). Nothing hurries it: Back to work, or wait. The Mac's OtherCardView.
+    /// </summary>
+    FrameworkElement BuildOther(OtherCard c)
+    {
+        tickers.Clear();
+        Hold = null;
+        var title = V.T(c.Title, 28, FontWeights.SemiBold, Palette.Text, wrap: true, align: TextAlignment.Center);
+        title.HorizontalAlignment = HorizontalAlignment.Center;
+        var line = V.Body("", wrap: true, color: Palette.Text2, align: TextAlignment.Center);
+        line.HorizontalAlignment = HorizontalAlignment.Center;
+        UIElement? dial = null;
+        var count = V.ClockText("", 24);
+        count.VerticalAlignment = VerticalAlignment.Center;
+        var ring = V.Arc(72, 5, 1, Palette.Accent);
+        if (c.Kind == OtherKind.WaitItOut)
+        {
+            var d = new Grid { Width = 72, Height = 72, HorizontalAlignment = HorizontalAlignment.Center };
+            d.Children.Add(V.Ring(72, 5, Palette.RingTrack));
+            d.Children.Add(ring);
+            d.Children.Add(count);
+            dial = d;
+        }
+        tickers.Add(now =>
+        {
+            Line = c.Line(now);
+            line.Text = Line;
+            count.Text = c.SecondsLeft(now).ToString();
+            V.SetArc(ring, 72, 5, c.Fraction(now));
+        });
+        var back = V.Btn("Back to work", () => BackToWorkOther(), accent: true, stretch: true, height: 40);
+        var hint = V.Caption(c.Kind switch
+        {
+            OtherKind.WaitItOut => "It opens by itself when the wait is over, and a visit that waited may stay a while.",
+            OtherKind.Locked => "A locked list stays shut until the block ends, and the block can't be stopped meanwhile.",
+            _ => "Its time outside your blocks is used up for today. It opens again tomorrow, or after the window ends.",
+        }, wrap: true, align: TextAlignment.Center);
+        hint.HorizontalAlignment = HorizontalAlignment.Center;
+        var foot = V.Row(2, V.Caption($"{c.Target.Label} is on your {c.ListName} list ·"), V.Link("Edit the list", () => EditList()));
+        foot.HorizontalAlignment = HorizontalAlignment.Center;
+        return WithCat(V.Col(12, title, line, dial, back, hint, V.Divider(), foot), c.Cat);
     }
 }
 

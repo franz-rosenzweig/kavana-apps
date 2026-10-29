@@ -25,6 +25,15 @@ sealed class Store
     public UiState State { get; private set; }
     public WinSettings Settings { get; private set; }
 
+    /// <summary>The ready-made lists on this PC (lists\), which the blocklist's categories are matched against.</summary>
+    public CategoryStore Categories { get; }
+    /// <summary>What each list's allowance has seen today (usage.json).</summary>
+    public DayUsage Usage { get; private set; }
+    /// <summary>The web's sounds (the Mac's sounds.json), and its meows.</summary>
+    public SoundCatalog Sounds { get; }
+    /// <summary>A break that was postponed comes back at this time, with this many minutes.</summary>
+    public (long At, int Minutes)? Postponed { get; set; }
+
     /// <summary>"You were away from the PC": waiting for Count them or Take them off.</summary>
     public AwayReturn? AwayPrompt { get; private set; }
     /// <summary>A break longer than the engine allows (5, 10 or 15 minutes) runs on past the engine's own: the app keeps its end.</summary>
@@ -51,6 +60,12 @@ sealed class Store
         docs = new DocStore(folder);
         settingsStore = new SettingsStore(folder);
         Settings = settingsStore.Read();
+        // the self-test never goes to the web for a list: it puts its own in place
+        Categories = new CategoryStore(Path.Join(folder, "lists"), network: !App.Options.SelfTest) { Custom = Settings.CustomLists };
+        Usage = DayUsage.Read(folder);
+        var soundsFile = Path.Join(AppContext.BaseDirectory, "sounds.json");
+        try { Sounds = SoundCatalog.Load(soundsFile); }
+        catch (Exception e) { Log.Write($"sounds.json: {e.Message}"); Sounds = new SoundCatalog(); }
         // the doc: loaded, or if it doesn't read, kept aside (never written over) and started anew
         try { host.Load(docs.Read()); }
         catch (Exception e)
@@ -71,8 +86,11 @@ sealed class Store
     {
         host.Load(null);
         Settings = settings ?? new WinSettings();
+        Categories.Custom = Settings.CustomLists;
+        Usage = new DayUsage();
         LongBreakEnd = null;
         AwayPrompt = null;
+        Postponed = null;
         Act("tick");
     }
 
@@ -158,11 +176,13 @@ sealed class Store
         catch (Exception e) { Log.Write($"the doc didn't save: {e.Message}"); }
     }
 
-    public void ChangeSettings(Action<WinSettings> edit)
+    /// <summary><c>quiet</c>: a control that shows the change already (a slider being dragged) isn't built again under it.</summary>
+    public void ChangeSettings(Action<WinSettings> edit, bool quiet = false)
     {
         edit(Settings);
+        Categories.Custom = Settings.CustomLists;
         try { settingsStore.Write(Settings); } catch (Exception e) { Log.Write($"the settings didn't save: {e.Message}"); }
-        SettingsChanged?.Invoke();
+        if (!quiet) SettingsChanged?.Invoke();
     }
 
     // ---------- the clock
@@ -235,14 +255,46 @@ sealed class Store
     /// <summary>The streak, from the newest blocks the state carries (the days in a row end well inside them).</summary>
     public int Streak => State.Stats.Streak;
 
-    /// <summary>Stop: inside the first ten seconds it takes the block back, with no harm done.</summary>
+    /// <summary>
+    /// Stop: inside the first ten seconds it takes the block back, with no harm done. After that a locked list keeps
+    /// the block going: stopping it would be the way round the lock.
+    /// </summary>
     public bool Stop()
     {
         if (Active is not { } b) return false;
         if (Clock.Now <= b.CancelUntil) { Act("cancel"); return true; }
+        if (LockedUntil != null) return false;
         Act("stop");
         return true;
     }
+
+    /// <summary>When a locked list lets go: the end of a running block, if any list is locked (and its first ten seconds are over).</summary>
+    public long? LockedUntil =>
+        Active is { } b && GuardPolicy.LocksTheBlock(Settings.Blocklist) && Clock.Now > b.CancelUntil ? b.End : null;
+
+    // ---------- the lists' allowances
+
+    public long UsedMs(string listId) => Usage.Used(listId, DateTime.Now);
+    public void AddUsage(string listId, long ms) => Usage.Add(listId, ms, DateTime.Now);
+    public void SaveUsage() => Usage.Write(Folder);
+
+    /// <summary>Fetches the ready-made lists that are switched on and not here yet, or last looked at over a week ago.</summary>
+    public void RefreshLists(bool force = false) => _ = Categories.Refresh(Settings.Blocklist.CategoryIds, force);
+
+    // ---------- the cycle and the sounds
+
+    public CyclePreset Preset => Settings.Cycle.Preset;
+
+    /// <summary>Chooses a cycle: its focus and break lengths become the popover's.</summary>
+    public void ApplyPreset(CyclePreset p) => ChangeSettings(s =>
+    {
+        s.Cycle.Preset = p;
+        if (Cycles.Minutes(p) is { } m) { s.FocusMinutes = m.Focus; s.Cycle.ShortBreak = m.Rest; }
+    });
+
+    /// <summary>What in the mix can play now (owned, two at most), and its name: "Rain + Purring".</summary>
+    public List<MixEntry> PlayableMix => Sounds.Playable(Settings.Mix, State.Owned);
+    public string MixLabel => Sounds.Label(Settings.Mix, State.Owned);
 
     public void Pause() => Act("pause");
     public void Resume() => Act("resume");
@@ -274,6 +326,7 @@ sealed class Store
     {
         var engine = new[] { 5, 10, 15 }.Where(m => m <= minutes).DefaultIfEmpty(5).Max();
         var n = Clock.Now;
+        Postponed = null;
         if (Act("startBreak", new() { ["minutes"] = engine }, n)?.Error == null && minutes > engine)
         {
             longBreakStart = n;
@@ -289,8 +342,12 @@ sealed class Store
         Act("stopBreak");
     }
 
-    /// <summary>The break to offer after this block: a long one after every few.</summary>
-    public int BreakAfter() => Settings.Cycle.IsLong(BlocksToday) ? Settings.Cycle.LongBreak : Settings.Cycle.ShortBreak;
+    /// <summary>The break to offer after this block: a long one after every few, a fifth of the stretch in Flowtime.</summary>
+    public int BreakAfter(Block? b = null)
+    {
+        if (Preset == CyclePreset.Flow) return Cycles.FlowBreak(b is { } x ? (int)(Math.Max(1, (x.Ended ?? Clock.Now) - x.Start) / 60_000) : 25);
+        return Settings.Cycle.IsLong(BlocksToday) ? Settings.Cycle.LongBreak : Settings.Cycle.ShortBreak;
+    }
 
     public void SetEngine(Dictionary<string, object?> patch) => Act("settings", new() { ["patch"] = patch });
 

@@ -17,7 +17,7 @@ speed bump over apps and over sites in Chrome, Edge, Brave, Vivaldi, Opera and A
 thought and start a block from anywhere, away from the PC, Windows notifications as the second chance,
 Settings, open at sign-in, an installer for one person. What it does is in [windows/README.md](windows/README.md).
 
-## 0.2: the account, the app window and the widgets (windows/, now)
+## 0.2: the account, the app window and the widgets (green 29 October)
 
 Asked for after trying 0.1 (28 October): the account and its sync with the web (the Android and Mac API, sign in
 by email code, the session in Credential Manager); the app window with Today (day, week, month, year), the café
@@ -27,29 +27,27 @@ Constellation, the week as weather, the café), since Windows' Widgets board onl
 and the taskbar's jump list (Start 25, Start 50, Park a thought, Open the café). What it does is in
 [windows/README.md](windows/README.md).
 
-## 0.3: the full Blocklist, breaks on every screen, the sounds
+## 0.3: the full Blocklist, breaks on every screen, the sounds (windows/, now)
 
 The Mac's 0.2, on Windows:
 - **The full Blocklist**: lists with a color each, and for each one the speed bump, **wait it out** (30
   seconds with the cat before it opens) or **locked** (it doesn't open until the block ends, the block can't
   be stopped after its first ten seconds, and Chataltul won't quit meanwhile); watched outside blocks too, on
   weekdays between two times or always, with an allowance of minutes a day. The settings file already has the
-  Mac's shape for all of it, so nothing has to move. In the app window too, as on the Mac.
+  Mac's shape for all of it, so nothing has to move. In Settings → Blocklist (the app window links to it).
 - **The ready-made lists** (Adult, Social media, Dating, Gambling, Games, Video and music, News, Shopping), from
   the same public lists as the Mac (UT1, StevenBlack, Hagezi), downloaded over https when switched on and
   looked at again weekly, kept as the Mac's sorted 64-bit hashes (FNV-1a and its mixer, unchanged, so the same
   list gives the same file), **Always allow**, and **Add a list from a link**. A port of `Categories.swift`,
-  `ListStore.swift` and `DomainSet.swift`, with their tests and the same small web server of test lists.
+  `ListStore.swift` and `DomainSet.swift`, with the Mac's tests (a fake web in place of its small server).
 - **Breaks on every screen**: a soft full-screen break on each monitor, with the cat stretching, an idea, the
   time left, Postpone and Skip (or neither, with strict breaks); the cycles (Pomodoro, 52 / 17, Deep work,
   Flowtime); eye breaks every 20 minutes as a card in the corner. They and the check-ins wait while a call is
-  on or the front app is full screen. Full screen is one state, as Moshe learned: one flag, the windows' chrome
-  set again whenever Windows changes their presenter itself (Win+Down), every way out back to normal, and the
-  self-test going in and out each way.
+  on (an app has the microphone) or something is full screen. Each break window simply covers its screen, above
+  everything, with no presenter that Windows could change, so it has one state.
 - **The sounds**: the web's 39, two at once, each recording downloaded the first time and kept, and the meow
-  when a kitten comes home (Media Foundation; the list read from the web's `sounds.js`), and the Sound widget.
-- **The engine off the UI thread**, if the core tests' timing of its parts (0.2) says the year-of-blocks op is
-  still slow on a real account's history.
+  when a kitten comes home (Windows' media player; the list is the Mac's `sounds.json`, made from the web's
+  `sounds.js`), and the Sound widget.
 
 ## 0.4: the reports
 
@@ -67,6 +65,8 @@ The Mac's 0.2, on Windows:
 
 ## Later, for any of them
 
+The engine off the UI thread, if a real account's history makes a press slow (the core tests time its parts on a
+year of blocks: the engine's own work is about a fifth of an op; the bridge's state around it is the rest).
 Friends, the friends' table widget and napping together (the account's parts about other people, as on the
 phone and the Mac); signing the app so Windows knows the publisher, which would also let it be a packaged app
 with widgets on Windows' own Widgets board (the Microsoft Store signs for free, after an ID check); an ARM64

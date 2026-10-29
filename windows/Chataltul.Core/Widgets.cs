@@ -18,6 +18,7 @@ public static class Widgets
         new("quickstart", "Quick start", "15, 25, 50 or a stopwatch, in one click.", ["wide"]),
         new("today", "Today", "Your goal as a ring, your streak, the day's missions and a reward to collect.", ["medium"]),
         new("later", "Later", "Your list: tick things off, start a block with one, or park a thought.", ["tall"]),
+        new("sound", "Sound", "The sounds you focus to: what's playing, and the ones to pick from.", ["wide", "medium"]),
         new("pet", "Pet the cat", "Your cat on its sill. Click it and it hops; click again and it purrs. After ten at night it's asleep.", ["small", "medium", "wide"]),
         new("clock", "A cat with a day", "The time, the date and what your cat is up to.", ["medium"]),
         new("streak", "Streak", "Days in a row, with a paw for each day of the week.", ["small"]),

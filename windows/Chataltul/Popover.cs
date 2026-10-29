@@ -29,6 +29,8 @@ sealed class Popover
     string title = "", note = "";
     BlockKind kind = BlockKind.Focus;
     bool sure;
+    /// <summary>The sounds' pane is up in place of the card.</summary>
+    bool sounds;
     TextBox? titleBox;
 
     /// <summary>Which card is up (ready, focus, home, away, break), for the self-test.</summary>
@@ -76,6 +78,7 @@ sealed class Popover
     {
         if (!IsShown) return;
         Win.Hide();
+        sounds = false;
         hiddenAt = Environment.TickCount64;
     }
 
@@ -104,7 +107,8 @@ sealed class Popover
         Buttons.Clear();
         titleBox = null;
         UIElement content;
-        if (store.AwayPrompt is { } away && store.Active != null) { Pane = "away"; content = Away(away); }
+        if (sounds) { Pane = "sounds"; content = Sounds(); }
+        else if (store.AwayPrompt is { } away && store.Active != null) { Pane = "away"; content = Away(away); }
         else if (store.OnBreak is { } brk && store.Active == null) { Pane = "break"; content = Break(brk); }
         else if (store.Awaiting is { } w) { Pane = "home"; content = Home(w); }
         else if (store.Active is { } b) { Pane = "focus"; content = Focus(b); }
@@ -199,17 +203,90 @@ sealed class Popover
         var summary = Centered(V.Caption(Summary()));
         return V.Col(12, Header($"{store.BlocksToday} of {cycle.PerDay} blocks today"), today,
             store.State.View.BreakOffer is { } offer ? Offered(offer.Minutes, () => store.StartBreak(BreakLength(offer.Minutes))) : null,
-            round.View, clock, KindPicker(), field, start, summary, Footer(TodayLine, quit: true));
+            round.View, clock, KindPicker(), field, WithSound(start), summary, Footer(TodayLine, quit: true));
+    }
+
+    /// <summary>The main button, and beside it the sounds' button.</summary>
+    UIElement WithSound(Button main)
+    {
+        var g = new Grid { ColumnSpacing = 4 };
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var note = IconBtn("", () => { sounds = true; Refresh(); }, "Sounds", 36);
+        Grid.SetColumn(note, 1);
+        g.Children.Add(main);
+        g.Children.Add(note);
+        return g;
+    }
+
+    // ---------------------------------------------------------------- sounds
+
+    /// <summary>The sounds to focus to, the web's own by group: up to two at once, each with its volume. The Mac's SoundsPane.</summary>
+    UIElement Sounds()
+    {
+        var right = V.Row(4,
+            store.Settings.Mix.Count > 0 ? Btn("Off", () => store.ChangeSettings(s => s.Mix = []), "Sounds off") : null,
+            Btn("Done", () => { sounds = false; Refresh(); }, "Done", accent: true));
+        var head = V.Spread(V.Subtitle("Sounds", wrap: false), right);
+        var list = V.Col(12);
+        foreach (var g in store.Sounds.Groups)
+        {
+            var col = V.Col(2, V.Label(g.Name.ToUpperInvariant()));
+            foreach (var k in store.Sounds.In(g.Id)) col.Children.Add(SoundRow(k));
+            list.Children.Add(col);
+        }
+        var scroll = new ScrollViewer { Content = list, Height = 380, Padding = new Thickness(0, 0, 12, 0) };
+        return V.Col(10, head, V.Caption("Up to two at once. They play while a block runs; a recording downloads the first time it's picked.", wrap: true), scroll);
+    }
+
+    UIElement SoundRow(SoundKind k)
+    {
+        var owned = SoundCatalog.Owned(k, store.State.Owned);
+        var on = store.Settings.Mix.FirstOrDefault(m => m.Id == k.Id);
+        var words = V.Col(1, V.T(k.Name, 13, FontWeights.SemiBold, owned ? Palette.Text : Palette.Text3), k.About is { } about ? V.Caption(about) : null);
+        UIElement mark = on != null ? V.Icon(V.Glyph.Check, 14, Palette.Accent) : owned ? (UIElement)new Grid() : V.Caption("In the shop");
+        void Toggle() => store.ChangeSettings(s => s.Mix = SoundCatalog.Toggle(k.Id, s.Mix));
+        Buttons[k.Name] = Toggle;
+        var b = new Button
+        {
+            Content = V.Spread(words, mark), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Background = Palette.B(on != null ? Palette.Layer : Microsoft.UI.Colors.Transparent), BorderThickness = new Thickness(0),
+            Padding = new Thickness(8, 5, 8, 5), IsEnabled = owned,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, k.Name);
+        b.Click += (_, _) => Toggle();
+        var col = V.Col(2, b);
+        if (on != null)
+        {
+            var slider = new Slider { Minimum = 0.05, Maximum = 1, StepFrequency = 0.05, Value = on.Vol, Margin = new Thickness(8, 0, 8, 0) };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(slider, $"{k.Name}: how loud");
+            // the slider shows the change already: the pane isn't built again under it
+            slider.ValueChanged += (_, e) =>
+            {
+                store.ChangeSettings(s => { var i = s.Mix.FindIndex(m => m.Id == k.Id); if (i >= 0) s.Mix[i] = s.Mix[i] with { Vol = e.NewValue }; }, quiet: true);
+                app.Sound.Update(store.State);
+            };
+            col.Children.Add(slider);
+        }
+        return col;
     }
 
     string Summary()
     {
         var s = store.EngineSettings;
         var check = s.Interval == 0 ? "no check-ins" : s.Style == "ask" ? $"check in every {s.Interval} min" : $"nudges every {s.Interval} min";
-        return $"Pomodoro · {check}";
+        var mix = store.MixLabel;
+        return $"{Cycles.Title(store.Preset)} · {check}" + (mix == "Sound" ? "" : $" · {mix}");
     }
 
     int BreakLength(int engineOffer) { var b = store.BreakAfter(); return b == 0 ? engineOffer : b; }
+
+    /// <summary>The popover, open on the sounds (the Sound widget).</summary>
+    public void ShowSounds()
+    {
+        sounds = true;
+        Show();
+    }
 
     /// <summary>The start shortcut pressed again: a focus block, with the title typed so far.</summary>
     public void StartFromShortcut()
@@ -223,7 +300,7 @@ sealed class Popover
         switch (kind)
         {
             case BlockKind.Focus:
-                store.Start(title.Trim());
+                store.Start(title.Trim(), stopwatch: Cycles.Stopwatch(store.Preset));
                 title = "";
                 break;
             case BlockKind.Short: store.StartBreak(store.Settings.Cycle.ShortBreak); break;
@@ -354,6 +431,7 @@ sealed class Popover
             main.IsEnabled = store.State.CanPause && !b.Stopwatch;
         }
         var park = IconBtn(V.Glyph.Bulb, app.ShowPark, "Park a thought", 36);
+        var note = IconBtn("", () => { sounds = true; Refresh(); }, "Sounds", 36);
         var cancel = Clock.Now <= b.CancelUntil;
         Button stop;
         if (sure)
@@ -367,9 +445,12 @@ sealed class Popover
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        Grid.SetColumn(park, 1);
-        Grid.SetColumn(stop, 2);
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(note, 1);
+        Grid.SetColumn(park, 2);
+        Grid.SetColumn(stop, 3);
         g.Children.Add(main);
+        g.Children.Add(note);
         g.Children.Add(park);
         g.Children.Add(stop);
         return g;
@@ -382,7 +463,7 @@ sealed class Popover
         if (Clock.Now <= b.CancelUntil || sure)
         {
             sure = false;
-            store.Stop();
+            if (!store.Stop()) { Refresh(); app.SayLocked(); }
             return;
         }
         sure = true;

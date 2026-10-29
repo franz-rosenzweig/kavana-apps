@@ -9,7 +9,7 @@
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace>Chataltul</RootNamespace>
     <AssemblyName>Chataltul</AssemblyName>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <Product>Chataltul</Product>
     <AssemblyTitle>Chataltul</AssemblyTitle>
     <Company>franz-rosenzweig</Company>
@@ -46,5 +46,8 @@
     <Content Include="Assets\Chataltul.ico" Condition="Exists('Assets\Chataltul.ico')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\mac\Chataltul\Resources\js\*.js;..\..\mac\Chataltul\Resources\js\WEB_COMMIT" LinkBase="js" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\art\**\*.png" LinkBase="art" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- the web's sound list (made from its sounds.js by the Mac's sync) and the three meows -->
+    <Content Include="..\..\mac\Chataltul\Resources\sounds.json" Link="sounds.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\mac\Chataltul\Resources\audio\*.mp3" LinkBase="audio" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

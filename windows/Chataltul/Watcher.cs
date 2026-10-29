@@ -113,7 +113,7 @@ sealed class Watcher : IDisposable
         {
             // the last address read in this window answers now; a fresh one is asked for
             if (lastUrl.TryGetValue(app.Hwnd, out var last) && Clock.Now - last.At < 5_000)
-                Front?.Invoke(list.Hit(last.Url, browser.Name), app);
+                Front?.Invoke(list.Hit(last.Url, browser.Name, store.Categories), app);
             else Front?.Invoke(null, app);
             reader.Ask(app.Hwnd, browser);
             return;
@@ -129,7 +129,7 @@ sealed class Watcher : IDisposable
         if (lastUrl.Count > 50) lastUrl.Remove(lastUrl.MinBy(kv => kv.Value.At).Key);
         // only if that browser is still the window in front
         if (Native.GetForegroundWindow() != hwnd || Current is not { } app || app.Hwnd != hwnd) return;
-        Front?.Invoke(store.Settings.Blocklist.Hit(url, browser.Name), app);
+        Front?.Invoke(store.Settings.Blocklist.Hit(url, browser.Name, store.Categories), app);
     }
 
     /// <summary>Brings a window back to the front.</summary>

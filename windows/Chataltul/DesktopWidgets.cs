@@ -213,6 +213,7 @@ sealed class DesktopWidget
             "quickstart" => v.QuickStart(),
             "today" => v.Today(),
             "later" => v.Later(),
+            "sound" => v.Sound(),
             "pet" => v.Pet(mood),
             "clock" => v.ClockFace(),
             "streak" => v.Streak(),
@@ -600,6 +601,20 @@ sealed class WidgetViews(Store store, Controller app, DesktopWidget w, double wi
             w.Btn(V.Labelled(V.Glyph.Bulb, "Park a thought"), app.ShowPark, "Park a thought"));
     }
 
+    // ---------------------------------------------------------------- the sounds
+
+    public FrameworkElement Sound()
+    {
+        var mix = store.PlayableMix;
+        var playing = app.Sound.Playing.Count > 0;
+        var line = mix.Count == 0 ? "No sound picked" : store.MixLabel;
+        var sub = mix.Count == 0 ? "Rain, a café, purring: the web's sounds, two at once." : playing ? "Playing now" : "Plays while a block runs";
+        var buttons = V.Row(6, w.Btn(V.Labelled("", mix.Count == 0 ? "Pick sounds" : "Change"), app.Popover.ShowSounds, "Pick sounds"),
+            mix.Count > 0 ? w.Btn("Off", () => store.ChangeSettings(s => s.Mix = []), "Sounds off") : null);
+        if (height < 100) return Beside(V.Icon("", 28, playing ? Palette.Accent : Palette.Text2), Beside(V.Col(1, Heading(line, 15, 1), Sub(sub)), buttons, 8), 12);
+        return Stack(Eyebrow(playing ? "SOUND · PLAYING" : "SOUND"), Heading(line, 18, 2), Sub(sub), buttons);
+    }
+
     // ---------------------------------------------------------------- the playful ones
 
     public FrameworkElement Pet(int mood)
@@ -647,10 +662,12 @@ sealed class WidgetViews(Store store, Controller app, DesktopWidget w, double wi
             pane.Children.Add(bubble);
             if (heart != null) { heart.Margin = new Thickness(catSize * 0.6, 4, 0, 0); pane.Children.Add(heart); }
             var live = store.Active;
+            // on the night sky, light words
             var side = V.Col(4,
-                Eyebrow(live != null ? (live.Paused != null ? "PAUSED" : "FOCUSING") : "TODAY"),
-                V.ClockText(Widgets.Hours(St.Stats.Today), 24).Left(),
-                V.Caption(store.CatsHomeToday switch { 0 => "No cats home yet", 1 => "1 cat came home", var n => $"{n} cats came home" }),
+                Eyebrow(live != null ? (live.Paused != null ? "PAUSED" : "FOCUSING") : "TODAY", night ? Palette.C(0x8FE3D6) : (Color?)null),
+                V.ClockText(Widgets.Hours(St.Stats.Today), 24, night ? Palette.C(0xFFFFFF) : null).Left(),
+                V.T(store.CatsHomeToday switch { 0 => "No cats home yet", 1 => "1 cat came home", var n => $"{n} cats came home" }, 12,
+                    color: night ? Palette.C(0xCFC6BD) : Palette.Text2),
                 Mode == WMode.Ready ? w.Btn("Start 25", () => store.Start("", 25), "Start 25", accent: true) : null);
             side.Width = 120;
             Grid.SetColumn(side, 1);
@@ -687,7 +704,8 @@ sealed class WidgetViews(Store store, Controller app, DesktopWidget w, double wi
         time.FontFamily = new FontFamily("Segoe UI Variable Display, Segoe UI");
         var date = V.T(now.ToString("dddd, d MMMM"), 13, color: night ? Palette.C(0xCFC6BD) : Palette.Text2);
         w.AddTicker(_ => { var n = DateTime.Now; time.Text = n.ToString("t"); date.Text = n.ToString("dddd, d MMMM"); });
-        var line = V.T(St.CatsOn ? Widgets.CatLine(Mode, boo ? "Boo" : Cat.Name, now.Hour) : "", 12, color: night ? Palette.C(0x9D94AB) : Palette.Text2, wrap: true);
+        // Boo is the one out late; the line is about your own cat, asleep
+        var line = V.T(St.CatsOn ? Widgets.CatLine(Mode, Cat.Name, now.Hour) : "", 12, color: night ? Palette.C(0x9D94AB) : Palette.Text2, wrap: true);
         line.MaxLines = 2;
         var words = Stack(Eyebrow(boo ? "BOO IS OUT" : Widgets.Greeting(now.Hour).Replace("NIGHT OWL", "GOOD NIGHT"), night ? Palette.C(0xA99BE8) : (Color?)null), time, date, line);
         if (!St.CatsOn) return words;

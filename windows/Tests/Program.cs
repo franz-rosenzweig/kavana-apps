@@ -343,6 +343,269 @@ fs.Cookie = null;
 Check("and forgotten", !File.Exists(sessionFile));
 Equal("the settings know the web app's server", new WinSettings().Server, "https://stuffs.tiresia.xyz/kavana/");
 
+// ---------------------------------------------------------------- lists that do more than the speed bump (the Mac's tests)
+Section("what a list asks for, and when");
+var dist = new GuardList { Id = "d", Name = "Distractions", Apps = [new ListedApp("discord.exe", "Discord")], Sites = ["youtube.com"] };
+var newsList = new GuardList { Id = "n", Name = "News", Sites = ["news.ycombinator.com", "bbc.co.uk"], Mode = GuardMode.WaitItOut, When = new GuardWhen { Kind = GuardWhen.Kinds.Weekdays }, AllowanceMin = 15 };
+var chat = new GuardList { Id = "m", Name = "Messages", Apps = [new ListedApp("whatsapp.exe", "WhatsApp")], Mode = GuardMode.Locked, When = new GuardWhen { Kind = GuardWhen.Kinds.Always } };
+var multi = new Blocklist { Lists = [dist, newsList, chat] };
+Equal("a site is found in the list that has it", multi.Hit("https://www.bbc.co.uk/news", "Edge")?.List.Id, "n");
+Equal("an app is found in its list", multi.Hit("whatsapp.exe")?.List.Id, "m");
+Check("adding to a chosen list", multi.AddSite("lobste.rs", "n") && multi.Lists[1].Sites[^1] == "lobste.rs");
+DateTime At(int y, int mo, int d, int h, int mi = 0) => new(y, mo, d, h, mi, 0, DateTimeKind.Local);
+var mon10 = At(2026, 10, 26, 10);
+var mon18 = At(2026, 10, 26, 18);
+var sat10 = At(2026, 10, 31, 10);
+var blockEnd = Format.Ms(At(2026, 10, 26, 10, 25));
+Equal("a block: the list's own mode, until the block ends", (GuardPolicy.For(dist, mon10, blockEnd, 0)?.Mode, GuardPolicy.For(dist, mon10, blockEnd, 0)?.Until), ((GuardMode?)GuardMode.SpeedBump, (long?)blockEnd));
+Equal("no block, 'during blocks' only: nothing", GuardPolicy.For(dist, mon10, null, 0), null);
+Equal("a weekday inside 9 to 5, with an allowance left: free", GuardPolicy.For(newsList, mon10, null, 6 * MIN), null);
+var usedUp = GuardPolicy.For(newsList, mon10, null, 15 * MIN);
+Equal("allowance used up: it asks for the wait, says why, and until 5 PM", (usedUp?.Mode, usedUp?.Reason, usedUp?.Until),
+    ((GuardMode?)GuardMode.WaitItOut, (Enforcement.Reasons?)Enforcement.Reasons.AllowanceUsed, (long?)Format.Ms(At(2026, 10, 26, 17))));
+Equal("after 5 PM: nothing", GuardPolicy.For(newsList, mon18, null, 99 * MIN), null);
+Equal("on Saturday: nothing", GuardPolicy.For(newsList, sat10, null, 99 * MIN), null);
+Equal("always: locked outside a block too", GuardPolicy.For(chat, sat10, null, 0)?.Mode, GuardMode.Locked);
+Same("the allowance counts only outside blocks, inside the window",
+    new[] { GuardPolicy.CountsUsage(newsList, mon10, null, 0), GuardPolicy.CountsUsage(newsList, mon10, blockEnd, 0), GuardPolicy.CountsUsage(newsList, mon18, null, 0), GuardPolicy.CountsUsage(newsList, mon10, null, 15 * MIN) },
+    [true, false, false, false]);
+Check("a locked list locks the block; no locked list, no lock", GuardPolicy.LocksTheBlock(multi) && !GuardPolicy.LocksTheBlock(Blocklist.Starter()));
+
+Section("a day's usage");
+var usage = new DayUsage { Day = DayUsage.Key(At(2026, 10, 26, 0)) };
+usage.Add("n", 6 * MIN, At(2026, 10, 26, 11));
+Equal("it adds up", usage.Used("n", At(2026, 10, 26, 12)), 6 * MIN);
+Equal("and starts again on a new day", usage.Used("n", At(2026, 10, 27, 9)), 0L);
+
+Section("wait it out");
+var mHit = new GuardHit(chat, new AppTarget(new ListedApp("whatsapp.exe", "WhatsApp")));
+var waitEnf = new Enforcement(GuardMode.WaitItOut, Enforcement.Reasons.Block, "News", blockEnd);
+var other = new OtherGuard();
+Equal("nothing listed: nothing", other.Front(null, null, "notepad.exe", "miso", "Miso", t).Count, 0);
+var oa = other.Front(mHit, waitEnf, "whatsapp.exe", "miso", "Miso", t);
+if (oa.FirstOrDefault() is not OtherAction.Show { Card: var wcard }) { Console.WriteLine("FAIL the wait card didn't come"); return 1; }
+Equal("a listed app brings the wait, 30 seconds long", (wcard.Kind, wcard.WaitMs), (OtherKind.WaitItOut, 30_000L));
+Equal("it counts down", wcard.Line(t + 7_000), "WhatsApp opens in 23 seconds. Most urges pass by then.");
+Equal("not over at 29 seconds", other.Tick(t + 29_000).Count, 0);
+Same("over at 30: the card goes", other.Tick(t + 30_000), [new OtherAction.Hide()]);
+Equal("and the visit may stay", other.Front(mHit, waitEnf, "whatsapp.exe", "miso", "Miso", t + 31_000).Count, 0);
+other.Front(null, null, "notepad.exe", "miso", "Miso", t + 40_000);
+Equal("leaving for 2 seconds and coming back is the same visit", other.Front(mHit, waitEnf, "whatsapp.exe", "miso", "Miso", t + 42_000).Count, 0);
+other.Front(null, null, "notepad.exe", "miso", "Miso", t + 50_000);
+Check("leaving for 10 seconds, it waits again, every time", other.Front(mHit, waitEnf, "whatsapp.exe", "miso", "Miso", t + 60_000) is [OtherAction.Show]);
+Same("leaving during the wait takes the card away", other.Front(null, null, "notepad.exe", "miso", "Miso", t + 65_000), [new OtherAction.Hide()]);
+Equal("Back to work with no card does nothing", other.BackToWork().Count, 0);
+other = new OtherGuard();
+other.Front(null, null, "notepad.exe", "miso", "Miso", t);
+other.Front(mHit, waitEnf, "whatsapp.exe", "miso", "Miso", t + 1000);
+Same("back to work goes to where they were", other.BackToWork(), [new OtherAction.Hide(), new OtherAction.Activate("notepad.exe")]);
+Equal("and the same app in front doesn't bring it straight back", other.Front(mHit, waitEnf, "whatsapp.exe", "miso", "Miso", t + 2000).Count, 0);
+
+Section("locked, and used up");
+other = new OtherGuard();
+oa = other.Front(mHit, new Enforcement(GuardMode.Locked, Enforcement.Reasons.Block, "Messages", blockEnd), "whatsapp.exe", "miso", "Miso", t);
+if (oa.FirstOrDefault() is OtherAction.Show { Card: var lcard })
+{
+    Equal("a locked app brings the lock", lcard.Kind, OtherKind.Locked);
+    Equal("it says until when", lcard.Title, $"Locked until {Format.ClockTime(blockEnd)}.");
+}
+else Check("the lock card", false);
+Equal("and it never opens by itself", other.Tick(t + 10 * MIN).Count, 0);
+other = new OtherGuard();
+oa = other.Front(new GuardHit(newsList, new SiteTarget("bbc.co.uk", "Edge")), new Enforcement(GuardMode.WaitItOut, Enforcement.Reasons.AllowanceUsed, "News", Format.Ms(At(2026, 10, 26, 17))), "msedge.exe", "miso", "Miso", t);
+Check("used up says so", oa.FirstOrDefault() is OtherAction.Show { Card.Kind: OtherKind.UsedUp });
+Same("a speed bump isn't this guard's", other.Front(new GuardHit(dist, new SiteTarget("youtube.com", "Chrome")), new Enforcement(GuardMode.SpeedBump, Enforcement.Reasons.Block, "Distractions", blockEnd), "chrome.exe", "miso", "Miso", t + 1000), [new OtherAction.Hide()]);
+
+Section("sounds");
+var sounds = SoundCatalog.Load(Path.Join(repo, "mac", "Chataltul", "Resources", "sounds.json"));
+Check("there are sounds", sounds.Kinds.Count > 30, $"{sounds.Kinds.Count}");
+Equal("seven groups", sounds.Groups.Count, 7);
+foreach (var g in sounds.Groups) Check($"a free sound in {g.Name}", sounds.In(g.Id).Any(k => k.Free));
+host.Load(null);
+var prices = host.Run("tick", now: t).State.Prices;
+foreach (var k in sounds.Kinds.Where(s => !s.Free)) Check($"{k.Name} has a price in the shop", prices.GetValueOrDefault($"sound-{k.Id}") > 0);
+foreach (var k in sounds.Kinds.Where(s => s.Id is not "brown" and not "white")) Check($"{k.Id} has a recording", k.File != null);
+Equal("three meows", sounds.Meows.Count, 3);
+Same("a third sound takes the oldest one's place", SoundCatalog.Toggle("fire", [new MixEntry("rain"), new MixEntry("purr")]).Select(m => m.Id), ["purr", "fire"]);
+Same("playing needs owning", sounds.Playable([new MixEntry("rain"), new MixEntry("fire")], []).Select(m => m.Id), ["rain"]);
+Same("a bought one plays", sounds.Playable([new MixEntry("fire")], ["sound-fire"]).Select(m => m.Id), ["fire"]);
+
+Section("breaks");
+Equal("Pomodoro is 25 and 5", Cycles.Minutes(CyclePreset.Pomodoro), (25, 5));
+Equal("52 / 17", Cycles.Minutes(CyclePreset.FiftyTwo), (52, 17));
+Equal("Deep work is 90 and 20", Cycles.Minutes(CyclePreset.Deep), (90, 20));
+Check("Flowtime is a stopwatch", Cycles.Stopwatch(CyclePreset.Flow) && Cycles.Minutes(CyclePreset.Flow) == null);
+Same("a flow break is a fifth of the stretch, 5 to 25", new[] { Cycles.FlowBreak(20), Cycles.FlowBreak(70), Cycles.FlowBreak(180) }, [5, 14, 25]);
+var bs = new BreakSettings();
+Same("the ideas are the mockup's", bs.Ideas.Take(3), ["Stand up and stretch", "Get some water", "Look out of a window"]);
+Equal("an idea and others to turn to", (bs.IdeaFor(0).Main, bs.IdeaFor(0).Others[0]), ("Stand up and stretch", "Get some water"));
+Equal("ideas wrap round", bs.IdeaFor(6).Main, "Stand up and stretch");
+Equal("no ideas still says something", new BreakSettings { Ideas = [] }.IdeaFor(0).Main, "Take a breath.");
+Check("the break settings survive the settings file", JsonSerializer.Deserialize<WinSettings>(new WinSettings { Breaks = { Strict = true, Start = BreakStart.Auto } }.ToJson(), J.Files)?.Breaks is { Strict: true, Start: BreakStart.Auto });
+
+Section("eye breaks");
+var eye = new EyeBreakTimer(20, 20);
+Equal("none before a block", eye.Check(t, true, false), false);
+eye.BlockStarted(t);
+Equal("none in the first 19 minutes", eye.Check(t + 19 * MIN, true, false), false);
+Equal("it waits while a call is on", eye.Check(t + 20 * MIN, true, true), false);
+Equal("and comes when the call is over", eye.Check(t + 22 * MIN, true, false), true);
+Equal("once", eye.Check(t + 22 * MIN + 1000, true, false), false);
+eye.Finish(t + 22 * MIN + 20_000);
+Equal("the next is a full 20 minutes later", eye.NextAt, t + 22 * MIN + 20_000 + 20 * MIN);
+Equal("a pause is no time on the block", eye.Check(t + 50 * MIN, false, false), false);
+Equal("away for 30 seconds counts as one", eye.AwayFor(30_000, t + 60 * MIN), true);
+Equal("away for 5 seconds doesn't", eye.AwayFor(5_000, t + 61 * MIN), false);
+Equal("so the next one moved", eye.NextAt, t + 80 * MIN);
+eye.BlockEnded();
+Check("no block, no eye breaks", eye.NextAt == null && !eye.Check(t + 200 * MIN, true, false));
+
+// ---------------------------------------------------------------- the ready-made lists (the Mac's tests, check for check)
+Section("lists: reading what the web publishes");
+var hostsText = string.Join("\n",
+    "# Title: a hosts file", "127.0.0.1 localhost", "127.0.0.1 localhost.localdomain", "::1 ip6-localhost", "0.0.0.0 0.0.0.0",
+    "0.0.0.0 Tracker.Example.com   # a comment", "0.0.0.0 www.cats.example", "127.0.0.1\tdog.example   alias.example", "0.0.0.0 *.wild.example",
+    "255.255.255.255 broadcasthost", "fe80::1%lo0 localhost", "10.0.0.1 10.0.0.2");
+Same("a hosts file gives names only, lowercase, without www", ListParser.Domains(hostsText), ["tracker.example.com", "cats.example", "dog.example"]);
+var plainText = "cats.example\r\nDogs.Example.org\n\n  spaced.example  \n# no\nlocalhost\nexample\n1.2.3.4\nhttp://x.example/path\nunder_score.example\nlast.example";
+Same("a plain list: one name a line, however it ends", ListParser.Domains(plainText), ["cats.example", "dogs.example.org", "spaced.example", "under_score.example", "last.example"]);
+var abpText = string.Join("\n",
+    "[Adblock Plus 2.0]", "! Title: x", "||ads.example^", "||Social.example^$important", "||all.example^$all", "||third.example^$third-party",
+    "||path.example/ads^", "||wild*.example^", "@@||ok.example^", "example.org##.banner", "example.net#@#.banner", "||www.news.example^", "||port.example:8080^");
+Same("AdGuard rules: whole domains only", ListParser.Domains(abpText), ["ads.example", "social.example", "all.example", "news.example"]);
+var webPage = ListParser.Parse("  <!DOCTYPE html><html><body>Not found</body></html>"u8);
+Check("a web page isn't a list", webPage.WebPage && webPage.Hashes.Length == 0);
+Equal("a byte-order mark is ignored", ListParser.Parse(new byte[] { 0xEF, 0xBB, 0xBF }.Concat("cats.example\n"u8.ToArray()).ToArray()).Hashes.Length, 1);
+Equal("an empty answer has no names", ListParser.Parse([]).Hashes.Length, 0);
+Check("the hashes are those of the names", ListParser.Parse(System.Text.Encoding.UTF8.GetBytes(hostsText)).Hashes.ToHashSet()
+    .SetEquals(new[] { "tracker.example.com", "cats.example", "dog.example" }.Select(DomainSet.Hash)));
+
+Section("lists: a set of domains");
+Equal("a name hashes the same in any case", DomainSet.Hash("TikTok.COM"), DomainSet.Hash("tiktok.com"));
+Equal("and the hash never changes (the copies on disk depend on it, and the Mac's are the same)", DomainSet.Hash("example.com"), 10777630962659677593UL);
+var ds = DomainSet.Of(["tiktok.com", "bad.example.org", "tiktok.com", "ONE.example"]);
+Equal("repeats are dropped", ds.Count, 3);
+Equal("a listed domain is found", ds.Contains("tiktok.com"), true);
+Equal("a subdomain finds it", ds.FirstSuffix("m.l.tiktok.com"), "tiktok.com");
+Equal("the host itself", ds.FirstSuffix("tiktok.com"), "tiktok.com");
+Equal("a name that only ends the same isn't it", ds.FirstSuffix("nottiktok.com"), null);
+Equal("a name below it isn't it, either way round", ds.FirstSuffix("tiktok.com.evil.net"), null);
+Equal("a parent of a listed name isn't listed", ds.FirstSuffix("example.org"), null);
+Equal("a listed deeper name", ds.FirstSuffix("x.bad.example.org"), "bad.example.org");
+Equal("the broadest listed name is the one given", DomainSet.Of(["a.tiktok.com", "tiktok.com"]).FirstSuffix("b.a.tiktok.com"), "tiktok.com");
+Equal("one name alone never matches", DomainSet.Of(["com"]).FirstSuffix("com"), null);
+Equal("nor does a host with no dots", ds.FirstSuffix("localhost"), null);
+Equal("an empty host doesn't crash", ds.FirstSuffix(""), null);
+Equal("it survives the disk", DomainSet.FromSerialized(ds.Serialized()), ds);
+Equal("a cut-short copy is refused", DomainSet.FromSerialized(ds.Serialized()[..^3]), null);
+Equal("so is something else", DomainSet.FromSerialized("hello world, not a list"u8), null);
+var swapped = ds.Serialized();
+swapped[16..24].CopyTo(swapped, 8);
+Equal("and one that isn't in order", DomainSet.FromSerialized(swapped), null);
+Equal("an empty set round-trips", DomainSet.FromSerialized(new DomainSet().Serialized()), new DomainSet());
+
+Section("lists: the catalog");
+var catalog = Catalog.All;
+Equal("category ids are their own", catalog.Select(c => c.Id).Distinct().Count(), catalog.Count);
+var allSources = catalog.SelectMany(c => c.Sources).ToList();
+Equal("source ids are their own", allSources.Select(s => s.Id).Distinct().Count(), allSources.Count);
+Check("every category has a list behind it", catalog.All(c => c.Sources.Count > 0));
+Check("every address is https", allSources.All(s => s.Url.StartsWith("https://")));
+Check("every list names its licence and who made it", allSources.All(s => s.License.Length > 0 && s.Credit.Length > 0));
+Check("an archive names the file in it", allSources.All(s => s.Member == null || s.Url.EndsWith(".tar.gz")));
+Check("the kinds people asked for are there", new[] { "adult", "social", "dating", "gambling" }.All(id => Catalog.Category(id) != null));
+var mine = Catalog.Custom(" Work stuff ", " https://lists.example.net/path/hosts.txt ");
+Same("a list added by its link", new[] { mine?.Name, mine?.Sources[0].Url, mine?.Custom == true ? "custom" : "no" }, ["Work stuff", "https://lists.example.net/path/hosts.txt", "custom"]);
+Equal("with no name it is called by its host", Catalog.Custom("", "https://lists.example.net/a.txt")?.Name, "lists.example.net");
+Check("http isn't taken, nor a file, a word or a password", Catalog.Custom("x", "http://lists.example.net/a.txt") == null && Catalog.Custom("x", "file:///etc/hosts") == null
+    && Catalog.Custom("x", "lists") == null && Catalog.Custom("x", "https://me:pw@lists.example.net/a.txt") == null);
+Equal("a custom list is found among the person's own", Catalog.Category(mine!.Id, [mine])?.Name, "Work stuff");
+
+Section("lists: on a list");
+var fakeMatcher = new FakeMatcher(new() { ["social"] = ["tiktok.com", "linkedin.com", "reddit.com"], ["dating"] = ["match.example"] });
+var soc = new GuardList { Id = "s", Name = "Social", Categories = ["social"], Allow = ["linkedin.com"] };
+Equal("without the lists, a category finds nothing", soc.Site("https://m.tiktok.com/"), null);
+Equal("with them, a subdomain is found", soc.Site("https://m.tiktok.com/", fakeMatcher), "tiktok.com");
+Equal("and shown by the listed name", new Blocklist { Lists = [soc] }.Hit("https://www.reddit.com/r/cats", "Edge", fakeMatcher)?.Target, new SiteTarget("reddit.com", "Edge"));
+Equal("an allowed site isn't matched", soc.Site("https://www.linkedin.com/in/me", fakeMatcher), null);
+Equal("nor its subdomains", soc.Site("https://jobs.linkedin.com/", fakeMatcher), null);
+Equal("only the categories switched on count", soc.Site("https://match.example/", fakeMatcher), null);
+Equal("a typed site still counts", new GuardList { Sites = ["linkedin.com"], Categories = ["social"], Allow = ["linkedin.com"] }.Site("https://linkedin.com/", fakeMatcher), "linkedin.com");
+var two = new Blocklist { Lists = [soc, new GuardList { Id = "t", Name = "Typed", Sites = ["tiktok.com"] }] };
+Equal("a site typed into one list isn't taken by another list's category", two.Hit("https://tiktok.com/", "Chrome", fakeMatcher)?.List.Id, "t");
+Equal("a ready-made list brings the card for a site that is only in it", two.Hit("https://reddit.com/", "Chrome", fakeMatcher)?.List.Id, "s");
+Equal("and nothing for one that is in none", two.Hit("https://example.org/", "Chrome", fakeMatcher), null);
+Check("a list with only categories isn't empty, and watches sites", !new Blocklist { Lists = [soc] }.IsEmpty && new Blocklist { Lists = [soc] }.WatchesSites);
+Check("a list with nothing isn't watching", new Blocklist { Lists = [new GuardList()] }.IsEmpty && !new Blocklist { Lists = [new GuardList()] }.WatchesSites);
+Same("the lists switched on are counted once each", new Blocklist { Lists = [soc, new GuardList { Categories = ["social", "dating"] }] }.CategoryIds, ["social", "dating"]);
+
+Section("lists: downloading, with a fake web");
+var fakeWeb = new FakeFetcher();
+var clockMs = 1_800_000_000_000L;
+var listDir = Path.Join(Path.GetTempPath(), $"chataltul-lists-{Guid.NewGuid():N}");
+var mineCat = Catalog.Custom("Mine", "https://lists.example.net/mine.txt")!;
+const string url1 = "https://lists.example.net/mine.txt";
+static string Names(int n) => string.Join("\n", Enumerable.Range(1, n).Select(i => $"site{i}.example")) + "\n";
+static byte[] Text(string s) => System.Text.Encoding.UTF8.GetBytes(s);
+var cs = new CategoryStore(listDir, fakeWeb, clock: () => clockMs) { Custom = [mineCat] };
+var changes = 0;
+cs.Changed += () => changes++;
+Equal("before any download, it is not here", cs.State(mineCat.Id), new CategoryState.None(0));
+Equal("an unknown list is not here either", cs.State("nope"), new CategoryState.None(0));
+Equal("and nothing matches", cs.Match("site1.example", [mineCat.Id]), null);
+fakeWeb.Answers[url1] = new Fetched.Body(Text(Names(6)), "\"v1\"", "Mon, 01 Jun 2026 00:00:00 GMT");
+await cs.Refresh([mineCat.Id]);
+Equal("it is here with its six sites", cs.State(mineCat.Id), new CategoryState.Ready(6, clockMs));
+Equal("a listed site is found", cs.Match("site3.example", [mineCat.Id]), "site3.example");
+Equal("a subdomain too", cs.Match("a.b.site3.example", [mineCat.Id]), "site3.example");
+Equal("another isn't", cs.Match("other.example", [mineCat.Id]), null);
+Equal("only for the categories asked", cs.Match("site3.example", ["dating"]), null);
+Check("the app was told", changes >= 2, $"{changes}");
+Equal("one request went out, with no etag to offer", (fakeWeb.Calls.Count, fakeWeb.Calls[0].Etag), (1, (string?)null));
+await cs.Refresh([mineCat.Id]);
+Equal("asking again right away doesn't go to the web", fakeWeb.Calls.Count, 1);
+var cs2 = new CategoryStore(listDir, fakeWeb, clock: () => clockMs) { Custom = [mineCat] };
+Equal("it is still here after a restart", cs2.State(mineCat.Id), new CategoryState.Ready(6, clockMs));
+Equal("and still matches", cs2.Match("site5.example", [mineCat.Id]), "site5.example");
+var onDisk = File.ReadAllBytes(Path.Join(listDir, mineCat.Sources[0].Id + ".chd"));
+Check("the copy on disk has no names in it", onDisk.Length > 0 && onDisk.AsSpan().IndexOf("site1"u8) < 0);
+clockMs += 8 * 86_400_000L;
+fakeWeb.Answers[url1] = new Fetched.NotModified();
+await cs.Refresh([mineCat.Id]);
+Equal("after a week it asks again, with the etag and the date it was given", (fakeWeb.Calls.Count, fakeWeb.Calls[1].Etag, fakeWeb.Calls[1].Modified), (2, "\"v1\"", "Mon, 01 Jun 2026 00:00:00 GMT"));
+Equal("not modified: the copy stays as it was", cs.State(mineCat.Id), new CategoryState.Ready(6, clockMs - 8 * 86_400_000L));
+Equal("and is checked today", cs.StatusOf(mineCat.Sources[0].Id)?.Checked, clockMs);
+fakeWeb.Answers[url1] = new Fetched.Body(Text(Names(7)), "\"v2\"", null);
+await cs.Refresh([mineCat.Id], force: true);
+Equal("forced, it takes the new one", cs.State(mineCat.Id), new CategoryState.Ready(7, clockMs));
+fakeWeb.Answers[url1] = new Fetched.Failed("Server said 500");
+clockMs += 1000;
+await cs.Refresh([mineCat.Id], force: true);
+Equal("a failure says so and keeps what it had", cs.State(mineCat.Id), new CategoryState.Failed("Server said 500", 7));
+Equal("which still matches", cs.Match("site7.example", [mineCat.Id]), "site7.example");
+var callsBefore = fakeWeb.Calls.Count;
+await cs.Refresh([mineCat.Id]);
+Equal("a failed list isn't tried again at once", fakeWeb.Calls.Count, callsBefore);
+clockMs += 3_600_000;
+fakeWeb.Answers[url1] = new Fetched.Body(Text("<html><body>Sorry</body></html>"), null, null);
+await cs.Refresh([mineCat.Id]);
+Check("after an hour it tries again", fakeWeb.Calls.Count == callsBefore + 1);
+Equal("a web page in place of the list is refused", cs.State(mineCat.Id), new CategoryState.Failed("Not a list of sites", 7));
+var ut1 = Catalog.Category("dating")!.Sources[0];
+using (var tgz = new MemoryStream())
+{
+    using (var gz = new System.IO.Compression.GZipStream(tgz, System.IO.Compression.CompressionLevel.Fastest, leaveOpen: true))
+    using (var tw = new System.Formats.Tar.TarWriter(gz))
+    {
+        var e = new System.Formats.Tar.PaxTarEntry(System.Formats.Tar.TarEntryType.RegularFile, "dating/domains") { DataStream = new MemoryStream(Text(Names(1200))) };
+        tw.WriteEntry(e);
+    }
+    var built = CategoryStore.Build(ut1, tgz.ToArray());
+    Equal("a UT1 archive gives its list, read in memory", built.Set?.Count, 1200);
+}
+Equal("fewer sites than the list's floor are refused", CategoryStore.Build(ut1 with { Member = null }, Text(Names(10))).Why, "Too few sites");
+try { Directory.Delete(listDir, true); } catch (Exception) { }
+
 // ---------------------------------------------------------------- the engine change we ask for, on a copy
 Section("E.takeOff, with mac/docs/engine-takeoff.patch applied to a copy of the engine");
 var patched = Path.Join(Path.GetTempPath(), $"chataltul-takeoff-{Guid.NewGuid():N}");
@@ -589,3 +852,28 @@ Equal("a painting's path, as the app carries it", Art.File(Art.Portrait("miso"))
 Console.WriteLine($"{passed} passed, {failed} failed in {(DateTime.Now - started).TotalSeconds:0.0} s");
 Console.WriteLine(failed == 0 ? "SELFTEST passed" : "SELFTEST failed");
 return failed == 0 ? 0 : 1;
+
+/// <summary>Categories with their domains in plain words, for the rules of a list.</summary>
+sealed class FakeMatcher(Dictionary<string, string[]> sets) : IDomainMatcher
+{
+    public string? Match(string host, IEnumerable<string> categories)
+    {
+        foreach (var c in categories)
+            foreach (var d in sets.GetValueOrDefault(c) ?? [])
+                if (host == d || host.EndsWith("." + d)) return d;
+        return null;
+    }
+}
+
+/// <summary>The web, as the tests want it to answer: each address's answer, and every request kept.</summary>
+sealed class FakeFetcher : IListFetcher
+{
+    public readonly Dictionary<string, Fetched> Answers = [];
+    public readonly List<(string Url, string? Etag, string? Modified)> Calls = [];
+
+    public Task<Fetched> Fetch(Uri url, string? etag, string? lastModified, long maxBytes)
+    {
+        Calls.Add((url.ToString(), etag, lastModified));
+        return Task.FromResult(Answers.GetValueOrDefault(url.ToString()) ?? new Fetched.Failed("Couldn't reach it"));
+    }
+}

@@ -28,9 +28,9 @@ if ($Browser) { $arguments += '--browser' }
 if ($Sync) { $arguments += @('--sync', $Sync, '--outbox', "`"$Outbox`"") }
 $process = Start-Process -FilePath (Resolve-Path $App) -ArgumentList $arguments -PassThru
 $null = $process.Handle          # or the exit code is lost once it ends
-if (-not $process.WaitForExit(420000)) {
+if (-not $process.WaitForExit(560000)) {
     $process.Kill()
-    Write-Host "the self-test didn't finish in seven minutes"
+    Write-Host "the self-test didn't finish in nine minutes"
     $code = 2
 } else {
     $code = $process.ExitCode
