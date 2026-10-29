@@ -18,8 +18,8 @@ android {
         applicationId = "xyz.tiresia.kavana"
         minSdk = 31
         targetSdk = 36
-        versionCode = 14
-        versionName = "0.4.4"
+        versionCode = 15
+        versionName = "0.5.0"
         resValue("string", "app_name", "Chataltul")
         // Where the account and its sync live: the same server as the web app.
         buildConfigField("String", "SERVER", "\"https://stuffs.tiresia.xyz/kavana/\"")
@@ -84,5 +84,7 @@ dependencies {
     implementation("androidx.concurrent:concurrent-futures-ktx:1.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    // The home-screen widgets (stable; 1.3 is still alpha)
+    implementation("androidx.glance:glance-appwidget:1.2.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

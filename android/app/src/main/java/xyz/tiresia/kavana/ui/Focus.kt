@@ -154,6 +154,9 @@ fun RunScreen(s: UiState, a: Block, now: Long, dive: Float, onSound: () -> Unit)
         else stopping = true
     }
 
+    // Stop, asked for by a widget
+    LaunchedEffect(xyz.tiresia.kavana.Requests.stop) { if (xyz.tiresia.kavana.Requests.stop) { xyz.tiresia.kavana.Requests.stop = false; stop() } }
+
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(top = 52.dp, bottom = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,

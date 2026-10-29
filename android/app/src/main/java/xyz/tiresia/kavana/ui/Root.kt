@@ -113,6 +113,11 @@ fun Root(act: MainActivity) {
     val playable = SoundMix.playable(s)
     val wantSound = playable.isNotEmpty() && ((s.view.active != null && s.view.active.paused == null) || breathing)
     LaunchedEffect(wantSound, playable) { if (wantSound) Sound.play(ctx, playable) else Sound.stop() }
+    LaunchedEffect(xyz.tiresia.kavana.Requests.tab) {
+        when (xyz.tiresia.kavana.Requests.tab) { "cafe" -> { tab = Tab.Cafe; breathing = false } }
+        xyz.tiresia.kavana.Requests.tab = null
+    }
+    LaunchedEffect(xyz.tiresia.kavana.Requests.sounds) { if (xyz.tiresia.kavana.Requests.sounds) { xyz.tiresia.kavana.Requests.sounds = false; sounds = true } }
     val form = remember { StartForm() }
     val snack = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { repo.toasts.collect { snack.showSnackbar(it) } }

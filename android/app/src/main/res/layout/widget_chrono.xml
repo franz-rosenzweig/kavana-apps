@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The live countdown on a widget: a Chronometer counts by itself, so nothing has to update every second.
+     The widget sets its time, direction, colour and size (WindowWidget). -->
+<Chronometer xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/chrono"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:fontFamily="sans-serif-black"
+    android:includeFontPadding="false"
+    android:singleLine="true"
+    android:textColor="#2B211A"
+    android:textSize="34sp" />

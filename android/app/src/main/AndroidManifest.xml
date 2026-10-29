@@ -47,6 +47,97 @@
                 android:value="Focus timer: shows the countdown of the running focus block and delivers its check-ins on time." />
         </service>
 
+        <!-- Widgets -->
+        <receiver android:name=".widget.WindowWidgetReceiver" android:exported="true" android:label="@string/widget_window_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/window_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.QuickStartWidgetReceiver" android:exported="true" android:label="@string/widget_quick_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/quickstart_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.TodayWidgetReceiver" android:exported="true" android:label="@string/widget_today_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/today_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.LaterWidgetReceiver" android:exported="true" android:label="@string/widget_later_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/later_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.SoundWidgetReceiver" android:exported="true" android:label="@string/widget_sound_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/sound_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.StreakWidgetReceiver" android:exported="true" android:label="@string/widget_streak_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/streak_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.GoalWidgetReceiver" android:exported="true" android:label="@string/widget_goal_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/goal_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.MissionsWidgetReceiver" android:exported="true" android:label="@string/widget_missions_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/missions_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.PetCatWidgetReceiver" android:exported="true" android:label="@string/widget_pet_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/pet_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.ClockWidgetReceiver" android:exported="true" android:label="@string/widget_clock_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/clock_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.ConstellationWidgetReceiver" android:exported="true" android:label="@string/widget_constellation_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/constellation_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.WeatherWidgetReceiver" android:exported="true" android:label="@string/widget_weather_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/weather_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.CafeWidgetReceiver" android:exported="true" android:label="@string/widget_cafe_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/cafe_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.FriendsWidgetReceiver" android:exported="true" android:label="@string/widget_friends_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/friends_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.DayReceiver" android:exported="false" />
+        <!-- the café as a live wallpaper -->
+        <service android:name=".wallpaper.CafeWallpaperService" android:exported="true" android:label="@string/wallpaper_name" android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter><action android:name="android.service.wallpaper.WallpaperService" /></intent-filter>
+            <meta-data android:name="android.service.wallpaper" android:resource="@xml/wallpaper" />
+        </service>
+        <!-- Quick Settings tiles -->
+        <service android:name=".widget.FocusTileService" android:exported="true" android:label="@string/tile_focus" android:icon="@drawable/ic_notify"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+            <meta-data android:name="android.service.quicksettings.ACTIVE_TILE" android:value="true" />
+        </service>
+        <service android:name=".widget.ParkTileService" android:exported="true" android:label="@string/tile_park" android:icon="@drawable/ic_tile_park"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <service android:name=".widget.SoundTileService" android:exported="true" android:label="@string/tile_sound" android:icon="@drawable/ic_tile_sound"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+            <meta-data android:name="android.service.quicksettings.ACTIVE_TILE" android:value="true" />
+        </service>
+        <!-- The launcher's long-press shortcuts land here, do their one thing and go (no screen of its own) -->
+        <activity android:name=".widget.ShortcutActivity" android:exported="false" android:theme="@style/Theme.Kavana.Transparent"
+            android:taskAffinity="" android:excludeFromRecents="true" android:noHistory="true" />
+        <!-- "Park a thought" from a widget: a small dialog over whatever is on the screen, not the whole app -->
+        <activity
+            android:name=".widget.ParkActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Kavana.Transparent"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize" />
+
         <receiver android:name=".PingReceiver" android:exported="false" />
         <receiver android:name=".ActionReceiver" android:exported="false" />
         <receiver android:name=".DailyReceiver" android:exported="false" />

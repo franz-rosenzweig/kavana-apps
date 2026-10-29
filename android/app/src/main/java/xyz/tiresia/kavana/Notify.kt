@@ -6,7 +6,10 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.drawable.Icon
+import android.util.Log
 import android.os.Build
 import android.os.PowerManager
 import android.os.VibrationEffect
@@ -90,13 +93,21 @@ object Notify {
         post(ctx, if (p.kind == "break-over") ID_BREAK else ID_PING, b.build())
     }
 
-    /** The countdown while a block (or a break) runs: the FocusService's own notification. */
+    /**
+     * The countdown while a block (or a break) runs: the FocusService's own notification. What you called the
+     * block is only in the full version (the shade, once you've unlocked); the lock screen gets the public one,
+     * with the cat and the clock but not the title.
+     */
     fun ongoing(ctx: Context, st: UiState?): Notification {
+        val pub = ongoingBuilder(ctx, st, hideTitle = true).build()
+        return ongoingBuilder(ctx, st, hideTitle = false).setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(pub).build()
+    }
+
+    private fun ongoingBuilder(ctx: Context, st: UiState?, hideTitle: Boolean): Notification.Builder {
         val b = Notification.Builder(ctx, CH_FOCUS)
             .setSmallIcon(R.drawable.ic_notify).setColor(TINT)
             .setOngoing(true).setOnlyAlertOnce(true)
             .setContentIntent(open(ctx)).setCategory(Notification.CATEGORY_PROGRESS)
-            .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE) // Android holds it back ~10 s otherwise
         val now = System.currentTimeMillis()
         val a = st?.view?.active
@@ -104,7 +115,7 @@ object Notify {
         when {
             a != null -> {
                 val c = st.cat(a.cat)
-                b.setContentTitle(a.title)
+                b.setContentTitle(if (hideTitle) (if (a.paused != null) "Paused" else "Focusing") else a.title)
                 // Spent: time on the block so far, pauses left out (web/app.js renderRun).
                 val spent = a.total - (a.end - (a.paused ?: now))
                 b.setContentText(when {
@@ -125,24 +136,55 @@ object Notify {
                     a.over != null -> b.setWhen(now - (spent - a.minutes * 60_000L).coerceAtLeast(0)).setShowWhen(true).setUsesChronometer(true).setSubText("Extra time")
                     else -> b.setWhen(a.end).setShowWhen(true).setUsesChronometer(true).setChronometerCountDown(true)
                 }
+                // Pause (or Resume) and Park a thought, right on the notification
+                if (a.paused != null) b.addAction(action(ctx, 30, "Resume", ActionReceiver.RESUME))
+                else if (st.canPause && a.over == null) b.addAction(action(ctx, 31, "Pause", ActionReceiver.PAUSE))
+                b.addAction(Notification.Action.Builder(null, "Park a thought", PendingIntent.getActivity(ctx, 32, Intent(ctx, xyz.tiresia.kavana.widget.ParkActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)).build())
                 val done = when { a.stopwatch -> (spent % 3_600_000L) / 3_600_000f; a.over != null -> 1f; else -> 1f - (a.end - (a.paused ?: now)).toFloat() / a.total.coerceAtLeast(1) }
-                if (Build.VERSION.SDK_INT >= 36) promote(b, done, if (a.paused != null) "Paused" else if (a.over != null) "Extra" else null)
+                if (Build.VERSION.SDK_INT >= 36) promote(ctx, b, st, a, done, if (a.paused != null) "Paused" else if (a.over != null) "Extra" else null)
             }
             brk != null -> {
                 b.setContentTitle("Break").setContentText("Stand up, stretch, get some water.")
                 b.setWhen(brk.end).setShowWhen(true).setUsesChronometer(true).setChronometerCountDown(true)
                 val total = (brk.end - brk.start).coerceAtLeast(1)
-                if (Build.VERSION.SDK_INT >= 36) promote(b, 1f - (brk.end - now).toFloat() / total, null)
+                if (Build.VERSION.SDK_INT >= 36) promote(ctx, b, st, null, 1f - (brk.end - now).toFloat() / total, null)
             }
             else -> b.setContentTitle("Chataltul")
         }
-        return b.build()
+        return b
     }
 
-    // Android 16's Live Updates: on Samsung, the Now Bar on the lock screen.
+    // Android 16's Live Updates: on Samsung, the Now Bar on the lock screen. While a block runs the bar has its
+    // three stages (the kitten napping, growing, grown), a dot for each check-in, the kitten itself walking along it,
+    // a window where it starts and a house where it's going.
     @RequiresApi(36)
-    private fun promote(b: Notification.Builder, done: Float, chip: String?) {
-        b.setStyle(Notification.ProgressStyle().setStyledByProgress(true).setProgress((done.coerceIn(0f, 1f) * 100).toInt()))
+    private fun promote(ctx: Context, b: Notification.Builder, st: UiState?, a: Block?, done: Float, chip: String?) {
+        val style = Notification.ProgressStyle().setStyledByProgress(a == null)
+        if (a == null) style.setProgress((done.coerceIn(0f, 1f) * 100).toInt())
+        else runCatching {
+            val now = System.currentTimeMillis()
+            val spent = a.total - (a.end - (a.paused ?: now))
+            val frac = when { a.stopwatch -> spent / (180 * 60_000f); a.over != null -> 1f; else -> spent.toFloat() / a.total.coerceAtLeast(1) }.coerceIn(0f, 1f)
+            style.setProgress((frac * 1000).toInt())
+            // the stages: a timer's by its quarters, a stopwatch's at 10 and 40 minutes of its 3 hours
+            val lengths = if (a.stopwatch) listOf(56, 167, 777) else listOf(250, 500, 250)
+            val colors = listOf(0xFFBFE3DE.toInt(), 0xFF5FB5A8.toInt(), 0xFF2C8A7E.toInt())
+            style.setProgressSegments(lengths.mapIndexed { i, n -> Notification.ProgressStyle.Segment(n).setColor(colors[i]) })
+            if (!a.stopwatch) {
+                val points = st?.pings.orEmpty().filter { it.kind == "checkin" && it.block == a.id }
+                    .map { (1000 * (1f - (a.end - it.at).toFloat() / a.total.coerceAtLeast(1))).toInt() }.filter { it in 1..999 }
+                style.setProgressPoints(points.map { Notification.ProgressStyle.Point(it).setColor(Color.WHITE) })
+            }
+            val s = xyz.tiresia.kavana.widget.WidgetStore.get(ctx)
+            val stage = xyz.tiresia.kavana.widget.stageOf(frac)
+            if (st?.catsOn != false) {
+                val path = when { a.kitten == "gone" -> Art.GONE; stage == "nap" -> s.nap; stage == "kitten" -> s.kitten; else -> s.portrait }
+                Art.bitmap(ctx, path)?.let { style.setProgressTrackerIcon(Icon.createWithBitmap(Bitmap.createScaledBitmap(it, 96, 96, true))) }
+            }
+            style.setProgressStartIcon(Icon.createWithBitmap(xyz.tiresia.kavana.widget.WidgetArt.window(ctx, s.copy(catsOn = false), now, 24f, false, xyz.tiresia.kavana.widget.WMode.READY)))
+            style.setProgressEndIcon(Icon.createWithResource(ctx, R.drawable.ic_progress_home))
+        }.onFailure { Log.w(Repo.TAG, "progress style", it) }
+        b.setStyle(style)
         b.addExtras(android.os.Bundle().apply { putBoolean("android.requestPromotedOngoing", true) }) // EXTRA_REQUEST_PROMOTED_ONGOING
         if (chip != null) b.setShortCriticalText(chip)
     }

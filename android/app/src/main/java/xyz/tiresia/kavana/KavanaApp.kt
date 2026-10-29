@@ -11,6 +11,8 @@ class KavanaApp : Application() {
         app = this
         repo = Repo(this)
         Notify.channels(this)
+        xyz.tiresia.kavana.widget.Shortcuts.publish(this)
+        xyz.tiresia.kavana.widget.DayAlarms.schedule(this)
     }
 
     companion object {

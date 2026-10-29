@@ -13,7 +13,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -21,6 +24,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import xyz.tiresia.kavana.ui.KavanaTheme
 import xyz.tiresia.kavana.ui.Root
+
+/** Things other parts of the phone ask the screens to do. */
+object Requests {
+    var stop by mutableStateOf(false)
+    /** The sound sheet, asked for by the Sound widget. */
+    var sounds by mutableStateOf(false)
+    /** A screen to show ("cafe"), asked for by a launcher shortcut. */
+    var tab by mutableStateOf<String?>(null)
+}
 
 class MainActivity : ComponentActivity() {
     /** Bumped on every resume, so the screens read the permissions again (back from Settings). */
@@ -38,13 +50,33 @@ class MainActivity : ComponentActivity() {
         if (BuildConfig.DEBUG && intent.hasExtra("minute")) repo.prefs.edit().putLong("minuteMs", intent.getLongExtra("minute", 0)).apply()
         // check-account.py: `--es server http://10.0.2.2:<port>/` signs in to a sandbox server instead of the real one.
         if (BuildConfig.DEBUG && intent.hasExtra("server")) repo.prefs.edit().putString("server", intent.getStringExtra("server")).apply()
+        // check-widgets.py: `--ei wallpaperHour 14` draws the café wallpaper as at that hour (-1: the clock's), to see it by day and at night.
+        if (BuildConfig.DEBUG && intent.hasExtra("wallpaperHour")) repo.prefs.edit().putInt("wallpaperHour", intent.getIntExtra("wallpaperHour", -1)).apply()
         // The sound mix is snapshot state in a global object: create it here, outside any composition, or the
         // first frame of a cold start can read it from a snapshot that doesn't know it yet (a crash).
         xyz.tiresia.kavana.ui.SoundMix.mix
+        if (intent.getBooleanExtra("stop", false)) askToStop()
+        if (intent.getBooleanExtra("sounds", false)) Requests.sounds = true
+        intent.getStringExtra("tab")?.let { Requests.tab = it }
         setContent { KavanaTheme { Root(this) } }
         lifecycleScope.launch { repo.act(op("tick")) }
         // Signed in: what your other devices did, every 30 seconds while Kavana is on the screen.
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { while (true) { delay(30_000); repo.sync.pull() } } }
+    }
+
+    // A widget's Stop: the app's own Stop dialog (or Cancel in the first seconds), so it says what stopping means.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // (the widgets' check, debug builds: the wallpaper's hour, also when the app is already open)
+        if (BuildConfig.DEBUG && intent.hasExtra("wallpaperHour")) KavanaApp.repo.prefs.edit().putInt("wallpaperHour", intent.getIntExtra("wallpaperHour", -1)).apply()
+        if (intent.getBooleanExtra("stop", false)) askToStop()
+        if (intent.getBooleanExtra("sounds", false)) Requests.sounds = true
+        intent.getStringExtra("tab")?.let { Requests.tab = it }
+    }
+
+    private fun askToStop() {
+        Requests.stop = true
+        lifecycleScope.launch { delay(4_000); Requests.stop = false } // not a surprise dialog later, if there's no block to stop
     }
 
     override fun onStart() {
