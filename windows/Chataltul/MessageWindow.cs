@@ -44,15 +44,28 @@ sealed class MessageWindow
         Native.RegisterPowerSettingNotification(Hwnd, ref ConsoleDisplayState, 0);
     }
 
-    /// <summary>A second start: the first one opens its popover, with the right to come to the front.</summary>
-    public static void WakeTheOther()
+    /// <summary>
+    /// A second start: the first one opens its popover, or does the jump list's task (<c>command</c>), with the right
+    /// to come to the front.
+    /// </summary>
+    public static void WakeTheOther(string? command = null)
     {
         var h = Native.FindWindow(ClassName, null);
         if (h == IntPtr.Zero) return;
         Native.GetWindowThreadProcessId(h, out var pid);
         Native.AllowSetForegroundWindow(pid);
-        Native.PostMessage(h, WM_WAKE, IntPtr.Zero, IntPtr.Zero);
+        if (command == null) { Native.PostMessage(h, WM_WAKE, IntPtr.Zero, IntPtr.Zero); return; }
+        var text = Marshal.StringToHGlobalUni(command);
+        try
+        {
+            var data = new Native.COPYDATASTRUCT { dwData = new IntPtr(1), cbData = (command.Length + 1) * 2, lpData = text };
+            Native.SendMessage(h, Native.WM_COPYDATA, IntPtr.Zero, ref data);
+        }
+        finally { Marshal.FreeHGlobal(text); }
     }
+
+    /// <summary>A task from the jump list, handed over by a second start.</summary>
+    public event Action<string>? Command;
 
     IntPtr Proc(IntPtr h, uint msg, IntPtr w, IntPtr l)
     {
@@ -98,6 +111,17 @@ sealed class MessageWindow
                 case WM_WAKE:
                     Wake?.Invoke();
                     return IntPtr.Zero;
+                case Native.WM_COPYDATA when l != IntPtr.Zero:
+                    {
+                        var data = Marshal.PtrToStructure<Native.COPYDATASTRUCT>(l);
+                        if (data.dwData == new IntPtr(1) && data.lpData != IntPtr.Zero && data.cbData is > 0 and < 512)
+                        {
+                            var command = Marshal.PtrToStringUni(data.lpData, data.cbData / 2 - 1);
+                            // the sender waits for this to return: the task runs after, on the UI thread's own time
+                            Ui.Post(() => Command?.Invoke(command));
+                        }
+                        return new IntPtr(1);
+                    }
                 case 0x0011:   // WM_QUERYENDSESSION: yes, it may end
                     return new IntPtr(1);
                 case 0x0016:   // WM_ENDSESSION

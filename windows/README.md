@@ -4,7 +4,7 @@ The native Windows app for my focus app: a kitten in the notification area, a ti
 that walks over the apps and sites that distract me. Like the Mac and Android apps it runs the web app's own
 `engine.js`, here in [Jint](https://github.com/sebastienros/jint) inside the app, and draws everything
 itself in WinUI 3, so the kittens, the treats and the check-ins follow the same rules on every device.
-It is built by GitHub Actions only; nothing is built on my PCs. What comes after 0.1 is in
+It is built by GitHub Actions only; nothing is built on my PCs. What comes after 0.2 is in
 [PLAN-windows.md](../PLAN-windows.md).
 
 It looks like Windows 11, not like the Mac: the popover is a flyout like the ones Windows' own tray icons open
@@ -18,12 +18,13 @@ window, the kitten's ring.
 - **The tray icon** is the kitten, and while a block runs, a ring around it that empties with the time. It
   has a state for ready, focusing, a check-in waiting (an orange dot), paused, on a break and came home, in
   colors for a dark or a light taskbar. The notification area has no room for the time beside the icon, so it
-  is in the icon's tip: "Chataltul · 24:59 · Write the intro". A right-click has Open, Settings and Quit.
+  is in the icon's tip: "Chataltul · 24:59 · Write the intro". A right-click has Open, Today and the café,
+  Widgets, Settings and Quit.
 - **The popover**, from a click on the icon, has what the Mac's has: the round window with the kitten growing
   in it, the clock, an optional title, Focus, Break and Long (with their lengths), and Start. While a block
   runs it has Pause (five minutes at most), park a thought and Stop (inside the first ten seconds it takes the
   block back; after that it asks "Sure?"). When the kitten comes home it asks how it went, with a note, and
-  offers the break. "Open the café" opens the web app.
+  offers the break. "Open the café" opens the app window's café (0.2).
 - **Check-ins are the cat peeking up in the corner of the screen**, with Yes and Drifted, on top of whatever
   I'm doing, without taking the keyboard from it, and a click anywhere but the card goes through to the app
   underneath. After Drifted the cat asks what pulled me away (phone, the web, messages, thoughts, tired, or
@@ -50,9 +51,8 @@ window, the kitten's ring.
   Ctrl+0 and Ctrl+wheel change the size of its text, and the size is kept.
 - **What it asks for: nothing.** Windows has no permission for any of it. The first time it reads a browser
   during a block, the cat says so plainly, once, and Settings can turn it off. It only ever uses the site's
-  name. Nothing leaves the PC: there is no account in 0.1.
+  name, and it stays on the PC.
 
-What 0.1 doesn't have that the Mac's 0.1 had: the sounds and the account with its sync. They are in the plan.
 
 ## Layout
 
@@ -62,14 +62,18 @@ windows/
                          EngineHost (the web's engine in Jint), Models (what the bridge hands back), SpeedBump
                          (+ HoldTracker), AwayTracker, PingTracker, Blocklist (the Mac's lists, modes and
                          ready-made lists in one file shape, and the browsers), WinSettings (windows.json, the
-                         shortcuts), TrayArt (the tray icon, drawn with no drawing library), Png, Art, Format
+                         shortcuts, the widgets' places), TrayArt (the tray icon, drawn with no drawing library),
+                         SyncClient (the account's API), Insights (the numbers in Today), Widgets (which there are,
+                         and what they draw from the history), Png, Art, Format
   Chataltul/             the app, WinUI 3 (Windows App SDK 1.8), unpackaged and self-contained:
                          Program (one at a time), App, Controller (puts it together), Store (the one model),
                          MessageWindow (the tray icon, the shortcuts, lock, sleep and sign-out), Watcher (the
                          front window, and a browser's address with UI Automation), AwayMonitor (+ Notifier),
                          Floating (the see-through, topmost windows), Popover, CatCorner, BumpWindow (+ the hold,
-                         the park field), RoundWindow (the round window with the cat), SettingsWindow, Theme,
-                         SelfTest
+                         the park field), RoundWindow (the round window with the cat), MicaShell (a Windows 11
+                         window: Mica, the tall title bar, the text-size keys), SettingsWindow, MainWindow (the app
+                         window), CafeView (the café in 3D, in Win2D), DesktopWidgets (the widgets and their host),
+                         SyncController (+ the session in Credential Manager), JumpList, Theme, SelfTest
   Tests/Program.cs       the core tests
   tools/                 convert-art.py (the paintings as PNG), make-icon.ps1 (Chataltul.ico from the Mac's icon)
   selftest.ps1           the self-test of the built app
@@ -144,15 +148,19 @@ a sleep), the check-in answers with their reasons, the end and its treats, the c
 away op, pausing, breaks, a dump and a load; then the engine change we ask the web for
 (`mac/docs/engine-takeoff.patch`) applied to a copy, and the takeOff op with it. Then the rules with no
 window: the speed bump, the hold, being away, the blocklist and browsers, the settings file and its
-defaults, the doc file, the tray icon's states and pictures, the words.
+defaults, the doc file, the tray icon's states and pictures, the missions and rewards, Today's numbers for
+each span, the widgets' rules, the account client's cookie and words, the words.
 
 The self-test runs the real app with `--selftest`, wired up as it ships, on a scratch folder, with no tray
 icon, no notification, and no reading of the real front window or any browser; the clock is moved on rather
 than waited for. It walks the start shortcut, the speed bump on an app and a site (a plain press, a short
 hold and a two-second hold of Leave anyway, the 15 seconds running out, Back to work), a stop in the first ten
 seconds, a check-in in the corner with Drifted and its reason, being away, parking a thought, the end and its
-outcome, the break offered and a break longer than the engine's. Every screen is drawn to a PNG in light and
-in dark. The workflow adds `-OnScreen` (on its own desktop: real pixels show the windows are see-through and
+outcome, the break offered and a break longer than the engine's; the app window on each page and span, every
+widget in each size (and what their buttons do), and the jump list's tasks. Every screen is drawn to a PNG in
+light and in dark. With -Sync it signs in against a sandbox copy of the web server on that machine (a wrong
+code, the right one from the server's outbox, a second device through the API, syncing both ways, signing out
+and back in); it refuses any server that isn't on the machine. The workflow adds `-OnScreen` (on its own desktop: real pixels show the windows are see-through and
 the cat's corner lets clicks through; Leave anyway is held with the real mouse), `-Browser` (Edge and Chrome open
 a page on that machine and their address is read; Firefox is tried and noted, since a fresh Firefox there never shows the page) and `-Launch` (the app as it ships starts,
 sits in the tray and quits).

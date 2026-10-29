@@ -1,17 +1,19 @@
 # The self-test: the app built in build\Chataltul, wired up on a scratch folder, with nobody at the keyboard.
 # The Windows workflow runs it after every build; so can you.
 #
-#   windows\selftest.ps1 [-App build\Chataltul\Chataltul.exe] [-OnScreen] [-Browser] [-Launch]
+#   windows\selftest.ps1 [-App build\Chataltul\Chataltul.exe] [-OnScreen] [-Browser] [-Launch] [-Sync <url> -Outbox <file>]
 #
 # By itself every window stays far off the screen, so nothing shows on the desk of whoever runs it, and no
 # browser is touched. The workflow, on a machine of its own, adds:
 #   -OnScreen  real pixels and a real mouse: the windows are see-through where they don't paint, a click goes
 #              through the cat's empty corner, and Leave anyway is held for real
 #   -Browser   Edge, Chrome and Firefox (those installed) open a page, and their address is read
+#   -Sync      signing in by email code and syncing, against a sandbox copy of the web server on this machine
+#              (KAVANA_MAIL=outbox, whose outbox.jsonl is -Outbox): never the real server, which the test refuses
 #   -Launch    the app as it ships starts, sits in the tray for a few seconds and quits cleanly (not while
 #              your own Chataltul runs: a second one only wakes the first)
 # It prints each check and leaves with 0 when every one held. The pictures of every screen go to build\selftest.
-param([string]$App = "build\Chataltul\Chataltul.exe", [switch]$OnScreen, [switch]$Browser, [switch]$Launch)
+param([string]$App = "build\Chataltul\Chataltul.exe", [switch]$OnScreen, [switch]$Browser, [switch]$Launch, [string]$Sync, [string]$Outbox)
 $ErrorActionPreference = 'Stop'
 
 $work = Join-Path ([IO.Path]::GetTempPath()) ("chataltul-selftest-" + [guid]::NewGuid().ToString('N'))
@@ -23,11 +25,12 @@ New-Item -ItemType Directory -Force $data, $shots | Out-Null
 $arguments = @('--selftest', '--data', "`"$data`"", '--out', "`"$results`"", '--shots', "`"$shots`"")
 if ($OnScreen) { $arguments += '--onscreen' }
 if ($Browser) { $arguments += '--browser' }
+if ($Sync) { $arguments += @('--sync', $Sync, '--outbox', "`"$Outbox`"") }
 $process = Start-Process -FilePath (Resolve-Path $App) -ArgumentList $arguments -PassThru
 $null = $process.Handle          # or the exit code is lost once it ends
-if (-not $process.WaitForExit(240000)) {
+if (-not $process.WaitForExit(420000)) {
     $process.Kill()
-    Write-Host "the self-test didn't finish in four minutes"
+    Write-Host "the self-test didn't finish in seven minutes"
     $code = 2
 } else {
     $code = $process.ExitCode

@@ -157,7 +157,7 @@ sealed class Popover
     // ---------------------------------------------------------------- shared pieces
 
     UIElement Header(string left) =>
-        V.Spread(V.Caption(left), IconBtn(V.Glyph.Settings, () => app.OpenSettings(null), "Settings"));
+        V.Spread(V.Caption(left), V.Row(0, IconBtn("", () => app.OpenWindow(null), "Today and the café"), IconBtn(V.Glyph.Settings, () => app.OpenSettings(null), "Settings")));
 
     UIElement Footer(string left, bool quit = false)
     {

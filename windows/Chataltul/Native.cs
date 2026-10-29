@@ -178,6 +178,20 @@ static class Native
     [DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
     [DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref uint value, int size);
 
+    // ---- the widgets: moved by a drag, kept under the other windows; a second start's words
+    public const uint WM_NCLBUTTONDOWN = 0x00A1, WM_WINDOWPOSCHANGING = 0x0046, WM_COPYDATA = 0x004A, SWP_NOZORDER = 0x4;
+    public const int HTCAPTION = 2;
+    public static readonly IntPtr HWND_BOTTOM = new(1);
+    [DllImport("user32.dll")] public static extern bool ReleaseCapture();
+    [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hwnd, uint msg, IntPtr wParam, ref COPYDATASTRUCT lParam);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct WINDOWPOS { public IntPtr hwnd, hwndInsertAfter; public int x, y, cx, cy; public uint flags; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct COPYDATASTRUCT { public IntPtr dwData; public int cbData; public IntPtr lpData; }
+
     // ---- helpers
 
     public static long ExStyle(IntPtr hwnd) => (long)GetWindowLongPtr(hwnd, GWL_EXSTYLE);

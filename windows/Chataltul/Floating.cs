@@ -40,15 +40,18 @@ sealed class Floating
     public Grid Root { get; } = new() { Background = new SolidColorBrush(Colors.Transparent) };
     public bool IsShown { get; private set; }
     readonly bool activates;
+    /// <summary>Above every other window (the cat, the popover), or under all of them, on the desktop (a widget).</summary>
+    readonly bool onTop;
 
     /// <summary>The window lost the front (only for the ones that take it).</summary>
     public event Action? Deactivated;
     /// <summary>Alt+F4 does nothing at all to it (the speed bump has no way out but its own).</summary>
     public bool KeepOnClose { get; set; }
 
-    public Floating(string title, bool activates, Backdrop backdrop = Backdrop.Clear)
+    public Floating(string title, bool activates, Backdrop backdrop = Backdrop.Clear, bool onTop = true)
     {
         this.activates = activates;
+        this.onTop = onTop;
         Window = new Window { Title = title, Content = Root };
         Hwnd = WinRT.Interop.WindowNative.GetWindowHandle(Window);
         if (AppWindow.Presenter is OverlappedPresenter p)
@@ -57,7 +60,7 @@ sealed class Floating
             p.IsResizable = false;
             p.IsMaximizable = false;
             p.IsMinimizable = false;
-            p.IsAlwaysOnTop = true;
+            p.IsAlwaysOnTop = onTop;
         }
         AppWindow.IsShownInSwitchers = false;
         var ex = Native.ExStyle(Hwnd) | Native.WS_EX_TOOLWINDOW;
@@ -104,6 +107,14 @@ sealed class Floating
         {
             if (msg == Native.WM_ERASEBKGND) { PaintBlack(h, w); return new IntPtr(1); }
             if (msg == Native.WM_DWMCOMPOSITIONCHANGED) Glass();
+            if (msg == Native.WM_WINDOWPOSCHANGING && !onTop && l != IntPtr.Zero)
+            {
+                // a widget stays under the other windows, even when it's clicked
+                var pos = Marshal.PtrToStructure<Native.WINDOWPOS>(l);
+                pos.hwndInsertAfter = Native.HWND_BOTTOM;
+                pos.flags &= ~Native.SWP_NOZORDER;
+                Marshal.StructureToPtr(pos, l, false);
+            }
             return Native.CallWindowProc(previousProc, h, msg, w, l);
         };
         previousProc = Native.SetWindowLongPtr(Hwnd, Native.GWLP_WNDPROC, Marshal.GetFunctionPointerForDelegate(clearProc));
@@ -212,8 +223,8 @@ sealed class Floating
             Native.SetForegroundWindow(Hwnd);
         }
         else AppWindow.Show(false);
-        // above other windows that float too, without taking the front
-        Native.SetWindowPos(Hwnd, Native.HWND_TOPMOST, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
+        // above other windows that float too (or, a widget, under every window), without taking the front
+        Native.SetWindowPos(Hwnd, onTop ? Native.HWND_TOPMOST : Native.HWND_BOTTOM, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
         IsShown = true;
     }
 

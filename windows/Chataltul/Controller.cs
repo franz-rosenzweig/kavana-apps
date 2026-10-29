@@ -22,6 +22,13 @@ sealed class Controller
     public ParkWindow Park { get; private set; } = null!;
     SettingsWindow? settings;
     public SettingsWindow Settings => settings ??= new SettingsWindow(Store, this);
+    MainWindow? main;
+    /// <summary>The app window: Today, the Café, History and Later.</summary>
+    public MainWindow Main => main ??= new MainWindow(Store, this);
+    public SyncController Sync { get; private set; } = null!;
+    public WidgetHost Widgets { get; private set; } = null!;
+    /// <summary>A widget was added, moved, resized or taken away (Settings shows the list).</summary>
+    public event Action? WidgetsChanged;
     public SpeedBump Speed { get; set; } = new();
     /// <summary>The window that was in front before something on the list: where Back to work goes.</summary>
     public IntPtr Previous { get; private set; }
@@ -50,6 +57,10 @@ sealed class Controller
         Cat = new CatCorner();
         Bump = new BumpWindow();
         Park = new ParkWindow(Store);
+        // the session in Windows' Credential Manager; a test copy keeps it in a file of its own folder
+        Sync = new SyncController(Store, test ? new FileSession(Path.Join(Store.Folder, "session")) : new CredentialSession("xyz.tiresia.chataltul.session"));
+        Widgets = new WidgetHost(Store, this);
+        Widgets.Changed += () => WidgetsChanged?.Invoke();
         taskbarDark = Palette.TaskbarDark();
 
         Bump.BackToWork = () => Apply(Speed.BackToWork());
@@ -58,6 +69,7 @@ sealed class Controller
         Tray.Click += (x, y) => Popover.Toggle(new Native.POINT { X = x, Y = y });
         Tray.Menu += TrayMenu;
         Messages.Wake += () => Popover.Show();
+        Messages.Command += Do;
         Messages.Ending += () => Quit(force: true);
         Messages.ThemeChanged += () => { taskbarDark = Palette.TaskbarDark(); RefreshTray(Clock.Now); Popover.Refresh(); };
         Watcher.Front += Looked;
@@ -67,18 +79,39 @@ sealed class Controller
 
         Store.Due += Deliver;
         Store.Changed += Changed;
+        Store.DocChanged += Sync.Queue;
         Store.AwayPromptChanged += () => { if (Store.AwayPrompt != null) Popover.Show(); else Popover.Refresh(); };
-        Store.SettingsChanged += () => { RegisterShortcuts(); Popover.Refresh(); };
+        Store.SettingsChanged += () => { RegisterShortcuts(); Popover.Refresh(); Widgets.Refresh(); };
 
         if (!test && !Tray.Add()) Log.Write("no taskbar to put the icon in yet; it comes when Explorer starts");
         RegisterShortcuts();
         Changed(Store.State);
         clock = Ui.Every(TimeSpan.FromSeconds(1), () => Second(Clock.Now));
         Startup.Refresh();
-        if (firstShow)
+        Sync.Opened();
+        if (!test) Widgets.Load();
+        JumpList.Write();
+        if (App.Options.Do is { } task) Ui.Post(() => Do(task));
+        else if (firstShow)
         {
             if (!Store.Settings.Welcomed) Welcome();
             else Popover.Show();
+        }
+    }
+
+    /// <summary>A task from the jump list: start 25 or 50, park a thought, open the café.</summary>
+    public void Do(string task)
+    {
+        switch (task)
+        {
+            case "park": ShowPark(); break;
+            case "cafe": OpenWindow("cafe"); break;
+            case "window": OpenWindow(null); break;
+            case var s when s.StartsWith("start:") && int.TryParse(s[6..], out var m) && m is > 0 and <= 180:
+                if (Store.Active == null && Store.Awaiting == null) Store.Start("", m);
+                Popover.Show();
+                break;
+            default: Popover.Show(); break;
         }
     }
 
@@ -110,9 +143,11 @@ sealed class Controller
 
     void TrayMenu(int x, int y)
     {
-        switch (Tray.PopUp(x, y, (1, "Open Chataltul"), (2, "Settings…"), (0, null), (3, "Quit Chataltul")))
+        switch (Tray.PopUp(x, y, (1, "Open Chataltul"), (4, "Today and the café"), (5, "Widgets…"), (2, "Settings…"), (0, null), (3, "Quit Chataltul")))
         {
             case 1: Popover.Show(); break;
+            case 4: OpenWindow(null); break;
+            case 5: OpenSettings("widgets"); break;
             case 2: OpenSettings(null); break;
             case 3: Quit(); break;
         }
@@ -288,6 +323,8 @@ sealed class Controller
         if (st.View.Active?.Pending == null) Cat.Hide("checkin");
         if (st.View.Active is not { Kitten: "growing", Paused: null }) Apply(Speed.Tick(BumpBlock(), Clock.Now));
         if (st.View.Active != null) Watcher.Look();
+        main?.Refresh();
+        Widgets.Refresh();
     }
 
     public void Second(long now)
@@ -298,6 +335,8 @@ sealed class Controller
         if (hadBreak && Store.LongBreakEnd == null) Say("Break's over.", "It's time to focus. Ready for the next block?", Store.State.Companion, 20);
         RefreshTray(now);
         Popover.Tick(now);
+        main?.Tick(now);
+        Widgets.Tick(now);
         if (seconds % 2 == 0) Away.Sample(now);
         if (Bumpable) Watcher.Look();
         Apply(Speed.Tick(BumpBlock(), now));
@@ -379,11 +418,14 @@ sealed class Controller
         Settings.Show(pane);
     }
 
-    /// <summary>The café, the shop and the rest live in the web app for now.</summary>
-    public void OpenCafe()
+    /// <summary>The app window's café (the shop and the cat collection are the web app's).</summary>
+    public void OpenCafe() => OpenWindow("cafe");
+
+    /// <summary>The app window, on a page (today, cafe, history, later) and a span.</summary>
+    public void OpenWindow(string? pane, Core.Span? span = null)
     {
         Popover.Hide();
-        Outside.Open(WinSettings.WebApp);
+        Main.Show(pane, span);
     }
 
     public void ShowPark()

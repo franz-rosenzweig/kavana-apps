@@ -37,6 +37,11 @@ sealed class Store
     public event Action<UiState>? Changed;
     public event Action? SettingsChanged;
     public event Action? AwayPromptChanged;
+    /// <summary>The doc changed here (not by a sync): with an account, it goes up in a moment.</summary>
+    public event Action? DocChanged;
+
+    /// <summary>The account's own ops: what they change came from the server, so it isn't sent back for itself.</summary>
+    static readonly HashSet<string> SyncOps = ["merge", "empty", "squeeze", "size"];
 
     public Store(string folder, string js)
     {
@@ -79,7 +84,7 @@ sealed class Store
         {
             var o = host.Run(op, fields, now ?? Clock.Now);
             if (o.Error != null && op != "takeOff") Log.Write($"engine: {op}: {o.Error}");
-            Finish(o);
+            Finish(o, op);
             return o;
         }
         catch (Exception e)
@@ -89,9 +94,57 @@ sealed class Store
         }
     }
 
-    void Finish(Out o)
+    /// <summary>An op already written as JSON (a merge carries the server's whole doc).</summary>
+    public Out? ActJson(string json, string op)
     {
-        if (o.Changed) Persist();
+        try
+        {
+            var o = host.RunJson(json, Clock.Now);
+            if (o.Error != null) Log.Write($"engine: {op}: {o.Error}");
+            Finish(o, op);
+            return o;
+        }
+        catch (Exception e)
+        {
+            Log.Write($"engine: {op}: {e.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The blocks that started in a span of time, for the window's Today and the Café (the state carries only the
+    /// newest 400). A read: it changes nothing and tells nobody.
+    /// </summary>
+    public List<Hist> Blocks(long from, long to)
+    {
+        // the newest 400 the state has reach back far enough (a day, a week): no need to ask the engine
+        var have = State.History;
+        if (have.Count < 400 || have[^1].Start < from) return have.Where(b => b.Start >= from && b.Start < to).ToList();
+        try
+        {
+            var o = host.Run("period", new() { ["from"] = from, ["to"] = to }, Clock.Now);
+            return o.Result is { ValueKind: System.Text.Json.JsonValueKind.Array } a ? a.EnumerateArray().Select(x => new Hist(x)).ToList() : [];
+        }
+        catch (Exception e)
+        {
+            Log.Write($"engine: period: {e.Message}");
+            return [];
+        }
+    }
+
+    /// <summary>The doc as the server keeps it.</summary>
+    public string DocJson()
+    {
+        try { return host.Dump(); } catch (Exception e) { Log.Write($"engine: dump: {e.Message}"); return "{}"; }
+    }
+
+    void Finish(Out o, string op)
+    {
+        if (o.Changed)
+        {
+            Persist();
+            if (!SyncOps.Contains(op)) DocChanged?.Invoke();
+        }
         Art.Learn(o.State.Cats);
         State = o.State;
         var due = tracker.Update(o.State.Pings, o.State.Now);
@@ -160,15 +213,27 @@ sealed class Store
 
     // ---------- the changes
 
-    public void Start(string title, int? minutes = null, bool stopwatch = false)
+    /// <summary>A block. <c>fromLater</c>: the Later item it was started from, which the engine ticks off.</summary>
+    public void Start(string title, int? minutes = null, bool stopwatch = false, string? fromLater = null)
     {
         var s = State.View.Settings;
-        Act("start", new()
+        var f = new Dictionary<string, object?>
         {
             ["intention"] = title, ["minutes"] = minutes ?? Settings.FocusMinutes, ["style"] = s.Style,
             ["mode"] = stopwatch ? "stopwatch" : "timer", ["tag"] = s.Tag, ["cat"] = State.CatsOn ? State.Companion : null,
-        });
+        };
+        if (fromLater != null) f["fromLater"] = fromLater;
+        Act("start", f);
     }
+
+    public void AddLater(string text) { if (text.Trim().Length > 0) Act("addLater", new() { ["text"] = text.Trim() }); }
+    public void DoneLater(string id) => Act("doneLater", new() { ["id"] = id });
+
+    /// <summary>Collects a reward that's done: its treats.</summary>
+    public void Claim(string id) => Act("claim", new() { ["id"] = id });
+
+    /// <summary>The streak, from the newest blocks the state carries (the days in a row end well inside them).</summary>
+    public int Streak => State.Stats.Streak;
 
     /// <summary>Stop: inside the first ten seconds it takes the block back, with no harm done.</summary>
     public bool Stop()

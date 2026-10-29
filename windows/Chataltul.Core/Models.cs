@@ -2,8 +2,8 @@ using System.Text.Json;
 
 namespace Chataltul.Core;
 
-// What bridge.js hands back (KB.run). The shapes are engine.js's own: E.view, E.history, E.pings. Fields
-// the Windows app doesn't draw (the shop's shelves, missions, achievements, friends) are left out.
+// What bridge.js hands back (KB.run). The shapes are engine.js's own: E.view, E.history, E.pings, E.missions.
+// Fields the Windows app doesn't draw (the shop's shelves, friends) are left out.
 // Times are milliseconds since 1970, as the engine keeps them. The Mac's is Models.swift.
 
 public sealed class Out
@@ -51,12 +51,24 @@ public sealed class UiState
     public bool CanPause { get; }
     public List<string> Owned { get; }
     public Dictionary<string, int> Prices { get; }
+    /// <summary>The things for the café (cats.js ITEMS) that this account owns, with their side and back paintings.</summary>
+    public List<CafeThing> Things { get; }
     public Dictionary<string, int> Tally { get; }
     /// <summary>What this engine can do beyond the web's (bridge.js, marked MAC).</summary>
     public bool CanTakeOff { get; }
+    /// <summary>Today's and this week's missions.</summary>
+    public Missions Missions { get; }
+    public List<Reward> Achievements { get; }
+    public Starter Starter { get; }
+    /// <summary>This month's challenge, after last month's if that one is done and waiting to be collected.</summary>
+    public List<Reward> Monthly { get; }
 
     public UiState(JsonElement e)
     {
+        Missions = new Missions(e.Get("missions") ?? default);
+        Achievements = e.Items("achievements", x => new Reward(x));
+        Starter = new Starter(e.Get("starter") ?? default);
+        Monthly = e.Items("monthly", x => new Reward(x));
         Now = e.Long("now");
         View = e.Get("view") is { } v ? new ViewState(v) : new ViewState(default);
         History = e.Items("history", x => new Hist(x));
@@ -69,6 +81,7 @@ public sealed class UiState
         var shop = e.Get("shop") ?? default;
         Owned = shop.Strings("owned");
         Prices = shop.IntMap("prices");
+        Things = shop.Items("items", x => new CafeThing(x)).Where(t => Owned.Contains(t.Id)).ToList();
         Tally = e.IntMap("tally");
         CanTakeOff = (e.Get("caps") ?? default).Bool("takeOff");
     }
@@ -77,6 +90,70 @@ public sealed class UiState
     public CatInfo Cat(string? id) => Cats.FirstOrDefault(c => c.Id == id) ?? Cats.FirstOrDefault() ?? new CatInfo("miso", "Miso");
     public bool CatsOn => View.Settings.Cat;
     public bool Owns(string id) => Owned.Contains(id);
+
+    /// <summary>Rewards that are done and not collected yet (achievements, the starter challenge, the month): "Collect +20".</summary>
+    public List<Reward> Collectable
+    {
+        get
+        {
+            var out_ = Achievements.Where(a => a.Done && !a.Claimed).Concat(Starter.Steps.Where(s => s.Done && !s.Claimed)).ToList();
+            if (Starter.All is { Done: true, Claimed: false }) out_.Add(Starter.All);
+            out_.AddRange(Monthly.Where(m => m.Done && !m.Claimed));
+            return out_;
+        }
+    }
+}
+
+/// <summary>A thing for the café: its id and, where painted, its side and back.</summary>
+public sealed class CafeThing(JsonElement e)
+{
+    public string Id { get; } = e.Str("id");
+    public string Name { get; } = e.Str("name");
+    public string? Side { get; } = (e.Get("views") ?? default).OptStr("side");
+    public string? Back { get; } = (e.Get("views") ?? default).OptStr("back");
+}
+
+/// <summary>A mission: "Bring 3 kittens home", 2 of 3, 15 treats.</summary>
+public sealed class Mission(JsonElement e)
+{
+    public string Id { get; } = e.Str("id");
+    public string Text { get; } = e.Str("text");
+    public int Need { get; } = e.Int("need", 1);
+    public string? Unit { get; } = e.OptStr("unit");
+    public int Pay { get; } = e.Int("pay");
+    public int Have { get; } = e.Int("have");
+    public bool Done { get; } = e.Bool("done");
+
+    /// <summary>"Focus for 1 h: 40 min of 1 h", or the text alone for a mission of one.</summary>
+    public string Progress => Need <= 1 ? Text : $"{Text}: {(Unit == "min" ? $"{Format.FmtMin(Have)} of {Format.FmtMin(Need)}" : $"{Have} of {Need}")}";
+}
+
+public sealed class Missions(JsonElement e)
+{
+    public List<Mission> Day { get; } = e.Items("day", x => new Mission(x));
+    public List<Mission> Week { get; } = e.Items("week", x => new Mission(x));
+    public long DayEnds { get; } = e.Long("dayEnds");
+    public long WeekEnds { get; } = e.Long("weekEnds");
+}
+
+/// <summary>An achievement, a starter step or a month's challenge: done or not, collected or not, and what it pays.</summary>
+public sealed class Reward(JsonElement e)
+{
+    public string Id { get; } = e.Str("id");
+    public string Name { get; } = e.Str("name", e.Str("text"));
+    public string Text { get; } = e.Str("text");
+    public int Have { get; } = e.Int("have");
+    public int Goal { get; } = e.Int("goal", e.Int("need", 1));
+    public bool Done { get; } = e.Bool("done");
+    public bool Claimed { get; } = e.Bool("claimed");
+    public int Pay { get; } = e.Int("reward");
+}
+
+public sealed class Starter(JsonElement e)
+{
+    public List<Reward> Steps { get; } = e.Items("steps", x => new Reward(x));
+    public Reward All { get; } = new(e.Get("all") ?? default);
+    public bool Finished { get; } = e.Bool("finished");
 }
 
 public sealed class ViewState(JsonElement e)
@@ -139,6 +216,10 @@ public sealed class Block(JsonElement e)
     public string Note { get; } = e.Str("note");
     public long? PauseEnds { get; } = e.OptLong("pauseEnds");
     public int Pauses { get; } = e.Int("pauses");
+    /// <summary>How long it runs, less its pauses (the end moves with a pause).</summary>
+    public long Total { get; } = e.Long("total");
+    /// <summary>Treats for napping together, on top of its own.</summary>
+    public int Bonus { get; } = e.Int("bonus");
 
     public bool Stopwatch => Mode == "stopwatch";
     public string Title => Format.TitleOf(Intention, Tag);

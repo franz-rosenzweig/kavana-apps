@@ -6,11 +6,10 @@ Windows is the easy one for the cat. Like Android and unlike the iPad, any app m
 other one, and Windows asks for no permission to see which app is in front or to read a browser's address.
 So the Mac's whole design comes across: the kitten in the notification area instead of the menu bar, the cat
 peeking up in the corner, the speed bump over the screen. It is C# and WinUI 3, with the web's `engine.js`
-inside the app (in Jint), the same way the Mac runs it in JavaScriptCore. It grows the way the Mac did, in
-three versions. Every build is made by GitHub Actions, on GitHub's Windows machines, and kept with the run;
+inside the app (in Jint), the same way the Mac runs it in JavaScriptCore. It grows the way the Mac did, a version at a time. Every build is made by GitHub Actions, on GitHub's Windows machines, and kept with the run;
 releases are tagged `windows-vX.Y.Z`, like the Mac's `mac-vX.Y.Z`.
 
-## 0.1: the part that keeps me focused (windows/, now)
+## 0.1: the part that keeps me focused (tried by hand, 28 October)
 
 The tray icon with the kitten and its ring, the popover (Focus, Break, Long, Start; Pause, park, Stop; how
 did it go), check-ins as the cat in the corner with Yes and Drifted and the reasons after Drifted, the
@@ -18,18 +17,24 @@ speed bump over apps and over sites in Chrome, Edge, Brave, Vivaldi, Opera and A
 thought and start a block from anywhere, away from the PC, Windows notifications as the second chance,
 Settings, open at sign-in, an installer for one person. What it does is in [windows/README.md](windows/README.md).
 
-## 0.2: the app window, the full Blocklist, breaks on every screen
+## 0.2: the account, the app window and the widgets (windows/, now)
+
+Asked for after trying 0.1 (28 October): the account and its sync with the web (the Android and Mac API, sign in
+by email code, the session in Credential Manager); the app window with Today (day, week, month, year), the café
+in 3D (the Mac's CafeScene, drawn with Win2D), History and Later; widgets on the desktop, the phone's set as
+Windows cards (the Window, Quick start, Today, Later, Pet the cat, a clock, Streak, Goal, Missions,
+Constellation, the week as weather, the café), since Windows' Widgets board only takes a signed, packaged app;
+and the taskbar's jump list (Start 25, Start 50, Park a thought, Open the café). What it does is in
+[windows/README.md](windows/README.md).
+
+## 0.3: the full Blocklist, breaks on every screen, the sounds
 
 The Mac's 0.2, on Windows:
-- **The app window**: Today (day, week, month, year: what was focused and how it compares, cats that came
-  home, drifts, days in a row; the timeline of the day; each day's bar and the time by tag), History, Later,
-  Blocklist and Breaks, from the popover or the Start menu. The café in 3D waits; for now "Open the café"
-  opens the web's.
 - **The full Blocklist**: lists with a color each, and for each one the speed bump, **wait it out** (30
   seconds with the cat before it opens) or **locked** (it doesn't open until the block ends, the block can't
   be stopped after its first ten seconds, and Chataltul won't quit meanwhile); watched outside blocks too, on
   weekdays between two times or always, with an allowance of minutes a day. The settings file already has the
-  Mac's shape for all of it, so nothing has to move.
+  Mac's shape for all of it, so nothing has to move. In the app window too, as on the Mac.
 - **The ready-made lists** (Adult, Social media, Dating, Gambling, Games, Video and music, News, Shopping), from
   the same public lists as the Mac (UT1, StevenBlack, Hagezi), downloaded over https when switched on and
   looked at again weekly, kept as the Mac's sorted 64-bit hashes (FNV-1a and its mixer, unchanged, so the same
@@ -42,9 +47,11 @@ The Mac's 0.2, on Windows:
   set again whenever Windows changes their presenter itself (Win+Down), every way out back to normal, and the
   self-test going in and out each way.
 - **The sounds**: the web's 39, two at once, each recording downloaded the first time and kept, and the meow
-  when a kitten comes home (Media Foundation; the list read from the web's `sounds.js`).
+  when a kitten comes home (Media Foundation; the list read from the web's `sounds.js`), and the Sound widget.
+- **The engine off the UI thread**, if the core tests' timing of its parts (0.2) says the year-of-blocks op is
+  still slow on a real account's history.
 
-## 0.3: the reports
+## 0.4: the reports
 
 - **Where each block went**, app by app (and a site's name in a browser, never the address), noted each
   second while a block runs and the PC isn't idle; the top three when a block comes home, and "Where your
@@ -60,10 +67,10 @@ The Mac's 0.2, on Windows:
 
 ## Later, for any of them
 
-The account and its sync with the web (the Android and Mac API, sign in by email code), which also brings
-the café, the shop and the cats; signing the app so Windows knows the publisher; an ARM64 build; updates
-from the releases.
-
+Friends, the friends' table widget and napping together (the account's parts about other people, as on the
+phone and the Mac); signing the app so Windows knows the publisher, which would also let it be a packaged app
+with widgets on Windows' own Widgets board (the Microsoft Store signs for free, after an ID check); an ARM64
+build; updates from the releases.
 ## What only I can do
 
 1. Say go for each push and each release (the repo is public: the Actions minutes cost nothing).

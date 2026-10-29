@@ -3,10 +3,12 @@ using Microsoft.UI.Dispatching;
 namespace Chataltul;
 
 /// <summary>
-/// The command line: nothing for a person (or --login, when Windows starts it at sign-in); the rest is for
-/// windows/selftest.ps1 and the workflow.
+/// The command line: nothing for a person (or --login, when Windows starts it at sign-in, or --do and a task from
+/// the jump list); the rest is for windows/selftest.ps1 and the workflow. --sync and --outbox point the self-test
+/// at a sandbox copy of the web server on the runner.
 /// </summary>
-public sealed record Options(bool SelfTest, bool Login, string? Data, string? Out, string? Shots, bool OnScreen, bool Browser, int? QuitAfter)
+public sealed record Options(bool SelfTest, bool Login, string? Data, string? Out, string? Shots, bool OnScreen, bool Browser, int? QuitAfter,
+    string? Do = null, string? Sync = null, string? Outbox = null)
 {
     public static Options Parse(string[] args)
     {
@@ -16,7 +18,8 @@ public sealed record Options(bool SelfTest, bool Login, string? Data, string? Ou
             return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
         }
         return new(args.Contains("--selftest"), args.Contains("--login"), Value("--data"), Value("--out"), Value("--shots"),
-            args.Contains("--onscreen"), args.Contains("--browser"), int.TryParse(Value("--quit-after"), out var q) ? q : null);
+            args.Contains("--onscreen"), args.Contains("--browser"), int.TryParse(Value("--quit-after"), out var q) ? q : null,
+            Value("--do"), Value("--sync"), Value("--outbox"));
     }
 }
 

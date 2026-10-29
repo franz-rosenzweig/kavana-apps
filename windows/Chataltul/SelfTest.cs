@@ -45,13 +45,17 @@ static class SelfTest
 
     public static async Task Run(Controller app)
     {
-        // never longer than three minutes, whatever hangs
-        _ = Task.Delay(TimeSpan.FromMinutes(3)).ContinueWith(_ => Ui.Post(() => Finish("it took more than three minutes")));
+        // never longer than six minutes, whatever hangs
+        _ = Task.Delay(TimeSpan.FromMinutes(6)).ContinueWith(_ => Ui.Post(() => Finish("it took more than six minutes")));
         try
         {
             await Spin(500);
             await Live(app);
             await Pictures(app);
+            await TheWindow(app);
+            await TheWidgets(app);
+            await JumpTasks(app);
+            if (App.Options.Sync is { } server) await TheAccount(app, server, App.Options.Outbox);
             if (App.Options.OnScreen) await OnScreen(app);
             if (App.Options.Browser) await Browsers();
         }
@@ -324,7 +328,7 @@ static class SelfTest
             await Spin();
             await Shot(app.Cat.Win.Content, $"cat-checkin-{theme}");
             app.Cat.Hide();
-            foreach (var pane in new[] { "general", "blocks", "blocklist", "shortcuts" })
+            foreach (var pane in new[] { "general", "blocks", "blocklist", "widgets", "shortcuts", "account" })
             {
                 app.Settings.Show(pane);
                 await Spin(300);
@@ -344,6 +348,295 @@ static class SelfTest
             app.Speed = new SpeedBump();
         }
         Palette.Force = false;
+    }
+
+    /// <summary>Waits for something to come true, the UI thread running meanwhile.</summary>
+    static async Task<bool> Wait(Func<bool> done, double seconds = 20)
+    {
+        var end = DateTime.UtcNow.AddSeconds(seconds);
+        while (DateTime.UtcNow < end)
+        {
+            if (done()) return true;
+            await Task.Delay(100);
+        }
+        return done();
+    }
+
+    /// <summary>A block that came home, made at a time in the past.</summary>
+    static void HomeBlock(Store store, string title, long at, int minutes, string outcome = "done")
+    {
+        store.Act("start", new() { ["intention"] = title, ["minutes"] = minutes, ["cat"] = store.State.Companion }, at);
+        store.Act("tick", now: at + minutes * MIN + 1_000);
+        if (store.Awaiting is { } w) store.Act("outcome", new() { ["id"] = w.Id, ["outcome"] = outcome }, at + minutes * MIN + 2_000);
+    }
+
+    /// <summary>The app window: Today for a day, a week, a month and a year, the Café, History and Later.</summary>
+    static async Task TheWindow(Controller app)
+    {
+        var store = app.Store;
+        store.ResetForTest(Fresh());
+        var morning = Format.Ms(DateTime.Today.AddHours(9));
+        var now = Clock.Now;
+        if (morning + 4 * 60 * MIN > now) morning = now - 4 * 60 * MIN;   // early in the day: the blocks go before now
+        HomeBlock(store, "Draft the newsletter", morning, 25);
+        HomeBlock(store, "Read the paper", morning + 40 * MIN, 50, "partly");
+        HomeBlock(store, "Yesterday's", morning - 24 * 60 * MIN, 25);
+        store.AddLater("Call the bank");
+        foreach (var dark in new[] { false, true })
+        {
+            Palette.Force = dark;
+            var theme = dark ? "dark" : "light";
+            foreach (var span in new[] { Span.Day, Span.Week, Span.Month, Span.Year })
+            {
+                app.OpenWindow("today", span);
+                await Spin(500);
+                if (span == Span.Day && !dark)
+                {
+                    Add("the window opens on Today", app.Main.IsShown && app.Main.Pane == "today");
+                    Add("Today's café has the cats that came home today", app.Main.Cafe?.CatCount >= 1, $"{app.Main.Cafe?.CatCount}");
+                    Add("Today has Day, Week, Month and Year", new[] { "Day", "Week", "Month", "Year" }.All(app.Main.Buttons.ContainsKey));
+                }
+                await Shot(app.Main.Window.Content as FrameworkElement, $"window-today-{span.ToString().ToLowerInvariant()}-{theme}");
+            }
+            foreach (var pane in new[] { "cafe", "history", "later" })
+            {
+                app.OpenWindow(pane, Span.Day);
+                await Spin(500);
+                await Shot(app.Main.Window.Content as FrameworkElement, $"window-{pane}-{theme}");
+            }
+        }
+        Palette.Force = false;
+        app.OpenWindow("later");
+        await Spin(300);
+        Add("Later lists what's in it", app.Main.Buttons.ContainsKey("Done: Call the bank"));
+        if (app.Main.Buttons.TryGetValue("Start: Call the bank", out var startIt)) startIt();
+        await Spin();
+        Add("a block starts from Later, and ticks it off", store.Active?.Intention == "Call the bank" && store.State.View.Later.All(l => l.Text != "Call the bank"));
+        store.Stop();
+        app.OpenWindow("history");
+        await Spin(300);
+        Add("History shows the blocks", store.State.History.Count >= 3);
+        app.Main.Hide();
+        Add("closing the window only hides it", !app.Main.IsShown);
+    }
+
+    /// <summary>Every widget on the desktop (far off it, in the test), in light and dark, and what their buttons do.</summary>
+    static async Task TheWidgets(Controller app)
+    {
+        var store = app.Store;
+        store.ResetForTest(Fresh());
+        HomeBlock(store, "A block for the widgets", Clock.Now - 90 * MIN, 25);
+        store.AddLater("Water the plants");
+        foreach (var dark in new[] { false, true })
+        {
+            Palette.Force = dark;
+            var theme = dark ? "dark" : "light";
+            foreach (var k in Widgets.All)
+                foreach (var size in k.Sizes)
+                {
+                    var w = app.Widgets.Add(k.Id, size);
+                    await Spin(250);
+                    await Shot(w.Win.Content, $"widget-{k.Id}-{size}-{theme}");
+                    app.Widgets.Remove(w.Place.Id);
+                }
+        }
+        Palette.Force = false;
+        Add("every widget was added and taken away again", app.Widgets.Shown.Count == 0 && store.Settings.Widgets.Count == 0, $"{app.Widgets.Shown.Count} left");
+
+        var win = app.Widgets.Add("window");
+        await Spin();
+        Add("a widget sits under the other windows and never takes the front",
+            (Native.ExStyle(win.Win.Hwnd) & Native.WS_EX_TOPMOST) == 0 && (Native.ExStyle(win.Win.Hwnd) & Native.WS_EX_NOACTIVATE) != 0 && (Native.ExStyle(win.Win.Hwnd) & Native.WS_EX_TOOLWINDOW) != 0,
+            $"{Native.ExStyle(win.Win.Hwnd):x}");
+        Add("its place is kept in the settings", store.Settings.Widgets.Count == 1 && store.Settings.Widgets[0].Kind == "window");
+        app.Widgets.Moved(win, win.Place.X - 50, win.Place.Y + 30);
+        Add("moved, the new place is kept", store.Settings.Widgets[0].X == win.Place.X && store.Settings.Widgets[0].Y == win.Place.Y);
+        win.Buttons["Start"]();
+        await Spin();
+        Add("the Window's Start starts 25 minutes", store.Active?.Minutes == 25, $"{store.Active?.Minutes}");
+        Add("and the Window shows it focusing", win.Buttons.ContainsKey("Pause") && win.Buttons.ContainsKey("Park a thought"));
+        await Shot(win.Win.Content, "widget-window-focusing");
+        win.Buttons["Pause"]();
+        await Spin();
+        Add("Pause from the widget pauses", store.Active?.Paused != null && win.Buttons.ContainsKey("Resume"));
+        win.Buttons["Resume"]();
+        store.Stop();
+        store.Stop();
+        await Spin();
+        app.Widgets.Resize(win.Place.Id, "small");
+        Add("a widget can be made smaller", store.Settings.Widgets[0].Size == "small");
+
+        var later = app.Widgets.Add("later");
+        await Spin();
+        later.Buttons["Done: Water the plants"]();
+        await Spin();
+        Add("Later's tick takes it off the list", store.State.View.Later.All(l => l.Text != "Water the plants"));
+        var pet = app.Widgets.Add("pet", "medium");
+        await Spin();
+        pet.Pet();
+        Add("pet the cat: a hop", pet.Mood == 1);
+        pet.Pet();
+        Add("again: it purrs", pet.Mood == 2);
+        await Shot(pet.Win.Content, "widget-pet-purring");
+        var quick = app.Widgets.Add("quickstart");
+        await Spin();
+        quick.Buttons["50"]();
+        await Spin();
+        Add("Quick start's 50 starts 50 minutes", store.Active?.Minutes == 50);
+        store.Stop();
+        store.Stop();
+        app.Widgets.RemoveAll();
+        await Spin();
+        Add("taking them all away leaves none", app.Widgets.Shown.Count == 0 && store.Settings.Widgets.Count == 0);
+    }
+
+    /// <summary>The jump list's tasks, as a second start hands them over.</summary>
+    static async Task JumpTasks(Controller app)
+    {
+        var store = app.Store;
+        store.ResetForTest(Fresh());
+        Add("the jump list has its four tasks", JumpList.Tasks.Select(t => t.Command).SequenceEqual(["start:25", "start:50", "park", "cafe"]));
+        app.Do("start:50");
+        await Spin();
+        Add("Start 50 from the jump list", store.Active?.Minutes == 50, $"{store.Active?.Minutes}");
+        app.Popover.Hide();
+        app.Do("park");
+        await Spin();
+        Add("Park a thought from the jump list", app.Park.IsShown);
+        app.Park.Hide();
+        app.Do("cafe");
+        await Spin(400);
+        Add("Open the café from the jump list", app.Main.IsShown && app.Main.Pane == "cafe");
+        app.Main.Hide();
+        store.Stop();
+        store.Stop();
+    }
+
+    /// <summary>The newest sign-in code mailed to this address, from the sandbox server's outbox.</summary>
+    static string? CodeFor(string email, string outbox, long after)
+    {
+        string[] lines;
+        try { lines = File.ReadAllLines(outbox); } catch (Exception) { return null; }
+        foreach (var line in lines.Reverse())
+        {
+            try
+            {
+                if (JsonNode.Parse(line) is not JsonObject d || d["to"]?.GetValue<string>() != email) continue;
+                if ((d["at"]?.GetValue<double>() ?? 0) < after) continue;
+                var subject = d["subject"]?.GetValue<string>() ?? "";
+                var m = System.Text.RegularExpressions.Regex.Match(subject, "^[0-9]{6}");   // "123456 is your Chataltul code"
+                if (m.Success) return m.Value;
+            }
+            catch (Exception) { }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Signing in and syncing, against a sandbox copy of the web server on this machine (the workflow starts it with
+    /// KAVANA_MAIL=outbox, so the codes are written to a file this reads). A second device is played through the API
+    /// with its own engine. The Mac's SelfTest/SyncScenarios.swift.
+    /// </summary>
+    static async Task TheAccount(Controller app, string server, string? outbox)
+    {
+        var store = app.Store;
+        var sync = app.Sync;
+        // the one rule of these tests: only a server on this machine, never the real one
+        if (!new SyncClient(server, new FileSession(Path.Join(store.Folder, "x"))).IsLocal || outbox == null)
+        {
+            Add("the account test only talks to a server on this machine", false, server);
+            return;
+        }
+        store.ResetForTest(Fresh());
+        store.ChangeSettings(s => s.Server = server);
+        var email = $"windows-test-{Random.Shared.Next(100000, 999999)}@example.test";
+        var other = new SyncClient(server, new FileSession(Path.Join(store.Folder, "session2")));
+        var engine2 = new EngineHost(Path.Join(AppContext.BaseDirectory, "js"));
+        async Task<JsonObject?> ServerDoc() { try { return await other.Api("GET", "api/sync?rev=-1"); } catch (Exception) { return null; } }
+        async Task<List<string>> ServerTitles() =>
+            (await ServerDoc())?["doc"]?["blocks"] is JsonArray a ? a.Select(b => b?["intention"]?.GetValue<string>() ?? "").ToList() : [];
+
+        // this PC's own history first
+        HomeBlock(store, "On this PC", Clock.Now - 90 * MIN, 25);
+        Add("account: signed out to begin with", !sync.SignedIn);
+        sync.LoadConfig();
+        Add("account: the server says it sends email", await Wait(() => sync.EmailOn == true), sync.Message ?? "");
+
+        // a wrong code, then the right one
+        var since = Format.NowMs() - 1000;
+        sync.SendCode(email);
+        Add("account: the code is sent", await Wait(() => sync.CodeSentTo == email), sync.Message ?? "");
+        await Wait(() => CodeFor(email, outbox, since) != null, 10);
+        var good = CodeFor(email, outbox, since);
+        Add("account: the code is in the outbox, six digits", good?.Length == 6);
+        if (good == null) return;
+        app.Settings.Show("account");
+        await Spin(400);
+        await Shot(app.Settings.Window.Content as FrameworkElement, "settings-account-code");
+        app.Settings.Hide();
+        sync.SignIn(email, good == "000000" ? "111111" : "000000");
+        Add("account: a wrong code is refused, in words", await Wait(() => sync.Message != null && !sync.Busy) && !sync.SignedIn && sync.Message == "That code didn't work. Ask for a new one.", sync.Message ?? "");
+        sync.SignIn(email, good);
+        Add("account: the right code signs in", await Wait(() => sync.SignedIn), sync.Message ?? "");
+        Add("account: as that email", sync.Account?.Email == email, sync.Account?.Email ?? "");
+        Add("account: this PC's block went up with the sign-in", await Wait(async () => (await ServerTitles()).Contains("On this PC")));
+        app.Settings.Show("account");
+        await Spin(400);
+        await Shot(app.Settings.Window.Content as FrameworkElement, "settings-account-signed-in");
+        app.Settings.Hide();
+
+        // a second device signs in with its own code, and adds a block
+        var since2 = Format.NowMs() - 1000;
+        try
+        {
+            await other.Api("POST", "api/email/code", new JsonObject { ["email"] = email });
+            await Wait(() => CodeFor(email, outbox, since2) != null, 10);
+            await other.Api("POST", "api/email/signin", new JsonObject { ["email"] = email, ["code"] = CodeFor(email, outbox, since2) });
+        }
+        catch (Exception e) { Add("account: a second device signs in", false, e.Message); return; }
+        var theirs = await ServerDoc();
+        engine2.Load(theirs?["doc"]?.ToJsonString());
+        var t2 = Format.NowMs();
+        engine2.Run("start", new Dictionary<string, object?> { ["intention"] = "On the other device", ["minutes"] = 25 }, t2 - 50 * MIN);
+        engine2.Run("tick", now: t2 - 20 * MIN);
+        var rev2 = (long)(theirs?["rev"]?.GetValue<double>() ?? 0);
+        try { await other.Api("POST", "api/sync", raw: $"{{\"rev\":{rev2},\"doc\":{engine2.Dump()}}}"); Add("account: the second device pushed", true); }
+        catch (Exception e) { Add("account: the second device pushed", false, e.Message); }
+        sync.Pull();
+        Add("account: what the other device did comes here", await Wait(() => store.State.History.Any(h => h.Intention == "On the other device")));
+        Add("account: and this PC's own is still here", store.State.History.Any(h => h.Intention == "On this PC"));
+
+        // a change here goes up by itself
+        HomeBlock(store, "Made after signing in", Clock.Now - 30 * MIN, 25);
+        Add("account: a change here goes up on its own", await Wait(async () => (await ServerTitles()).Contains("Made after signing in")));
+
+        // signing out takes the account's history off this PC; it stays on the server
+        sync.SignOut();
+        Add("account: signing out", await Wait(() => !sync.SignedIn));
+        Add("account: the account's history left this PC", await Wait(() => store.State.History.Count == 0));
+        Add("account: and is safe on the server", (await ServerTitles()).Contains("On the other device"));
+
+        // and signing back in brings it home
+        var since3 = Format.NowMs() - 1000;
+        sync.SendCode(email);
+        await Wait(() => CodeFor(email, outbox, since3) != null, 10);
+        if (CodeFor(email, outbox, since3) is { } c3) sync.SignIn(email, c3);
+        Add("account: signing back in", await Wait(() => sync.SignedIn));
+        Add("account: the history comes back", await Wait(() => store.State.History.Any(h => h.Intention == "On the other device") && store.State.History.Any(h => h.Intention == "On this PC")));
+        sync.SignOut();
+        await Wait(() => !sync.SignedIn);
+        store.ChangeSettings(s => s.Server = WinSettings.WebApp);
+    }
+
+    static async Task<bool> Wait(Func<Task<bool>> done, double seconds = 20)
+    {
+        var end = DateTime.UtcNow.AddSeconds(seconds);
+        while (DateTime.UtcNow < end)
+        {
+            if (await done()) return true;
+            await Task.Delay(300);
+        }
+        return await done();
     }
 
     /// <summary>On a desktop of its own: real pixels, real clicks.</summary>

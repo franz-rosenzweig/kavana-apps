@@ -1,7 +1,7 @@
 # Chataltul for Windows (windows/README.md), on GitHub's Windows machines: the core tests (the web's engine
 # headless in Jint, and the rules of the speed bump, the hold, the away prompt, the blocklist), the paintings as
-# PNG, the app, its self-test on a desktop of its own (real pixels, a real mouse, real browsers), and the
-# installer, kept with the run. A tag windows-vX.Y.Z also makes the GitHub release, which is never the
+# PNG, the app, its self-test on a desktop of its own (real pixels, a real mouse, real browsers, the account
+# against a sandbox copy of the web server), and the installer, kept with the run. A tag windows-vX.Y.Z also makes the GitHub release, which is never the
 # repository's Latest (Obtainium watches the Android ones).
 name: Windows
 on:
@@ -53,9 +53,29 @@ jobs:
       - name: The app builds
         run: dotnet publish windows/Chataltul/Chataltul.csproj -c Release -r win-x64 -p:Platform=x64 -p:Version=${{ steps.version.outputs.version }} -o build/Chataltul
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # the account is tried against a sandbox copy of the web server on this machine (the web repo is public and
+      # its server needs nothing but Node), its emails written to outbox.jsonl, never sent and never the real one
       - name: The self-test
         shell: pwsh
-        run: windows/selftest.ps1 -App build/Chataltul/Chataltul.exe -OnScreen -Browser -Launch
+        run: |
+          $web = Join-Path $env:RUNNER_TEMP 'kavana-web'
+          $state = Join-Path $env:RUNNER_TEMP 'kavana-state'
+          git clone --quiet --depth 1 https://github.com/franz-rosenzweig/kavana $web
+          New-Item -ItemType Directory -Force $state | Out-Null
+          $env:KAVANA_STATE = $state; $env:KAVANA_PORT = '8787'; $env:KAVANA_HOST = '127.0.0.1'; $env:KAVANA_MAIL = 'outbox'
+          $server = Start-Process node -ArgumentList 'server.js' -WorkingDirectory $web -PassThru `
+            -RedirectStandardOutput (Join-Path $env:RUNNER_TEMP 'kavana-server.log') -RedirectStandardError (Join-Path $env:RUNNER_TEMP 'kavana-server.err')
+          $up = $false
+          for ($i = 0; $i -lt 30 -and -not $up; $i++) { try { Invoke-RestMethod http://127.0.0.1:8787/api/config | Out-Null; $up = $true } catch { Start-Sleep 1 } }
+          if (-not $up) { "the sandbox server didn't start"; Get-Content (Join-Path $env:RUNNER_TEMP 'kavana-server.*') -ErrorAction SilentlyContinue; exit 1 }
+          windows/selftest.ps1 -App build/Chataltul/Chataltul.exe -OnScreen -Browser -Launch -Sync http://127.0.0.1:8787/ -Outbox (Join-Path $state 'outbox.jsonl')
+          $code = $LASTEXITCODE
+          Stop-Process -Id $server.Id -ErrorAction SilentlyContinue
+          exit $code
 
       - name: The installer
         shell: pwsh

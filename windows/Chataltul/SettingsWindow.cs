@@ -12,28 +12,17 @@ using Windows.System;
 namespace Chataltul;
 
 /// <summary>
-/// Settings: General, Blocks and check-ins, Blocklist, Shortcuts, as Windows 11's own Settings looks: Mica, the
-/// title in a tall title bar with the system's caption buttons, the pages on the left. Ctrl+Plus, Ctrl+Minus,
-/// Ctrl+0 and Ctrl+wheel make the text bigger or smaller. Closing it only hides it. The Mac's SettingsWindow.swift
-/// (Breaks and Account come later on Windows).
+/// Settings: General, Blocks and check-ins, Blocklist, Widgets, Shortcuts, Account and sync, as Windows 11's own
+/// Settings looks (MicaShell). The Mac's SettingsWindow.swift (Breaks come with 0.3 on Windows).
 /// </summary>
 sealed class SettingsWindow
 {
     readonly Store store;
     readonly Controller app;
-    public Window Window { get; }
-    readonly Grid root = new();
-    readonly ColumnDefinition leftPad = new() { Width = new GridLength(0) }, rightPad = new() { Width = new GridLength(138) };
-    readonly TextBlock titleText = new() { Text = "Chataltul Settings", FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
-    readonly NavigationView nav;
-    readonly ScrollViewer page = new()
-    {
-        ZoomMode = ZoomMode.Enabled, MinZoomFactor = 0.75f, MaxZoomFactor = 2f,
-        HorizontalScrollMode = ScrollMode.Disabled, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-    };
-    readonly Grid holder = new() { Padding = new Thickness(28, 12, 28, 28), HorizontalAlignment = HorizontalAlignment.Left };
+    readonly MicaShell shell;
+    public Window Window => shell.Window;
     public string Pane { get; private set; } = "general";
-    public bool IsShown { get; private set; }
+    public bool IsShown => shell.IsShown;
     /// <summary>Which shortcut is waiting for its new keys, if any.</summary>
     string? recording;
     /// <summary>A change made by a control on the page, which shows it already: the page isn't built again under it.</summary>
@@ -47,146 +36,50 @@ sealed class SettingsWindow
 
     static readonly (string Id, string Title, string Glyph)[] Panes =
     [
-        ("general", "General", ""), ("blocks", "Blocks and check-ins", ""), ("blocklist", "Blocklist", ""), ("shortcuts", "Shortcuts", ""),
+        ("general", "General", ""), ("blocks", "Blocks and check-ins", ""), ("blocklist", "Blocklist", ""), ("widgets", "Widgets", "\uECA5"), ("shortcuts", "Shortcuts", ""), ("account", "Account and sync", "\uE77B"),
     ];
+
+    // what is being typed on the account page, kept when the page is built again
+    string email = "", code = "", accountName = "", password = "", current = "";
+    bool usePassword, deleting;
+    /// <summary>A key is going into a field on the account page: the page waits to be built again until it's done.</summary>
+    bool typing;
 
     public SettingsWindow(Store store, Controller app)
     {
         this.store = store;
         this.app = app;
-        page.Content = holder;
-        nav = new NavigationView
+        shell = new MicaShell("Chataltul Settings", Panes, 900, 640) { Maximizable = false, StartZoom = store.Settings.TextZoom };
+        shell.Picked += id => { if (id != Pane) { Pane = id; Build(); } };
+        shell.Zoomed += z => Quietly(s => s.TextZoom = z);
+        shell.BeforeKey = OnKey;
+        shell.Hidden += () =>
         {
-            PaneDisplayMode = NavigationViewPaneDisplayMode.Left, IsBackButtonVisible = NavigationViewBackButtonVisible.Collapsed,
-            IsSettingsVisible = false, IsPaneToggleButtonVisible = false, OpenPaneLength = 260, Content = page,
-            IsTitleBarAutoPaddingEnabled = false,
+            recording = null;
+            app.Recording = false;
+            app.RegisterShortcuts();
         };
-        foreach (var (id, title, glyph) in Panes)
-            nav.MenuItems.Add(new NavigationViewItem { Content = title, Tag = id, Icon = new FontIcon { Glyph = glyph } });
-        nav.SelectionChanged += (_, e) =>
-        {
-            if (e.SelectedItem is NavigationViewItem { Tag: string id } && id != Pane) { Pane = id; Build(); }
-        };
-
-        // the title row: the icon and the name, the rest of it moves the window, the caption buttons at its right
-        var titleRow = new Grid { Height = 48 };
-        titleRow.ColumnDefinitions.Add(leftPad);
-        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        titleRow.ColumnDefinitions.Add(rightPad);
-        var iconFile = Path.Join(AppContext.BaseDirectory, "Assets", "Chataltul.ico");
-        var icon = new Image { Width = 16, Height = 16, Margin = new Thickness(16, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        if (File.Exists(iconFile)) icon.Source = new BitmapImage(new Uri(iconFile));
-        Grid.SetColumn(icon, 1);
-        var drag = new Grid { Background = new SolidColorBrush(Colors.Transparent) };
-        titleText.Margin = new Thickness(12, 0, 0, 0);
-        drag.Children.Add(titleText);
-        Grid.SetColumn(drag, 2);
-        titleRow.Children.Add(icon);
-        titleRow.Children.Add(drag);
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        Grid.SetRow(nav, 1);
-        root.Children.Add(titleRow);
-        root.Children.Add(nav);
-
-        Window = new Window { Title = "Chataltul Settings", Content = root };
-        Window.SystemBackdrop = new MicaBackdrop();
-        Window.ExtendsContentIntoTitleBar = true;
-        Window.SetTitleBar(drag);
-        var bar = Window.AppWindow.TitleBar;
-        bar.PreferredHeightOption = TitleBarHeightOption.Tall;
-        bar.ButtonBackgroundColor = Colors.Transparent;
-        bar.ButtonInactiveBackgroundColor = Colors.Transparent;
-        PaintCaptionButtons();
-        root.ActualThemeChanged += (_, _) => PaintCaptionButtons();
-        root.Loaded += (_, _) => FitTitleBar();
-        Window.AppWindow.Changed += (_, e) => { if (e.DidSizeChange) FitTitleBar(); };
-        // as any Windows title bar: dimmer while another window is in front
-        Window.Activated += (_, e) => icon.Opacity = titleText.Opacity = e.WindowActivationState == WindowActivationState.Deactivated ? 0.5 : 1;
-        Window.AppWindow.Closing += (_, e) => { e.Cancel = true; Hide(); };
-        if (Window.AppWindow.Presenter is OverlappedPresenter p) p.IsMaximizable = false;
-        if (File.Exists(iconFile)) Window.AppWindow.SetIcon(iconFile);
-
-        // the text size: Ctrl and the wheel zoom the page by themselves; the keys are below
-        page.SizeChanged += (_, _) => Reflow();
-        page.ViewChanged += (_, e) =>
-        {
-            Reflow();
-            if (!e.IsIntermediate && Math.Abs(page.ZoomFactor - store.Settings.TextZoom) > 0.01) Quietly(s => s.TextZoom = page.ZoomFactor);
-        };
-        page.Loaded += (_, _) => page.ChangeView(null, null, Math.Clamp(store.Settings.TextZoom, 0.75f, 2f), true);
-        nav.PreviewKeyDown += OnKey;
         store.SettingsChanged += () => { if (IsShown && recording == null && !quiet) Build(); };
-    }
-
-    /// <summary>The caption buttons in the theme's colors, light or dark, as the system's own title bars have them.</summary>
-    void PaintCaptionButtons()
-    {
-        var dark = root.ActualTheme == ElementTheme.Dark;
-        var bar = Window.AppWindow.TitleBar;
-        var ink = dark ? Colors.White : Colors.Black;
-        bar.ButtonForegroundColor = ink;
-        bar.ButtonHoverForegroundColor = ink;
-        bar.ButtonPressedForegroundColor = ink;
-        bar.ButtonHoverBackgroundColor = dark ? ColorHelper.FromArgb(0x15, 0xFF, 0xFF, 0xFF) : ColorHelper.FromArgb(0x09, 0, 0, 0);
-        bar.ButtonPressedBackgroundColor = dark ? ColorHelper.FromArgb(0x0B, 0xFF, 0xFF, 0xFF) : ColorHelper.FromArgb(0x06, 0, 0, 0);
-        bar.ButtonInactiveForegroundColor = dark ? ColorHelper.FromArgb(0x5D, 0xFF, 0xFF, 0xFF) : ColorHelper.FromArgb(0x5C, 0, 0, 0);
-    }
-
-    /// <summary>Room for the caption buttons, which the system draws over the row.</summary>
-    void FitTitleBar()
-    {
-        var scale = root.XamlRoot?.RasterizationScale ?? Native.GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(Window)) / 96.0;
-        if (scale <= 0) return;
-        leftPad.Width = new GridLength(Window.AppWindow.TitleBar.LeftInset / scale);
-        rightPad.Width = new GridLength(Window.AppWindow.TitleBar.RightInset / scale);
-    }
-
-    /// <summary>The page as wide as the window at any text size, so bigger text wraps rather than running off the side.</summary>
-    void Reflow()
-    {
-        if (page.ActualWidth <= 0) return;
-        holder.Width = Math.Max(320, page.ActualWidth / page.ZoomFactor);
+        app.Sync.Changed += () => { if (IsShown && Pane == "account" && !typing) Build(); };
+        app.WidgetsChanged += () => { if (IsShown && Pane == "widgets") Build(); };
     }
 
     /// <summary>The text size, as Ctrl+Plus, Ctrl+Minus and Ctrl+0 change it.</summary>
-    public void Zoom(float factor) => page.ChangeView(null, null, Math.Clamp(factor, 0.75f, 2f));
+    public void Zoom(float factor) => shell.Zoom(factor);
 
-    public float ZoomFactor => page.ZoomFactor;
+    public float ZoomFactor => shell.ZoomFactor;
 
     public void Show(string? pane)
     {
         if (pane != null) Pane = pane;
         Palette.Dark = Palette.SystemDark();
-        root.RequestedTheme = Palette.Theme;
-        nav.SelectedItem = nav.MenuItems.OfType<NavigationViewItem>().FirstOrDefault(i => (string)i.Tag == Pane);
+        shell.Theme = Palette.Theme;
+        shell.Select(Pane);
         Build();
-        if (!IsShown)
-        {
-            var at = Native.Cursor();
-            var work = Native.WorkAreaAt(at);
-            var scale = Floating.ScaleAt(at);
-            int w = (int)(900 * scale), h = (int)(640 * scale);
-            var x = work.Left + (work.Width - w) / 2;
-            var y = work.Top + (work.Height - h) / 2;
-            if (Floating.Offscreen) { x -= 40_000; y -= 40_000; }
-            Window.AppWindow.MoveAndResize(new RectInt32(x, y, w, h));
-        }
-        IsShown = true;
-        // off the screen in the self-test, it doesn't take the front from whoever is working
-        if (Floating.Offscreen) Window.AppWindow.Show(false);
-        else Window.Activate();
+        shell.Show();
     }
 
-    public void Hide()
-    {
-        IsShown = false;
-        recording = null;
-        app.Recording = false;
-        app.RegisterShortcuts();
-        Window.AppWindow.Hide();
-    }
+    public void Hide() => shell.Hide();
 
     public UIElement Build()
     {
@@ -194,12 +87,12 @@ sealed class SettingsWindow
         {
             "blocks" => Blocks(),
             "blocklist" => BlocklistPane(),
+            "widgets" => WidgetsPane(),
             "shortcuts" => Shortcuts(),
+            "account" => AccountPane(),
             _ => General(),
         };
-        holder.Children.Clear();
-        holder.Children.Add(content);
-        Reflow();
+        shell.SetContent(content);
         return content;
     }
 
@@ -251,7 +144,9 @@ sealed class SettingsWindow
             Switch("The cat peeks up in the corner of the screen for check-ins", store.Settings.CatInCorner, on => Quietly(s => s.CatInCorner = on)),
             Note("Off, check-ins come as Windows notifications only."),
             Section("Where your things are"),
-            Note($"The doc, these settings and the log are in {store.Folder}. Nothing leaves this PC: Chataltul for Windows has no account yet."),
+            Note($"The doc, these settings and the log are in {store.Folder}. " + (app.Sync.SignedIn
+                ? "Signed in, your blocks, Later, cats and settings are also kept by the web app's server."
+                : "Without an account nothing leaves this PC.")),
             folder,
             Section("About"),
             Note($"Chataltul {App.Version} for Windows, with the web's engine at {web}."));
@@ -442,43 +337,196 @@ sealed class SettingsWindow
         return row;
     }
 
-    void OnKey(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    /// <summary>While a shortcut waits for its keys, every key goes to it (the zoom keys too); true if it took this one.</summary>
+    bool OnKey(Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
-        if (recording == null)
-        {
-            // Ctrl+Plus, Ctrl+Minus and Ctrl+0: the text size, as in a browser or Windows' own apps
-            if (!Down(VirtualKey.Control) || Down(VirtualKey.Menu)) return;
-            float? to = e.Key switch
-            {
-                VirtualKey.Add or OemPlus => page.ZoomFactor * 1.1f,
-                VirtualKey.Subtract or OemMinus => page.ZoomFactor / 1.1f,
-                VirtualKey.Number0 or VirtualKey.NumberPad0 => 1f,
-                _ => null,
-            };
-            if (to is { } z) { Zoom(z); e.Handled = true; }
-            return;
-        }
+        if (recording == null) return false;
         var vk = (int)e.Key;
-        if (e.Key == VirtualKey.Escape) { recording = null; app.Recording = false; app.RegisterShortcuts(); Build(); e.Handled = true; return; }
-        if (KeyCombo.IsModifierKey(vk)) return;
+        e.Handled = true;
+        if (e.Key == VirtualKey.Escape) { recording = null; app.Recording = false; app.RegisterShortcuts(); Build(); return true; }
+        if (KeyCombo.IsModifierKey(vk)) { e.Handled = false; return true; }
         var mods = 0;
         if (Down(VirtualKey.Control)) mods |= KeyCombo.Control;
         if (Down(VirtualKey.Menu)) mods |= KeyCombo.Alt;
         if (Down(VirtualKey.Shift)) mods |= KeyCombo.Shift;
         if (Down(VirtualKey.LeftWindows) || Down(VirtualKey.RightWindows)) mods |= KeyCombo.Win;
         var combo = new KeyCombo(vk, mods);
-        e.Handled = true;
-        if (!combo.IsValid) return;   // needs Ctrl, Alt or Win with it
+        if (!combo.IsValid) return true;   // needs Ctrl, Alt or Win with it
         var id = recording;
         recording = null;
         app.Recording = false;
         Set(id, combo);
+        return true;
     }
 
-    const VirtualKey OemPlus = (VirtualKey)0xBB, OemMinus = (VirtualKey)0xBD;
+    static bool Down(VirtualKey k) => MicaShell.Down(k);
 
-    static bool Down(VirtualKey k) =>
-        Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(k).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+
+    // ---------------------------------------------------------------- widgets
+
+    UIElement WidgetsPane()
+    {
+        var placed = new StackPanel { Spacing = 6 };
+        foreach (var w in app.Widgets.Shown.ToList())
+        {
+            var kind = Widgets.Kind(w.Place.Kind);
+            placed.Children.Add(Item(kind?.Title ?? w.Place.Kind, Widgets.SizeName(w.Place.Size), () => app.Widgets.Remove(w.Place.Id)));
+        }
+        if (app.Widgets.Shown.Count == 0) placed.Children.Add(Note("None yet. Add one below: it goes at the right of your main screen, and you can drag it anywhere."));
+
+        var gallery = new StackPanel { Spacing = 8 };
+        foreach (var k in Widgets.All)
+        {
+            var size = k.Sizes[0];
+            var row = new Grid { ColumnSpacing = 12, MaxWidth = 620, HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 520 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var words = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            words.Children.Add(new TextBlock { Text = k.Title, FontSize = 14 });
+            words.Children.Add(Note(k.About));
+            row.Children.Add(words);
+            if (k.Sizes.Length > 1)
+            {
+                var sizes = new ComboBox { MinWidth = 130, VerticalAlignment = VerticalAlignment.Center };
+                foreach (var s in k.Sizes) sizes.Items.Add(Widgets.SizeName(s));
+                sizes.SelectedIndex = 0;
+                sizes.SelectionChanged += (_, _) => { if (sizes.SelectedIndex >= 0) size = k.Sizes[sizes.SelectedIndex]; };
+                Grid.SetColumn(sizes, 1);
+                row.Children.Add(sizes);
+            }
+            var add = new Button { Content = "Add", VerticalAlignment = VerticalAlignment.Center };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(add, $"Add {k.Title}");
+            add.Click += (_, _) => app.Widgets.Add(k.Id, size);
+            Grid.SetColumn(add, 2);
+            row.Children.Add(add);
+            gallery.Children.Add(row);
+        }
+        var removeAll = new Button { Content = "Take them all away", IsEnabled = app.Widgets.Shown.Count > 0 };
+        removeAll.Click += (_, _) => app.Widgets.RemoveAll();
+        return Col(
+            Heading("Widgets"),
+            Note("Little cards on your desktop, under your windows, like a phone's widgets. Drag one by its background to move it; right-click it for its size or to take it away. Clicking one opens Chataltul."),
+            Section("On your desktop"),
+            placed,
+            removeAll,
+            Switch("Hide block titles: the widgets show the time, never what a block is called", store.Settings.HideTitles, on => store.ChangeSettings(s => s.HideTitles = on)),
+            Section("Add a widget"),
+            gallery,
+            Section("On the taskbar"),
+            Note("Right-click Chataltul's taskbar button or its Start menu entry for Start 25, Start 50, Park a thought and Open the café. Pin Chataltul to the taskbar to have them there all the time."));
+    }
+
+    // ---------------------------------------------------------------- account and sync
+
+    /// <summary>A field whose text is kept in <c>keep</c>; Enter does <c>submit</c>.</summary>
+    TextBox Typed(string header, string placeholder, string text, Action<string> keep, Action? submit = null)
+    {
+        var box = new TextBox { Header = header, PlaceholderText = placeholder, Text = text, MinWidth = 300, HorizontalAlignment = HorizontalAlignment.Left };
+        box.TextChanged += (_, _) => keep(box.Text);
+        box.GotFocus += (_, _) => typing = true;
+        box.LostFocus += (_, _) => typing = false;
+        if (submit != null) box.KeyDown += (_, e) => { if (e.Key == VirtualKey.Enter) { e.Handled = true; typing = false; submit(); } };
+        return box;
+    }
+
+    PasswordBox Secret(string header, string text, Action<string> keep, Action? submit = null)
+    {
+        var box = new PasswordBox { Header = header, Password = text, MinWidth = 300, HorizontalAlignment = HorizontalAlignment.Left };
+        box.PasswordChanged += (_, _) => keep(box.Password);
+        box.GotFocus += (_, _) => typing = true;
+        box.LostFocus += (_, _) => typing = false;
+        if (submit != null) box.KeyDown += (_, e) => { if (e.Key == VirtualKey.Enter) { e.Handled = true; typing = false; submit(); } };
+        return box;
+    }
+
+    static Button Accent(string text, Action click) => V.Btn(text, click, accent: true);
+    static Button Plain(string text, Action click) => V.Btn(text, click);
+    static StackPanel Buttons(params UIElement?[] b)
+    {
+        var s = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        foreach (var x in b) if (x != null) s.Children.Add(x);
+        return s;
+    }
+
+    UIElement AccountPane()
+    {
+        var sync = app.Sync;
+        sync.LoadConfig();
+        var said = sync.Message is { } m ? new TextBlock { Text = m, TextWrapping = TextWrapping.WrapWholeWords, Foreground = new SolidColorBrush(Palette.Caution) } : null;
+        var busy = sync.Busy ? new ProgressRing { IsActive = true, Width = 20, Height = 20, HorizontalAlignment = HorizontalAlignment.Left } : null;
+        if (sync.Account is { } a)
+        {
+            var where = sync.Trouble == "too big" ? "Not syncing: the history is too big for the server."
+                : sync.LastSync is { } at ? $"Synced with {sync.Server} at {at:t}." : $"Syncs with {sync.Server}.";
+            UIElement security;
+            if (deleting)
+            {
+                // deleting needs the password, or for an account without one, a code to its email
+                security = a.HasPassword
+                    ? Col(Note("This deletes the account and its history on the server. This PC keeps its own copy."),
+                        Secret("Your password", current, v => current = v, () => sync.DeleteAccount("password", current)),
+                        Buttons(Accent("Delete the account", () => sync.DeleteAccount("password", current)), Plain("Keep it", () => { deleting = false; Build(); })))
+                    : sync.CodeSentTo is { } sent
+                        ? Col(Note($"A code went to {sent}. This deletes the account and its history on the server; this PC keeps its own copy."),
+                            Typed("Code", "123456", code, v => code = v, () => sync.DeleteAccount("code", code)),
+                            Buttons(Accent("Delete the account", () => sync.DeleteAccount("code", code)), Plain("Keep it", () => { deleting = false; sync.CodeSentTo = null; Build(); })))
+                        : Col(Note("To be sure it's you, Chataltul emails you a code first."),
+                            Buttons(Accent("Send me a code", sync.SendDeleteCode), Plain("Keep it", () => { deleting = false; Build(); })));
+            }
+            else
+            {
+                security = Col(
+                    Secret(a.HasPassword ? "A new password" : "A password, if you want one", password, v => password = v),
+                    a.HasPassword ? Secret("Your password now", current, v => current = v) : null,
+                    Buttons(Plain(a.HasPassword ? "Change the password" : "Set the password", () => { sync.SetPassword(password, a.HasPassword ? current : null); password = ""; current = ""; }),
+                        V.Link("Delete the account…", () => { deleting = true; sync.Message = null; Build(); })));
+            }
+            return Col(
+                Heading("Account and sync"),
+                Section("Signed in"),
+                new TextBlock { Text = a.Label, FontSize = 14 },
+                Note(where),
+                Note("Your blocks, Later, cats and settings are the same here, on the web and on your other devices. A change goes up a moment after you make it. Where each block went never leaves this PC."),
+                Buttons(Plain("Sign out", sync.SignOut), Plain("Open the web app", () => Outside.Open(store.Settings.Server)), Plain("Sync now", () => { _ = sync.Push(); })),
+                Note("Signing out takes the account's history off this PC; it stays safe on the server."),
+                Section("Password and the account"),
+                security,
+                busy, said);
+        }
+
+        UIElement form;
+        if (usePassword || sync.EmailOn == false)
+        {
+            form = Col(
+                Typed("Name or email", "", accountName, v => accountName = v),
+                Secret("Password", password, v => password = v, () => sync.SignIn("login", accountName, password)),
+                Buttons(Accent("Sign in", () => sync.SignIn("login", accountName, password)), Plain("Make an account", () => sync.SignIn("signup", accountName, password))));
+        }
+        else if (sync.CodeSentTo is { } sent)
+        {
+            form = Col(
+                Note($"A 6-digit code went to {sent}. It can take a minute."),
+                Typed("Code", "123456", code, v => code = v, () => sync.SignIn(sent, code)),
+                Buttons(Accent("Sign in", () => sync.SignIn(sent, code)), Plain("Another address", () => { sync.CodeSentTo = null; code = ""; Build(); })));
+        }
+        else
+        {
+            form = Col(
+                Typed("Email", "you@example.com", email, v => email = v, () => sync.SendCode(email)),
+                Buttons(Accent("Send me a code", () => sync.SendCode(email))));
+        }
+        var other = sync.EmailOn != false
+            ? V.Link(usePassword ? "Use an email code" : "Use a name and a password", () => { usePassword = !usePassword; sync.Message = null; Build(); })
+            : null;
+        return Col(
+            Heading("Account and sync"),
+            Note(sync.EmailOn == false
+                ? "This server doesn't send email, so use a name and a password."
+                : "No password to remember: Chataltul emails you a 6-digit code. If you're new, the code makes your account. This PC's blocks come along. Without an account nothing leaves this PC."),
+            form, other, busy, said,
+            Note($"The account is the web app's, at {sync.Server}."));
+    }
 
     void Set(string id, KeyCombo combo)
     {

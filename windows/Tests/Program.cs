@@ -222,7 +222,126 @@ Section("a year of blocks: the engine is quick enough to run on every press");
     Console.WriteLine($"INFO {r.State.History.Count} blocks in the state (of {blocks.Count}, {big.Length / 1024} KB): load {loaded} ms, tick {tick} ms, start {start} ms");
     Check("a year of blocks loads", r.State.History.Count >= 400, $"{r.State.History.Count}");
     Check("and an op on it takes under two seconds", tick < 2000 && start < 2000, $"tick {tick} ms, start {start} ms");
+    // where an op's time goes, part by part, to know what to make faster
+    var parts = host.Evaluate(@"(function () {
+      const E = Kavana, doc = E.normalize(JSON.parse(KB.dump())), now = Date.now(), out = {};
+      const time = (name, f) => { const t = Date.now(); for (let i = 0; i < 3; i++) f(); out[name] = Math.round((Date.now() - t) / 3); };
+      time('history', () => E.history(doc));
+      time('view', () => E.view(doc, now));
+      time('pings', () => E.pings(doc, now));
+      time('missions', () => E.missions(doc, now));
+      time('achievements', () => E.achievements(doc));
+      time('starter', () => E.starter(doc));
+      time('monthly', () => E.monthly(doc, now));
+      time('treats', () => E.treats(doc));
+      time('tick', () => E.tick(doc, now));
+      time('stringify', () => JSON.stringify(doc));
+      return JSON.stringify(out);
+    })()");
+    Console.WriteLine($"INFO the engine's parts on {blocks.Count} blocks, ms each: {parts}");
+    Check("the engine's parts can be timed", parts.StartsWith('{'), parts);
 }
+
+// ---------------------------------------------------------------- what the widgets and Today draw from the engine
+Section("missions, rewards and the café's things");
+host.Load(null);
+var m0 = t + 500 * 86_400_000L;
+r = host.Run("tick", now: m0);
+Check("the day has its missions", r.State.Missions.Day.Count == 3, $"{r.State.Missions.Day.Count}");
+Check("and the week one", r.State.Missions.Week.Count == 1);
+Check("a mission says how far along it is", r.State.Missions.Day.All(m => m.Progress.Length > 0 && m.Pay > 0));
+Check("the achievements are there, none done", r.State.Achievements.Count > 20 && r.State.Achievements.All(a => !a.Done));
+Equal("nothing to collect yet", r.State.Collectable.Count, 0);
+var first = host.Run("start", new Dictionary<string, object?> { ["intention"] = "First", ["minutes"] = 25, ["cat"] = "miso" }, m0);
+host.Run("tick", now: m0 + 26 * MIN);
+r = host.Run("outcome", new Dictionary<string, object?> { ["id"] = first.Result?.GetProperty("id").GetString(), ["outcome"] = "done" }, m0 + 27 * MIN);
+Check("a first kitten home: First Kitten and the starter's first step wait to be collected",
+    r.State.Collectable.Any(x => x.Id == "first") && r.State.Collectable.Any(x => x.Id == "starter-first"), string.Join(", ", r.State.Collectable.Select(x => x.Id)));
+var before = r.State.Treats.Left;
+r = host.Run("claim", new Dictionary<string, object?> { ["id"] = "first" }, m0 + 28 * MIN);
+Check("collecting pays its treats", r.State.Treats.Left == before + 10 && r.State.Collectable.All(x => x.Id != "first"), $"{before} then {r.State.Treats.Left}");
+Check("a block's total and bonus come with it", host.Run("start", new Dictionary<string, object?> { ["minutes"] = 25 }, m0 + 30 * MIN).State.View.Active is { Total: 25 * MIN, Bonus: 0 });
+Equal("no café things owned yet", r.State.Things.Count, 0);
+
+Section("Today's numbers (Insights)");
+var day0 = new DateTime(2026, 10, 7, 0, 0, 0, DateTimeKind.Local);   // a Wednesday
+var dayP = Insights.PeriodOf(Span.Day, day0.AddHours(15));
+Equal("a day runs midnight to midnight", (dayP.From, dayP.To), (Format.Ms(day0), Format.Ms(day0.AddDays(1))));
+var weekP = Insights.PeriodOf(Span.Week, day0.AddHours(15));
+Equal("a week starts on Monday", weekP.Start, new DateTime(2026, 10, 5));
+Equal("the month", Insights.PeriodOf(Span.Month, day0).Start, new DateTime(2026, 10, 1));
+Equal("the month before", Insights.Before(Insights.PeriodOf(Span.Month, day0)).Start, new DateTime(2026, 9, 1));
+Equal("the year", Insights.PeriodOf(Span.Year, day0).Start, new DateTime(2026, 1, 1));
+Equal("a month has its days", Insights.SlotCount(Insights.PeriodOf(Span.Month, new DateTime(2026, 2, 3))), 28);
+JsonElement HistJson(string id, DateTime start, int actual, string? tag, string kitten = "home", string? outcome = "done", int drifts = 0) =>
+    JsonDocument.Parse(JsonSerializer.Serialize(new { id, start = Format.Ms(start), intention = id, minutes = actual, actual, tag, kitten, outcome, drifts, cat = "miso" })).RootElement;
+var hs = new List<Hist>
+{
+    new(HistJson("a", day0.AddHours(9).AddMinutes(45), 30, "Write")),
+    new(HistJson("b", day0.AddHours(14), 50, "Read", outcome: "partly", drifts: 2)),
+    new(HistJson("c", day0.AddDays(1).AddHours(10), 25, null, kitten: "gone", outcome: null)),
+};
+var dayBlocks = Insights.In(hs, dayP);
+Equal("the day's blocks", dayBlocks.Count, 2);
+Equal("its minutes", Insights.Minutes(dayBlocks), 80);
+Equal("cats home and wandered off", (Insights.Home(hs), Insights.Wandered(hs)), (2, 1));
+Equal("done, partly, not really", Insights.Outcomes(hs), (1, 1, 0));
+Equal("drifts", Insights.Drifts(hs), 2);
+var hours = Insights.Slots(dayBlocks, dayP);
+Equal("a block over the hour splits between the hours", (hours[9], hours[10]), (15, 15));
+var weekSlots = Insights.Slots(hs, weekP);
+Equal("the week's days, Monday first", (weekSlots[2], weekSlots[3]), (80, 25));
+Same("by tag, biggest first, no tag is Untagged", Insights.ByTag(hs).Select(x => x.Tag), ["Read", "Write", "Untagged"]);
+Equal("against the period before", Insights.Compare(130, 70), "+1 h");
+Equal("less than before", Insights.Compare(30, 70), "−40 min");
+Equal("nothing before: nothing to compare", Insights.Compare(30, 0), null);
+Equal("days in a row, until today ends", Insights.Streak(hs, day0.AddDays(2)), 2);
+Equal("a gap ends it", Insights.Streak(hs, day0.AddDays(4)), 0);
+Equal("hours by name", (Insights.HourName(0), Insights.HourName(12), Insights.HourName(18)), ("12 AM", "12 PM", "6 PM"));
+Equal("ordinals", (Insights.Ordinal(1), Insights.Ordinal(12), Insights.Ordinal(22), Insights.Ordinal(23)), ("1st", "12th", "22nd", "23rd"));
+
+Section("the widgets' rules");
+Check("every widget has its sizes", Widgets.All.All(k => k.Sizes.Length > 0) && Widgets.All.Select(k => k.Id).Distinct().Count() == Widgets.All.Length);
+Equal("a medium widget's size", Widgets.SizeOf("medium"), (360.0, 172.0));
+host.Load(null);
+r = host.Run("start", new Dictionary<string, object?> { ["minutes"] = 25 }, m0);
+Equal("a running block is focusing", Widgets.ModeOf(r.State.View.Active, null, null, true), WMode.Focusing);
+r = host.Run("tick", now: m0 + 15 * MIN + 1000);
+Equal("a check-in waiting", Widgets.ModeOf(r.State.View.Active, null, null, true), WMode.Checkin);
+r = host.Run("pause", now: m0 + 16 * MIN);
+Equal("paused", Widgets.ModeOf(r.State.View.Active, null, null, true), WMode.Paused);
+Equal("nothing running: ready", Widgets.ModeOf(null, null, null, true), WMode.Ready);
+Equal("a break", Widgets.ModeOf(null, null, new Brk(5, m0, m0 + 5 * MIN), true), WMode.Break);
+Equal("the greeting", (Widgets.Greeting(8), Widgets.Greeting(13), Widgets.Greeting(19), Widgets.Greeting(23)), ("GOOD MORNING", "GOOD AFTERNOON", "GOOD EVENING", "NIGHT OWL"));
+Equal("the cat's line at night", Widgets.CatLine(WMode.Ready, "Miso", 23), "Miso is asleep on the cushion. Shh.");
+Equal("hours, as the widgets write them", (Widgets.Hours(130), Widgets.Hours(45)), ("2 h 10", "45 min"));
+var days7 = Widgets.Days(hs, day0.AddDays(1), 7);
+Equal("seven days, today last", (days7.Count, days7[^1].Date, days7[^2].Minutes), (7, day0.AddDays(1), 80));
+Equal("a day's cat is its longest block's, and the hour it started", (days7[^2].Cat, days7[^2].Hour), ("miso", 14));
+Same("this week's paws, Monday first", Widgets.WeekPaws(hs, day0.AddDays(1)), [false, false, true, false, false, false, false]);
+Equal("this month's stars", Widgets.Stars(hs, day0.AddDays(3)).Count, 2);
+Check("a star is in the sky, the same each time", Widgets.StarAt(5, 30, 14, 31) == Widgets.StarAt(5, 30, 14, 31)
+    && Enumerable.Range(0, 31).All(d => Widgets.StarAt(d, 25 + d, d % 24, 31) is var (x, y) && x is > 0 and < 1 && y is > 0 and < 1));
+
+Section("the account's client");
+Equal("a session cookie is read", SyncClient.ReadCookie("kavana=abc123; Path=/; Max-Age=2592000; HttpOnly"), "abc123");
+Equal("one that ends it is empty", SyncClient.ReadCookie("kavana=; Path=/; Max-Age=0"), "");
+Equal("another cookie isn't ours", SyncClient.ReadCookie("other=1; Path=/"), null);
+Equal("a wrong code, in words", SyncClient.Words(new ApiError(401, "bad code", null), "code"), "That code didn't work. Ask for a new one.");
+Equal("too many tries", SyncClient.Words(new ApiError(429, null, null)), "Too many tries. Wait a few minutes.");
+Equal("the server's own word, as a sentence", SyncClient.Words(new ApiError(400, "name taken", null)), "Name taken.");
+Equal("an account from /api/me", Account.From(System.Text.Json.Nodes.JsonNode.Parse("{\"name\":\"u1\",\"email\":\"a@b.test\",\"hasPassword\":false}")),
+    new Account("u1", null, "a@b.test", false));
+Equal("an account from before email has a password", Account.From(System.Text.Json.Nodes.JsonNode.Parse("{\"name\":\"old\"}"))?.HasPassword, true);
+Equal("its label is the email", new Account("u1", "Dana", "a@b.test").Label, "a@b.test");
+Check("only a server on this PC is local", new SyncClient("http://127.0.0.1:8787/", new FileSession(Path.GetTempFileName())).IsLocal
+    && !new SyncClient(WinSettings.WebApp, new FileSession(Path.GetTempFileName())).IsLocal);
+var sessionFile = Path.Join(Path.GetTempPath(), $"chataltul-session-{Guid.NewGuid():N}");
+var fs = new FileSession(sessionFile) { Cookie = "xyz" };
+Equal("a test session is kept in its file", new FileSession(sessionFile).Cookie, "xyz");
+fs.Cookie = null;
+Check("and forgotten", !File.Exists(sessionFile));
+Equal("the settings know the web app's server", new WinSettings().Server, "https://stuffs.tiresia.xyz/kavana/");
 
 // ---------------------------------------------------------------- the engine change we ask for, on a copy
 Section("E.takeOff, with mac/docs/engine-takeoff.patch applied to a copy of the engine");

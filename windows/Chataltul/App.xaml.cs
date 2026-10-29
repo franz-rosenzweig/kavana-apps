@@ -42,6 +42,7 @@ public partial class App : Application
         {
             Floating.Offscreen = !Options.OnScreen;
             CatCorner.Still = true;
+            CafeView.Still = true;
             Palette.Force = false;
         }
         Store store;

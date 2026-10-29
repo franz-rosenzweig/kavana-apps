@@ -4,7 +4,7 @@ namespace Chataltul;
 
 /// <summary>
 /// The start: one Chataltul at a time. A second start (from the Start menu while it already runs in the
-/// notification area) only asks the first to open its popover, and leaves.
+/// notification area) only asks the first to open its popover, or to do the jump list's task, and leaves.
 /// </summary>
 public static class Program
 {
@@ -20,7 +20,7 @@ public static class Program
             one = new Mutex(true, MutexName, out var first);
             if (!first)
             {
-                MessageWindow.WakeTheOther();
+                MessageWindow.WakeTheOther(options.Do);
                 return 0;
             }
         }

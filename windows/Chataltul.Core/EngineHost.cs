@@ -48,6 +48,13 @@ public sealed class EngineHost
     /// <summary>The doc as JSON, for the file.</summary>
     public string Dump() => Call("dump", []);
 
+    /// <summary>Runs a piece of JavaScript beside the engine and gives back what it returns, as a string (the tests time the engine's parts with it).</summary>
+    public string Evaluate(string js)
+    {
+        try { return engine.Evaluate(js).ToString(); }
+        catch (Exception e) { throw new Failure($"evaluate: {e.Message}"); }
+    }
+
     /// <summary>A minute of <c>ms</c> milliseconds, for tests that can't wait.</summary>
     public void Minute(int ms) => Call("minute", [ms]);
 

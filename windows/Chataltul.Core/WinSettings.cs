@@ -57,6 +57,16 @@ public sealed record KeyCombo
 
 public enum AwayAction { Ask, Count, TakeOff }
 
+/// <summary>A widget on the desktop: which one, its size, and where its top left is (in pixels, on the virtual screen).</summary>
+public sealed class WidgetPlace
+{
+    public string Kind { get; set; } = "window";
+    public string Size { get; set; } = "medium";
+    public int X { get; set; }
+    public int Y { get; set; }
+    public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
+}
+
 /// <summary>The plain Pomodoro cycle the popover steps through. It lives on this PC only (the engine has no cycles), so it isn't synced.</summary>
 public sealed class Cycle
 {
@@ -95,8 +105,14 @@ public sealed class WinSettings
     public int FocusMinutes { get; set; } = 25;
     /// <summary>Seen the first-run welcome.</summary>
     public bool Welcomed { get; set; }
-    /// <summary>How big Settings' text is (Ctrl+Plus, Ctrl+Minus, Ctrl+0, Ctrl+wheel).</summary>
+    /// <summary>How big the text is in Settings and the app window (Ctrl+Plus, Ctrl+Minus, Ctrl+0, Ctrl+wheel).</summary>
     public float TextZoom { get; set; } = 1;
+    /// <summary>The web app's server, for the account and its sync (the self-test points it at a sandbox on the runner).</summary>
+    public string Server { get; set; } = WebApp;
+    /// <summary>The widgets on the desktop, each with its place.</summary>
+    public List<WidgetPlace> Widgets { get; set; } = [];
+    /// <summary>"Hide block titles": the widgets show the time, never what a block is called.</summary>
+    public bool HideTitles { get; set; }
 
     public const string WebApp = "https://stuffs.tiresia.xyz/kavana/";
 
