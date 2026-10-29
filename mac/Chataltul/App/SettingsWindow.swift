@@ -41,11 +41,12 @@ final class SettingsWindow {
     func show(store: Store, app: AppDelegate, pane: String?) {
         if let p = pane.flatMap(SettingsPane.init(rawValue:)) { nav.pane = p }
         if window == nil {
-            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 560), styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 640), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
             w.title = "Chataltul Settings"
             w.titlebarAppearsTransparent = true
             w.titleVisibility = .hidden
             w.isReleasedWhenClosed = false
+            w.minSize = NSSize(width: SettingsView.minSize.width, height: SettingsView.minSize.height)
             w.contentView = NSHostingView(rootView: SettingsView(store: store, nav: nav, sync: app.sync, watcher: app.watcher))
             w.center()
             if FloatingPanel.offscreen { w.setFrameOrigin(NSPoint(x: -40_000, y: -40_000)) }   // a test: far off the screen
@@ -75,9 +76,11 @@ struct SettingsView: View {
                 .padding(.init(top: 44, leading: 32, bottom: 32, trailing: 32))
             }
         }
-        .frame(width: 800, height: 560)
+        .frame(minWidth: Self.minSize.width, minHeight: Self.minSize.height)
         .background(Wall())
     }
+
+    static let minSize = CGSize(width: 760, height: 520)
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -89,8 +92,8 @@ struct SettingsView: View {
                 Button { nav.pane = p } label: {
                     HStack(spacing: 10) {
                         Image(systemName: p.symbol).frame(width: 18)
-                        Text(p.title).font(.system(size: 13, weight: nav.pane == p ? .semibold : .regular))
-                        Spacer()
+                        Text(p.title).font(.system(size: 13, weight: nav.pane == p ? .semibold : .regular)).lineLimit(1).fixedSize()
+                        Spacer(minLength: 0)
                     }
                     .foregroundStyle(nav.pane == p ? Palette.ink : Palette.muted2)
                     .padding(.horizontal, 12).padding(.vertical, 8)
@@ -102,7 +105,7 @@ struct SettingsView: View {
             Text("Version \(Self.version)").font(.system(size: 11)).foregroundStyle(Palette.muted).padding(.horizontal, 12)
         }
         .padding(.init(top: 44, leading: 12, bottom: 16, trailing: 12))
-        .frame(width: 210)
+        .frame(width: 220)
         .background(Palette.softer)
     }
 
