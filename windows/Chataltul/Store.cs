@@ -122,7 +122,7 @@ sealed class Store
         if (have.Count < 400 || have[^1].Start < from) return have.Where(b => b.Start >= from && b.Start < to).ToList();
         try
         {
-            var o = host.Run("period", new() { ["from"] = from, ["to"] = to }, Clock.Now);
+            var o = host.Run("period", new Dictionary<string, object?> { ["from"] = from, ["to"] = to }, Clock.Now);
             return o.Result is { ValueKind: System.Text.Json.JsonValueKind.Array } a ? a.EnumerateArray().Select(x => new Hist(x)).ToList() : [];
         }
         catch (Exception e)

@@ -248,10 +248,14 @@ sealed class SyncController
 
     // ---------------------------------------------------------------- signing in and out
 
+    /// <summary>Asked once a server (a second try only after the server changes): the Account page asks each time it's built.</summary>
+    string? configAsked;
+
     public void LoadConfig()
     {
         RefreshClient();
-        if (EmailOn != null) return;
+        if (EmailOn != null || configAsked == Server) return;
+        configAsked = Server;
         _ = Run(async () =>
         {
             try
@@ -380,6 +384,8 @@ sealed class SyncController
     {
         RefreshClient();
         if (!quietly) { Busy = true; Message = null; Tell(); }
+        // a call can fail before its first await: the page that started it is never rebuilt inside its own build
+        await Task.Yield();
         try { await body(); }
         catch (ApiError e) { Message = SyncClient.Words(e, asking); }
         catch (Exception e)

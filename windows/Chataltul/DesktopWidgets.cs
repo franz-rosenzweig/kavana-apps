@@ -214,7 +214,7 @@ sealed class DesktopWidget
             "today" => v.Today(),
             "later" => v.Later(),
             "pet" => v.Pet(mood),
-            "clock" => v.Clock(),
+            "clock" => v.ClockFace(),
             "streak" => v.Streak(),
             "goal" => v.Goal(),
             "missions" => v.Missions(),
@@ -675,7 +675,8 @@ sealed class WidgetViews(Store store, Controller app, DesktopWidget w, double wi
         sb.Begin();
     }
 
-    public FrameworkElement Clock()
+    /// <summary>A cat with a day: the time, the date and what the cat is up to.</summary>
+    public FrameworkElement ClockFace()
     {
         var now = DateTime.Now;
         var night = Widgets.IsNight(now.Hour);

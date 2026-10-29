@@ -517,7 +517,7 @@ static class SelfTest
     {
         string[] lines;
         try { lines = File.ReadAllLines(outbox); } catch (Exception) { return null; }
-        foreach (var line in lines.Reverse())
+        foreach (var line in Enumerable.Reverse(lines))
         {
             try
             {
