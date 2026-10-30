@@ -489,11 +489,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func windowItem() { openWindow(nil) }
     @objc private func quitItem() { NSApp.terminate(nil) }
 
-    /// A menu for the sake of ⌘C and ⌘V in text fields: an accessory app has no menu bar, but its key equivalents still work.
-    private func installMainMenu() {
+    /// A menu for the sake of ⌘, and of ⌘C and ⌘V in text fields: an accessory app has no menu bar, but its key equivalents still work.
+    func installMainMenu() {
         let main = NSMenu()
         let appItem = NSMenuItem(); main.addItem(appItem)
         let appMenu = NSMenu(); appItem.submenu = appMenu
+        appMenu.addItem(withTitle: "About Chataltul", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(withTitle: "Settings…", action: #selector(settingsItem), keyEquivalent: ",").target = self
+        appMenu.addItem(withTitle: "Open Chataltul", action: #selector(windowItem), keyEquivalent: "").target = self
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(withTitle: "Hide Chataltul", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(withTitle: "Quit Chataltul", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let editItem = NSMenuItem(); main.addItem(editItem)
         let edit = NSMenu(title: "Edit"); editItem.submenu = edit

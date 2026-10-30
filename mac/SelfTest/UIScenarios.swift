@@ -330,8 +330,11 @@ enum UIScenarios {
         for dark in [false, true] {
             for pane in SettingsPane.allCases {
                 let name = "settings-\(pane.rawValue)"
-                check("\(name) \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(SettingsView(store: store, nav: SettingsNav(pane), sync: sync, watcher: watcher), name: name, dark: dark, pad: 0, wall: false)))
+                check("\(name) \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(SettingsView(store: store, nav: SettingsNav(pane), sync: sync, watcher: watcher).frame(width: 900, height: 640), name: name, dark: dark, pad: 0, wall: false)))
             }
+            // the Blocklist at the window's smallest, and all of it at the usual width
+            check("settings-blocklist-small \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(SettingsView(store: store, nav: SettingsNav(.blocklist), sync: sync, watcher: watcher).frame(width: SettingsView.minSize.width, height: SettingsView.minSize.height), name: "settings-blocklist-small", dark: dark, pad: 0, wall: false)))
+            check("settings-blocklist-all \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(SettingsView(store: store, nav: SettingsNav(.blocklist), sync: sync, watcher: watcher).frame(width: 900, height: 1900), name: "settings-blocklist-all", dark: dark, pad: 0, wall: false)))
         }
     }
 }

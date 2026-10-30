@@ -500,6 +500,16 @@ enum LiveScenarios {
         app.openSettings("blocklist")
         spin()
         check("settings: the window is made", NSApp.windows.contains { $0.title == "Chataltul Settings" })
+        let settingsWindow = NSApp.windows.first { $0.title == "Chataltul Settings" }
+        check("settings: the window can be made bigger", settingsWindow?.styleMask.contains(.resizable) == true)
+        for w in NSApp.windows where w.title == "Chataltul Settings" { w.orderOut(nil) }
+        check("settings: gone before ⌘,", !(settingsWindow?.isVisible ?? true))
+        app.installMainMenu()   // done at launch, which this test skips
+        if let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0, windowNumber: 0, context: nil, characters: ",", charactersIgnoringModifiers: ",", isARepeat: false, keyCode: 43) {
+            check("settings: ⌘, is in the menu", NSApp.mainMenu?.performKeyEquivalent(with: e) == true)
+        }
+        spin()
+        check("settings: ⌘, opens it", settingsWindow?.isVisible == true)
         for w in NSApp.windows where w.title == "Chataltul Settings" { w.orderOut(nil) }
     }
 }
