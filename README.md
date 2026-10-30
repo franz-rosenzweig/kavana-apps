@@ -106,8 +106,9 @@ What it does:
 - **Export** from Today: the blocks as a spreadsheet (CSV), where the time went as a spreadsheet, and the review in words as Markdown.
 - **Focus on the Mac.** Settings has two boxes for the names of Shortcuts to run when a block starts and when it ends. Chataltul can't set a Focus itself, but a Shortcut with "Set Focus" can. I haven't tried Slack's status: that needs a token kept somewhere, and I'd rather not until the rest has been used for a while.
 
-**Next, not released yet:**
+**Version 0.4:**
 - **Ready-made lists of websites.** Each list in the Blocklist can switch on Adult, Social media, Dating, Gambling, Games, Video and music, News or Shopping, on top of the sites I type. They are public lists: UT1 Toulouse (CC BY-SA 4.0), StevenBlack's hosts files (MIT) and Hagezi's DNS blocklists (GPL-3.0). None of them is bundled. When I switch one on, this Mac downloads it over https and keeps a short code for each site, not the names, then looks again about once a week. A download that goes wrong (an error, a web page instead of a list, a list that is nearly empty) never replaces the copy already here. **Always allow** keeps a site out of a category, like linkedin.com out of Social media. **Add a list from a link** takes any https link to a hosts file, a plain list of domains or an AdGuard list. Only the site that hosts a list sees that it was downloaded; nothing about me is sent.
+- **0.4.1: Settings.** ⌘, opens Settings, which it didn't before. The Settings window can be made bigger, and when it's narrow the Blocklist page puts everything in one column instead of running off the side.
 
 ![The Websites part of the Blocklist with the ready-made lists: some downloaded, one on its way, one that couldn't be reached, and one added by link](docs/mac-lists.webp)
 
