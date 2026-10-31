@@ -124,7 +124,7 @@ launch() {
       $APP/Contents/MacOS/Chataltul -ApplePersistenceIgnoreState YES >$OUT/launch.log 2>&1 || true
   # the widgets: inside the app, signed with it, sandboxed, and fed by it
   codesign --verify --deep --strict $APP && [[ -x $EXT/Contents/MacOS/ChataltulWidgets ]] || { echo "the widgets aren't in the shipped app" >&2; exit 1; }
-  codesign -d --entitlements - $EXT 2>/dev/null | grep -q "com.apple.security.app-sandbox" || { echo "the widgets aren't sandboxed" >&2; exit 1; }
+  [[ $(codesign -d --entitlements - $EXT 2>/dev/null) == *"com.apple.security.app-sandbox"* ]] || { echo "the widgets aren't sandboxed" >&2; exit 1; }
   [[ -s $FOLDER/widget/now.json && -s $FOLDER/widget/cafe-light.png ]] && echo "WIDGETS fed" || { echo "the shipped app wrote nothing for the widgets" >&2; exit 1; }
   rm -rf "$FOLDER"
   forget $APP

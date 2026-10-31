@@ -52,7 +52,15 @@ say "$TAG (build $BUILD) from $(git log --oneline -1 "$SHA")"
 
 # a clean checkout of exactly that commit: what ships is what is committed
 WORK=$(mktemp -d)
-trap 'git -C "$ROOT" worktree remove --force "$WORK/src" >/dev/null 2>&1 || true; rm -rf "$WORK"; security lock-keychain "$SIGN_KEYCHAIN" >/dev/null 2>&1 || true' EXIT
+# macOS takes note of every app it finds, and the copy built here has the installed app's bundle id: left here, its widgets
+# could be the ones the desktop runs. However it ends, that copy is forgotten and goes; only the zip stays.
+forget_app() {
+  [[ -n ${OUT:-} && -d $OUT/Chataltul.app ]] || return 0
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$OUT/Chataltul.app" >/dev/null 2>&1 || true
+  pluginkit -r "$OUT/Chataltul.app/Contents/PlugIns/ChataltulWidgets.appex" >/dev/null 2>&1 || true
+  rm -rf "$OUT/Chataltul.app"
+}
+trap 'forget_app; git -C "$ROOT" worktree remove --force "$WORK/src" >/dev/null 2>&1 || true; rm -rf "$WORK"; security lock-keychain "$SIGN_KEYCHAIN" >/dev/null 2>&1 || true' EXIT
 git worktree add -q --detach "$WORK/src" "$SHA"
 
 # --- build, signed with the shared identity (its hash stays in a variable, never printed)
@@ -98,7 +106,7 @@ eent=$(codesign -d --entitlements - "$EXT" 2>/dev/null)
 epb() { /usr/libexec/PlistBuddy -c "Print :$1" "$EXT/Contents/Info.plist"; }
 [[ $(epb CFBundleIdentifier) == xyz.tiresia.chataltul.widgets && $(epb CFBundleShortVersionString) == $V && $(epb CFBundleVersion) == $BUILD ]] || fail "the widgets' bundle id or version"
 [[ $(epb NSExtension:NSExtensionPointIdentifier) == com.apple.widgetkit-extension ]] || fail "the widgets' extension point"
-nm -m "$EXT/Contents/MacOS/ChataltulWidgets" | grep -q "external _NSExtensionMain" || fail "the widgets don't start in NSExtensionMain (WidgetKit would crash them)"
+[[ $(nm -m "$EXT/Contents/MacOS/ChataltulWidgets") == *"external _NSExtensionMain"* ]] || fail "the widgets don't start in NSExtensionMain (WidgetKit would crash them)"
 
 # --- it starts: the signed app, run once with a folder of its own and nothing on the screen
 say "starting it once"
@@ -111,11 +119,7 @@ rm -rf "$F"
 ZIP="$OUT/Chataltul-$V-mac.zip"
 ditto -c -k --keepParent "$APP" "$ZIP"
 WEB_COMMIT=$(cut -c1-7 < "$APP/Contents/Resources/js/WEB_COMMIT")
-# macOS takes note of every app it finds, and this copy has the installed app's bundle id: left here, its widgets could be
-# the ones the desktop runs. Only the zip stays.
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$APP" >/dev/null 2>&1 || true
-pluginkit -r "$EXT" >/dev/null 2>&1 || true
-rm -rf "$APP"
+forget_app
 SUM=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)
 say "$(du -h "$ZIP" | cut -f1) zip, sha256 $SUM"
 CASK="$OUT/chataltul.rb"
