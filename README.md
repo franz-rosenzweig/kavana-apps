@@ -72,7 +72,7 @@ The engine files and pictures come from the web repo with `tools/sync-web.sh` (i
 
 ![Chataltul for Mac: the popover when it's ready, while focusing, when the kitten came home, and when I came back after being away](docs/mac-popover.webp)
 
-Chataltul for Mac is a native Mac app, written in SwiftUI and AppKit. It keeps me focused while I work on the Mac: a kitten in the menu bar, a timer, check-ins, and a cat that walks over the apps and sites that distract me. Like the Android app it runs the web app's own `engine.js` (here in the Mac's JavaScriptCore) and draws everything itself, so the kittens, the treats and the check-ins follow the same rules on the Mac, the phone and the web. Version 0.1 was the part that keeps me focused, 0.2 added the app window, the full Blocklist and the breaks, and 0.3 adds the reports: where each block went, the week in review, streaks with a pause and export.
+Chataltul for Mac is a native Mac app, written in SwiftUI and AppKit. It keeps me focused while I work on the Mac: a kitten in the menu bar, a timer, check-ins, and a cat that walks over the apps and sites that distract me. Like the Android app it runs the web app's own `engine.js` (here in the Mac's JavaScriptCore) and draws everything itself, so the kittens, the treats and the check-ins follow the same rules on the Mac, the phone and the web. Version 0.1 was the part that keeps me focused, 0.2 added the app window, the full Blocklist and the breaks, 0.3 added the reports: where each block went, the week in review, streaks with a pause and export, 0.4 the ready-made lists of websites, and 0.5 adds widgets on the desktop.
 
 What it does:
 - **The menu bar item** is the kitten, and while a block runs, a ring that empties with the time next to it. It has a state for ready, focusing, a check-in waiting (an orange dot), paused, on a break and came home.
@@ -110,7 +110,7 @@ What it does:
 - **Ready-made lists of websites.** Each list in the Blocklist can switch on Adult, Social media, Dating, Gambling, Games, Video and music, News or Shopping, on top of the sites I type. They are public lists: UT1 Toulouse (CC BY-SA 4.0), StevenBlack's hosts files (MIT) and Hagezi's DNS blocklists (GPL-3.0). None of them is bundled. When I switch one on, this Mac downloads it over https and keeps a short code for each site, not the names, then looks again about once a week. A download that goes wrong (an error, a web page instead of a list, a list that is nearly empty) never replaces the copy already here. **Always allow** keeps a site out of a category, like linkedin.com out of Social media. **Add a list from a link** takes any https link to a hosts file, a plain list of domains or an AdGuard list. Only the site that hosts a list sees that it was downloaded; nothing about me is sent.
 - **0.4.1: Settings.** ⌘, opens Settings, which it didn't before. The Settings window can be made bigger, and when it's narrow the Blocklist page puts everything in one column instead of running off the side.
 
-**Next, not released yet: widgets on the desktop.** Six widgets for the desktop and Notification Center, like the Android app's:
+**Version 0.5: widgets on the desktop.** Six widgets for the desktop and Notification Center, like the Android app's:
 - **Focus**: the block's clock counting down, with the cat growing in the round window and the ring emptying. When nothing is on, Start.
 - **Quick start**: 25, 50 or 90 minutes.
 - **Today**: the time focused, the blocks of the day and the cats that came home, and in the large size the day's blocks and the week.
