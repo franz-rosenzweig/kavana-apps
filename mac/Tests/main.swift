@@ -593,6 +593,51 @@ check("the review as Markdown", md.hasPrefix("# This week\n") && md.contains("##
 section("settings: timing")
 equal("remembering is on, and the shortcuts are empty", [MacSettings().recordTiming, MacSettings().shortcutStart.isEmpty, MacSettings().shortcutEnd.isEmpty], [true, true, true])
 
+// ---------------------------------------------------------------- the desktop widgets
+section("widgets: what changes by itself")
+do {
+    let cal = Calendar.current
+    let w0 = Int(cal.date(from: DateComponents(year: 2026, month: 10, day: 30, hour: 10))!.timeIntervalSince1970 * 1000)
+    let midnight = Int(cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: Date(timeIntervalSince1970: Double(w0) / 1000)))!.timeIntervalSince1970 * 1000)
+    var w = WidgetSnapshot()
+    w.day = WidgetSnapshot.dayKey(w0)
+    w.phase = .focus
+    w.run = .init(title: "Draft the newsletter", start: w0, end: w0 + 25 * MIN, minutes: 25)
+    equal("the cat naps at the start", w.stage(at: w0 + MIN), .nap)
+    equal("a kitten at a third of the way", w.stage(at: w0 + 9 * MIN), .kitten)
+    equal("grown near the end of 25 minutes", w.stage(at: w0 + 20 * MIN), .grown)
+    var short = w
+    short.run = .init(title: "", start: w0, end: w0 + 15 * MIN, minutes: 15)
+    equal("under 25 minutes it stays a kitten", short.stage(at: w0 + 14 * MIN), .kitten)
+    equal("halfway is half", w.progress(at: w0 + 12 * MIN + 30_000), 0.5)
+    let m = w.moments(from: w0 + 30_000)
+    equal("a moment for now, each minute, and the end", m.count, 26)
+    equal("the first after now is the block's next minute", m[1], w0 + MIN)
+    equal("the last is the end", m.last ?? 0, w0 + 25 * MIN)
+    equal("a running block asks again just after its end", w.refresh(after: w0 + MIN), w0 + 25 * MIN + 10_000)
+    var paused = w
+    paused.phase = .paused; paused.run?.pausedAt = w0 + 5 * MIN; paused.run?.resumes = w0 + 10 * MIN
+    equal("a paused block holds still", paused.moments(from: w0 + 6 * MIN).count, 1)
+    equal("and its ring holds", paused.progress(at: w0 + 9 * MIN), paused.progress(at: w0 + 5 * MIN))
+    equal("it asks again when the pause ends", paused.refresh(after: w0 + 6 * MIN), w0 + 10 * MIN + 10_000)
+    var ready = WidgetSnapshot()
+    ready.day = w.day
+    equal("with nothing on, it asks again at midnight", ready.refresh(after: w0), midnight)
+    w.todayMin = 50; w.blocksToday = 2; w.catsHome = 2
+    equal("today's numbers, today", w.dayNumbers(at: w0).minutes, 50)
+    equal("after midnight, nothing yet", w.dayNumbers(at: midnight + MIN).minutes, 0)
+    check("a block long over with nothing new from the app says to open it", w.isStale(at: w0 + 40 * MIN))
+    check("not while it runs", !w.isStale(at: w0 + 20 * MIN))
+    var home = w
+    home.phase = .done; home.run?.kitten = "home"
+    equal("25 minutes bring home a grown cat", home.stage(at: w0 + 26 * MIN), .grown)
+    var gone = w
+    gone.run?.kitten = "gone"
+    equal("a kitten that wandered off is gone", gone.stage(at: w0 + 3 * MIN), .gone)
+    equal("it reads back what it wrote", WidgetSnapshot.decode(w.encoded()), w)
+    equal("the link Start 50 opens", WidgetSnapshot.startLink(50).absoluteString, "chataltul://start?minutes=50")
+}
+
 // ---------------------------------------------------------------- ready-made lists
 func spin(until cond: () -> Bool, seconds: Double = 15) -> Bool {
     let end = Date().addingTimeInterval(seconds)

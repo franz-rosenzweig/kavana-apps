@@ -110,6 +110,18 @@ What it does:
 - **Ready-made lists of websites.** Each list in the Blocklist can switch on Adult, Social media, Dating, Gambling, Games, Video and music, News or Shopping, on top of the sites I type. They are public lists: UT1 Toulouse (CC BY-SA 4.0), StevenBlack's hosts files (MIT) and Hagezi's DNS blocklists (GPL-3.0). None of them is bundled. When I switch one on, this Mac downloads it over https and keeps a short code for each site, not the names, then looks again about once a week. A download that goes wrong (an error, a web page instead of a list, a list that is nearly empty) never replaces the copy already here. **Always allow** keeps a site out of a category, like linkedin.com out of Social media. **Add a list from a link** takes any https link to a hosts file, a plain list of domains or an AdGuard list. Only the site that hosts a list sees that it was downloaded; nothing about me is sent.
 - **0.4.1: Settings.** ⌘, opens Settings, which it didn't before. The Settings window can be made bigger, and when it's narrow the Blocklist page puts everything in one column instead of running off the side.
 
+**Next, not released yet: widgets on the desktop.** Six widgets for the desktop and Notification Center, like the Android app's:
+- **Focus**: the block's clock counting down, with the cat growing in the round window and the ring emptying. When nothing is on, Start.
+- **Quick start**: 25, 50 or 90 minutes.
+- **Today**: the time focused, the blocks of the day and the cats that came home, and in the large size the day's blocks and the week.
+- **Streak and goal**: days in a row with a paw for each day of the week, and a ring for today's goal (or the day's blocks if there is no goal).
+- **Later**: the thoughts I parked, and Park a thought.
+- **Café**: a still picture of today's café.
+
+Each comes in small and medium, and Focus, Today, Later and Café in large too. Clicking one opens Chataltul in the right place, or starts the block. Widgets can't move, so the cat is a still picture that grows every minute, and only the clock counts by itself. The app writes what they show into a small file in its own folder: numbers, block titles and the thoughts in Later, never a site or an app. The widgets are sandboxed and can read only that folder. They're signed the same way as the app, with my own identity, and macOS shows them in the widget gallery like anyone else's.
+
+![The widgets in light and dark: Focus while a block runs, Quick start, Today, Streak and goal, Later and the café](docs/mac-widgets.webp)
+
 ![The Websites part of the Blocklist with the ready-made lists: some downloaded, one on its way, one that couldn't be reached, and one added by link](docs/mac-lists.webp)
 
 ![The week in review, where it went after a block, and the reasons after Drifted](docs/mac-review.webp)
