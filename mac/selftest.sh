@@ -4,7 +4,7 @@
 #   ./selftest.sh            the core tests (everything below that needs no window)
 #   ./selftest.sh core       the same
 #   ./selftest.sh sync       the account and sync, against a sandbox copy of the web server on this Mac
-#   ./selftest.sh ui         the app's own windows drawn to PNG files in build/selftest/shots
+#   ./selftest.sh ui         the app's own windows and desktop widgets drawn to PNG files in build/selftest/shots
 #   ./selftest.sh all
 #
 # core: the engine in JavaScriptCore (a block, its pings, the cat names in them, the away op), the speed
@@ -24,7 +24,7 @@ mkdir -p $OUT
 core() {
   command -v swiftc >/dev/null || { echo "no swiftc: run xcode-select --install" >&2; exit 1; }
   MACOS=$(sed -n 's/^ *macOS: *"\(.*\)"/\1/p' project.yml | head -1)
-  swiftc -O -sdk "$(xcrun --show-sdk-path)" -target "$(uname -m)-apple-macos$MACOS" -swift-version 5 \
+  swiftc -O -sdk "$(xcrun --sdk macosx --show-sdk-path)" -target "$(uname -m)-apple-macos$MACOS" -swift-version 5 \
       Chataltul/Core/*.swift Tests/main.swift -o $OUT/core-tests 2>&1 | grep -E "error|warning: unre" || true
   [[ -x $OUT/core-tests ]] || { echo "the core tests didn't build" >&2; exit 1; }
   # the engine with the change we ask the web repo for (docs/engine-takeoff.patch), in a copy
@@ -83,6 +83,7 @@ ui() {
   CHATALTUL_OFFSCREEN=1 CHATALTUL_NO_NOTIFY=1 CHATALTUL_NO_WATCH=1 CHATALTUL_NO_LISTS=1 CHATALTUL_FOLDER=$FOLDER CHATALTUL_FILE_SESSION=1 "$APP/Contents/MacOS/Chataltul" -SelfTestOut "$PWD/$OUT" -ApplePersistenceIgnoreState YES >$OUT/ui.log 2>&1 || true
   kill $watchdog 2>/dev/null || true
   rm -rf "$FOLDER"
+  forget $APP
   grep -E "^(FAIL|[0-9]+ passed|SELFTEST|UNCAUGHT|SIGNAL)" $OUT/ui.log || { echo "no result; see build/selftest/ui.log" >&2; tail -20 $OUT/ui.log; exit 1; }
   grep -q "SELFTEST passed" $OUT/ui.log
 }
@@ -109,6 +110,7 @@ sync() {
   CHATALTUL_OFFSCREEN=1 CHATALTUL_NO_NOTIFY=1 CHATALTUL_NO_WATCH=1 CHATALTUL_NO_LISTS=1 CHATALTUL_MUTE=1 CHATALTUL_FOLDER=$FOLDER CHATALTUL_FILE_SESSION=1 \
       "$APP/Contents/MacOS/Chataltul" -SelfTestSync http://127.0.0.1:$PORT/ -SelfTestOutbox "$STATE/outbox.jsonl" -ApplePersistenceIgnoreState YES >$OUT/sync.log 2>&1 || true
   kill $watchdog 2>/dev/null || true
+  forget $APP
   grep -E "^(PASS|FAIL|  said|  \(gave|[0-9]+ passed|SELFTEST|UNCAUGHT|SIGNAL)" $OUT/sync.log || { echo "no result; see build/selftest/sync.log" >&2; tail -20 $OUT/sync.log; exit 1; }
   grep -q "SELFTEST passed" $OUT/sync.log
 }
@@ -116,12 +118,24 @@ sync() {
 # the app as it ships (no test code), started and left again: it must not crash on its way up
 launch() {
   CHATALTUL_BUNDLE_ID=xyz.tiresia.chataltul.selftest CHATALTUL_OUT=$OUT/launch CHATALTUL_SIGN=- CHATALTUL_OPT=${CHATALTUL_OPT:--Onone} ./build.sh >$OUT/launch-build.log 2>&1 || { grep -E "error" $OUT/launch-build.log | head; exit 1; }
+  local APP=$OUT/launch/Chataltul.app EXT=$OUT/launch/Chataltul.app/Contents/PlugIns/ChataltulWidgets.appex
   local FOLDER; FOLDER=$(mktemp -d -t chataltul-launch)
   CHATALTUL_OFFSCREEN=1 CHATALTUL_QUIET_EXIT=1 CHATALTUL_QUIT_AFTER=4 CHATALTUL_MUTE=1 CHATALTUL_NO_WATCH=1 CHATALTUL_NO_LISTS=1 CHATALTUL_FOLDER=$FOLDER CHATALTUL_FILE_SESSION=1 \
-      $OUT/launch/Chataltul.app/Contents/MacOS/Chataltul -ApplePersistenceIgnoreState YES >$OUT/launch.log 2>&1 || true
+      $APP/Contents/MacOS/Chataltul -ApplePersistenceIgnoreState YES >$OUT/launch.log 2>&1 || true
+  # the widgets: inside the app, signed with it, sandboxed, and fed by it
+  codesign --verify --deep --strict $APP && [[ -x $EXT/Contents/MacOS/ChataltulWidgets ]] || { echo "the widgets aren't in the shipped app" >&2; exit 1; }
+  codesign -d --entitlements - $EXT 2>/dev/null | grep -q "com.apple.security.app-sandbox" || { echo "the widgets aren't sandboxed" >&2; exit 1; }
+  [[ -s $FOLDER/widget/now.json && -s $FOLDER/widget/cafe-light.png ]] && echo "WIDGETS fed" || { echo "the shipped app wrote nothing for the widgets" >&2; exit 1; }
   rm -rf "$FOLDER"
+  forget $APP
   grep -E "LAUNCH|UNCAUGHT|SIGNAL" $OUT/launch.log || { echo "the shipped app didn't start; see build/selftest/launch.log" >&2; tail -20 $OUT/launch.log; exit 1; }
   grep -q "LAUNCH ok" $OUT/launch.log
+}
+
+# macOS takes note of every app it comes across: a test copy is forgotten again, so its widgets never reach the gallery
+forget() {
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u $1 >/dev/null 2>&1 || true
+  [[ -d $1/Contents/PlugIns/ChataltulWidgets.appex ]] && pluginkit -r $1/Contents/PlugIns/ChataltulWidgets.appex >/dev/null 2>&1 || true
 }
 
 case $MODE in

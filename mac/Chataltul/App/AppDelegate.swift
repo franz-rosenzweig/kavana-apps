@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var notifier: Notifier!
     var sound: SoundPlayer!
     var sync: SyncController!
+    var widgets: WidgetFeed!
     let cat = CatController()
     let bump = BumpController()
     var speed = SpeedBump()
@@ -57,6 +58,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         watcher = Watcher(store: store)
         away = AwayMonitor(store: store)
         park = ParkController(store: store)
+        widgets = WidgetFeed(store: store)
+        // a copy without the widget inside (a test's) has no widgets to tell
+        widgets.tellWidgetKit = FileManager.default.fileExists(atPath: Bundle.main.bundleURL.appendingPathComponent("Contents/PlugIns/ChataltulWidgets.appex").path)
+            && ProcessInfo.processInfo.environment["CHATALTUL_FOLDER"] == nil
 
         var actions = PopoverActions()
         actions.answer = { [weak self] a in self?.answer(a) }
@@ -85,7 +90,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         store.onDue = { [weak self] due in self?.deliver(due) }
         store.afterChange.append { [weak self] st in self?.changed(st) }
+        store.afterChange.append { [weak self] _ in self?.widgets.changed() }
         store.onSecond.append { [weak self] now in self?.second(now) }
+        store.onSecond.append { [weak self] now in self?.widgets.second(now) }
         store.$awayPrompt.sink { [weak self] p in
             guard let self, p != nil else { return }
             self.popover.show(key: false)
@@ -94,7 +101,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         registerShortcuts()
         store.$settings.removeDuplicates().sink { [weak self] _ in DispatchQueue.main.async { self?.registerShortcuts() } }.store(in: &cancellables)
+        store.$settings.removeDuplicates().sink { [weak self] _ in self?.widgets?.changed() }.store(in: &cancellables)
         changed(store.state)
+        widgets.changed()
         store.startClock()
         sync.opened()
         // the ready-made lists that are on: fetched a little after launch, then looked at every few hours (a list is only fetched again after a week)
@@ -471,6 +480,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// "Start a block" in the window's sidebar.
     func startFromWindow() { store.start(title: "", stopwatch: store.preset.stopwatch) }
+
+    // ---------------------------------------------------------------- the widgets' links
+
+    /// A widget was clicked: chataltul://start?minutes=25, open, park, or window/<page> (today, later, cafe).
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for u in urls where u.scheme == WidgetSnapshot.scheme { openLink(u) }
+    }
+
+    func openLink(_ u: URL) {
+        guard store != nil else { return }
+        switch u.host ?? "" {
+        case "start":
+            let asked = URLComponents(url: u, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "minutes" }?.value.flatMap { Int($0) }
+            if store.active == nil, store.awaiting == nil, store.onBreak == nil {
+                store.start(title: "", minutes: asked.map { max(1, min(600, $0)) })
+                // nothing to show: the app the person was in gets the keyboard back
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { if NSApp.isActive, NSApp.keyWindow == nil { NSApp.deactivate() } }
+            } else {
+                popover.show(key: true)
+            }
+        case "park": park.show()
+        case "window": openWindow(u.pathComponents.dropFirst().first)
+        default: popover.show(key: true)
+        }
+    }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag { openWindow(nil) }
