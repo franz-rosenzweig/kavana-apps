@@ -78,7 +78,7 @@ ui() {
   build_ui
   rm -rf $OUT/shots; mkdir -p $OUT/shots
   local FOLDER; FOLDER=$(mktemp -d -t chataltul-ui)
-  ( sleep 180; pkill -f "$APP/Contents/MacOS/Chataltul" ) 2>/dev/null &
+  ( sleep 420; pkill -f "$APP/Contents/MacOS/Chataltul" ) 2>/dev/null &
   local watchdog=$!
   CHATALTUL_OFFSCREEN=1 CHATALTUL_NO_NOTIFY=1 CHATALTUL_NO_WATCH=1 CHATALTUL_NO_LISTS=1 CHATALTUL_FOLDER=$FOLDER CHATALTUL_FILE_SESSION=1 "$APP/Contents/MacOS/Chataltul" -SelfTestOut "$PWD/$OUT" -ApplePersistenceIgnoreState YES >$OUT/ui.log 2>&1 || true
   kill $watchdog 2>/dev/null || true

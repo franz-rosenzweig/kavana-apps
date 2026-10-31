@@ -120,6 +120,8 @@ What it does:
 
 Each comes in small and medium, and Focus, Today, Later and Café in large too. Clicking one opens Chataltul in the right place, or starts the block. Widgets can't move, so the cat is a still picture that grows every minute, and only the clock counts by itself. The app writes what they show into a small file in its own folder: numbers, block titles and the thoughts in Later, never a site or an app. The widgets are sandboxed and can read only that folder. They're signed the same way as the app, with my own identity, and macOS shows them in the widget gallery like anyone else's.
 
+**Next, not released yet: widgets that fit.** In 0.5.0 the widgets were laid out for bigger sizes than the desktop really gives them (a large one is 344 points high, not 382), so the large ones were cut off and the others were cramped. They're now laid out at the real sizes and scale to whatever they're given. When the desktop isn't in front and macOS greys the widgets, they switch to plain system colours instead of the cream wall and teal.
+
 ![The widgets in light and dark: Focus while a block runs, Quick start, Today, Streak and goal, Later and the café](docs/mac-widgets.webp)
 
 ![The Websites part of the Blocklist with the ready-made lists: some downloaded, one on its way, one that couldn't be reached, and one added by link](docs/mac-lists.webp)

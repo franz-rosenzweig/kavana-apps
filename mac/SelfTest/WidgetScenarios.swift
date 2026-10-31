@@ -44,7 +44,11 @@ enum WidgetScenarios {
         check("widgets: the café's picture, light and dark", pics.image(ready.cafeLight) != nil && pics.image(ready.cafeDark) != nil)
         for kind in WKind.allCases {
             for size in kind.sizes {
-                for dark in [false, true] { check("widget-\(kind.rawValue)-\(size) ready \(dark ? "dark" : "light") drawn", shot(kind, size, ready, pics, name: "widget-\(kind.rawValue)-\(size)", dark: dark)) }
+                fitCheck("ready", kind, size, ready, pics)
+                for dark in [false, true] {
+                    check("widget-\(kind.rawValue)-\(size) ready \(dark ? "dark" : "light") drawn", shot(kind, size, ready, pics, name: "widget-\(kind.rawValue)-\(size)", dark: dark))
+                    check("widget-\(kind.rawValue)-\(size) plain \(dark ? "dark" : "light") drawn", shot(kind, size, ready, pics, name: "widget-\(kind.rawValue)-\(size)-plain", dark: dark, plain: true))
+                }
             }
         }
 
@@ -57,7 +61,14 @@ enum WidgetScenarios {
         check("widgets: twelve minutes in, the cat is a kitten", focus?.stage(at: nowMs()) == .kitten)
         if let f = focus {
             let p = WidgetPictures.load(f, folder: feed.folder)
-            for size in WSize.allCases { for dark in [false, true] { check("widget-focus-\(size) focusing \(dark ? "dark" : "light") drawn", shot(.focus, size, f, p, name: "widget-focus-\(size)-on", dark: dark)) } }
+            for size in WSize.allCases {
+                fitCheck("focusing", .focus, size, f, p)
+                for dark in [false, true] {
+                    check("widget-focus-\(size) focusing \(dark ? "dark" : "light") drawn", shot(.focus, size, f, p, name: "widget-focus-\(size)-on", dark: dark))
+                    check("widget-focus-\(size) focusing plain \(dark ? "dark" : "light") drawn", shot(.focus, size, f, p, name: "widget-focus-\(size)-on-plain", dark: dark, plain: true))
+                }
+            }
+            for kind in WKind.allCases { for size in kind.sizes where kind != .focus { fitCheck("with a block on", kind, size, f, p) } }
             for dark in [false, true] { check("widget-quick focusing \(dark ? "dark" : "light") drawn", shot(.quick, .medium, f, p, name: "widget-quick-medium-on", dark: dark)) }
         }
 
@@ -68,6 +79,7 @@ enum WidgetScenarios {
             feed.write()
             let s = written()
             check("widgets: \(name) is \(phase.rawValue)", s?.phase == phase)
+            if let s { for size in WSize.allCases { fitCheck(name, .focus, size, s, WidgetPictures.load(s, folder: feed.folder)) } }
             if let s { for dark in [false, true] { check("widget-focus-medium \(name) \(dark ? "dark" : "light") drawn", shot(.focus, .medium, s, WidgetPictures.load(s, folder: feed.folder), name: "widget-focus-medium-\(name)", dark: dark)) } }
         }
         one("checkin", .checkin) { n in
@@ -87,14 +99,27 @@ enum WidgetScenarios {
         store.resetForTest()
     }
 
-    /// One widget at its size, the way the desktop draws it: its face over its background, with the corners rounded.
-    static func shot(_ kind: WKind, _ size: WSize, _ s: WidgetSnapshot, _ pics: WidgetPictures, name: String, dark: Bool) -> Bool {
+    /// One widget at its size, the way the desktop draws it: its face over its background, with the corners rounded. Plain is
+    /// the look when the desktop isn't in front: macOS takes the background away (here a grey stands in for its glass).
+    static func shot(_ kind: WKind, _ size: WSize, _ s: WidgetSnapshot, _ pics: WidgetPictures, name: String, dark: Bool, plain: Bool = false) -> Bool {
         let p = size.points
-        let face = WidgetFace(kind: kind, size: size, snap: s, pics: pics, now: Date())
+        let face = WidgetFace(kind: kind, size: size, snap: s, pics: pics, now: Date(), plain: plain)
             .frame(width: p.width, height: p.height)
-            .background(WidgetBackground(kind: kind))
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .background { if plain { Color.gray.opacity(dark ? 0.35 : 0.22) } else { WidgetBackground(kind: kind) } }
+            .clipShape(RoundedRectangle(cornerRadius: WSize.corner, style: .continuous))
             .shadow(color: .black.opacity(0.14), radius: 7, y: 2)
         return Shot.exists(Shot.render(face, name: name, dark: dark, pad: 16, wall: false))
+    }
+
+    /// The height a face needs, with nothing stretched, at its family's width: more than the family's height is cut off.
+    static func needed(_ kind: WKind, _ size: WSize, _ s: WidgetSnapshot, _ pics: WidgetPictures, plain: Bool = false) -> CGFloat {
+        let v = FaceContent(kind: kind, size: size, snap: s, pics: pics, now: Date(), t: WTheme(dark: false, plain: plain))
+            .frame(width: size.points.width).fixedSize(horizontal: false, vertical: true)
+        return NSHostingView(rootView: v).fittingSize.height
+    }
+    static func fitCheck(_ what: String, _ kind: WKind, _ size: WSize, _ s: WidgetSnapshot, _ pics: WidgetPictures) {
+        guard kind != .cafe else { return }   // the café is a picture that fills whatever it has
+        let h = needed(kind, size, s, pics)
+        check("widget-\(kind.rawValue)-\(size) \(what) fits in \(Int(size.points.height)) points (needs \(Int(h.rounded(.up))))", h <= size.points.height + 0.5)
     }
 }
