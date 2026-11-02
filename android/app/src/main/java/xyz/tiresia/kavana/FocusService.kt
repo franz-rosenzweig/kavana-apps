@@ -23,7 +23,8 @@ import kotlinx.coroutines.launch
  * Runs while a block (or a break) does. Its notification is the countdown, on the lock screen and in
  * the status bar, and being a foreground service keeps Kavana around for the check-ins and the cat
  * (Samsung closes background apps quickly). It also notices one way of leaving that the screen can't:
- * the phone locked inside Kavana, then unlocked straight into another app.
+ * the phone locked inside Kavana, then unlocked straight into another app. With picked apps, it looks at
+ * the app in front about once a second while Chataltul is behind (LeaveWatch).
  */
 class FocusService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -33,7 +34,7 @@ class FocusService : Service() {
     private val unlocked = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
             val at = System.currentTimeMillis()
-            main.postDelayed({ if (!MainActivity.visible) KavanaApp.repo.left(at) }, 2500)
+            main.postDelayed({ if (!MainActivity.visible) LeaveWatch.behind(this@FocusService, at) }, 2500)
         }
     }
 
@@ -45,9 +46,12 @@ class FocusService : Service() {
         running = true
         if (job == null) {
             registerReceiver(unlocked, IntentFilter(Intent.ACTION_USER_PRESENT), RECEIVER_NOT_EXPORTED)
+            LeaveWatch.started(this)
             job = scope.launch {
                 if (repo.state.value == null) repo.act(op("tick")) // started again after the process was gone
                 launch { repo.state.collect { refresh(it) } }
+                // With picked apps (Settings → Apps during a block): which app is in front while Chataltul is behind.
+                launch { while (true) { delay(1_000); LeaveWatch.poll(this@FocusService) } }
                 while (true) {
                     delay(30_000)
                     // A pause ends by itself after 5 minutes: let the engine notice (the end moves by exactly the pause).

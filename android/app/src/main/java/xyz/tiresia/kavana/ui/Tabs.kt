@@ -80,7 +80,9 @@ fun SettingsTab(s: UiState, act: MainActivity, onTab: (Tab) -> Unit) {
     var awake by remember { mutableStateOf(repo.prefs.getBoolean("awake", true)) }
     var sheet by remember { mutableStateOf<String?>(null) }
     var account by rememberSaveable { mutableStateOf(false) }
+    var leaveApps by rememberSaveable { mutableStateOf(false) }
     if (account) { AccountScreen { account = false }; return }
+    if (leaveApps) { LeaveAppsScreen(act) { leaveApps = false }; return }
     fun daily(d: DailySet) = repo.launch(settings("daily" to mapOf("on" to d.on, "time" to d.time, "days" to d.days), "tz" to TimeZone.getDefault().id))
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 16.dp, bottom = 28.dp)) {
@@ -106,6 +108,12 @@ fun SettingsTab(s: UiState, act: MainActivity, onTab: (Tab) -> Unit) {
             Item("Count extra time", Icons.Rounded.Timer, k.green) { Switch(set.overtime, { repo.launch(settings("overtime" to it)) }) }
             GroupDivider()
             Item("Swiping Chataltul away counts as leaving", Icons.Rounded.SwipeUp, k.red) { Switch(set.closeCounts, { repo.launch(settings("closeCounts" to it)) }) }
+            if (set.cat) {
+                GroupDivider()
+                Item("Apps during a block", Icons.Rounded.Apps, k.red, onClick = { leaveApps = true }) {
+                    Text(LeaveWatch.summary(ctx), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             GroupDivider()
             Item("Your own lines", Icons.Rounded.FormatQuote, k.indigo, sub = "Nudges in your own words, every other one", onClick = { sheet = "lines" }) {
                 Text(if (set.lines.isEmpty()) "None" else "${set.lines.size}", color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The apps picked for the cat stay on this phone: not in Google's backup, not carried to a new phone. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="leave.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="leave.xml" />
+    </device-transfer>
+</data-extraction-rules>

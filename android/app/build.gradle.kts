@@ -92,4 +92,5 @@ dependencies {
     // a Flip half folded (Flex Mode): where the fold is
     implementation("androidx.window:window:1.4.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    testImplementation("junit:junit:4.13.2")
 }

@@ -138,11 +138,14 @@ class Repo(private val app: Context) {
         if (CatOverlay.allowed(app)) CatOverlay.leave(app, st, a) else Notify.away(app, st.cat(a.cat).name)
     }
 
-    /** Back in Kavana: more than the grace away, and the kitten wandered off at the end of it. */
-    fun back(now: Long) {
+    /**
+     * Back in Kavana (or, with picked apps, in an allowed one: `cat` = "leave", the only cat to take away then):
+     * more than the grace away, and the kitten wandered off at the end of it.
+     */
+    fun back(now: Long, cat: String? = null) {
         val t = prefs.getLong("left", 0)
         if (t != 0L) prefs.edit().remove("left").apply()
-        CatOverlay.hide() // whatever the cat was saying, Kavana's own screen says it now
+        CatOverlay.hide(cat) // whatever the cat was saying, Kavana's own screen says it now
         Notify.cancelAway(app)
         if (t == 0L || now - t <= GRACE) return
         scope.launch {

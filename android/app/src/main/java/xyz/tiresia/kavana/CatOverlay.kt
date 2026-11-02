@@ -56,7 +56,7 @@ object CatOverlay {
         fun line(sec: Int) = "Come back within $sec ${if (sec == 1) "second" else "seconds"}, or ${c.name} wanders off."
         show(ctx, "leave", Art.portrait(c.id), "Boo! You're focusing.", line((Repo.GRACE / 1000).toInt()),
             listOf(
-                Btn("Back to work", true) { openApp(ctx) },
+                Btn("Back to work", true) { if (!LeaveWatch.backToWork(ctx)) openApp(ctx) }, // the last allowed app, with picked apps
                 Btn("Leave anyway", false, hold = "${c.name} wanders off") { leftAnyway(ctx, c.name) },
             ), Repo.GRACE, closable = false, countdown = ::line) {
             // Still away when the grace is over: say so, briefly (the doc learns it when you're back).

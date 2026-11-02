@@ -45,6 +45,7 @@ class MainActivity : ComponentActivity() {
     val resumes = mutableIntStateOf(0)
     /** Kavana itself sent you to Settings or a link: that's not leaving in the middle of a block. */
     private var expectingLeave = false
+    private var leftFor = 0L // when (the other app comes up a moment before this one stops)
     /** On a Flip's cover screen (Good Lock, or the app carried over as the phone closed): the cover's pages instead of the app. */
     private var cover by mutableStateOf(false)
 
@@ -61,6 +62,7 @@ class MainActivity : ComponentActivity() {
         // check-widgets.py: `--ei wallpaperHour 14` draws the café wallpaper as at that hour (-1: the clock's), to see it by day and at night.
         if (BuildConfig.DEBUG && intent.hasExtra("wallpaperHour")) repo.prefs.edit().putInt("wallpaperHour", intent.getIntExtra("wallpaperHour", -1)).apply()
         if (BuildConfig.DEBUG && intent.hasExtra("flex")) repo.prefs.edit().putBoolean("flexDebug", intent.getBooleanExtra("flex", false)).apply()
+        leaveLab(intent)
         // The sound mix is snapshot state in a global object: create it here, outside any composition, or the
         // first frame of a cold start can read it from a snapshot that doesn't know it yet (a crash).
         xyz.tiresia.kavana.ui.SoundMix.mix
@@ -81,9 +83,17 @@ class MainActivity : ComponentActivity() {
         if (BuildConfig.DEBUG && intent.hasExtra("wallpaperHour")) KavanaApp.repo.prefs.edit().putInt("wallpaperHour", intent.getIntExtra("wallpaperHour", -1)).apply()
         // (check-flip.py: `--ez flex true|false`, the half-folded layout on the emulator, whose fold always says it's flat)
         if (BuildConfig.DEBUG && intent.hasExtra("flex")) { KavanaApp.repo.prefs.edit().putBoolean("flexDebug", intent.getBooleanExtra("flex", false)).apply(); resumes.intValue++ }
+        leaveLab(intent)
         if (intent.getBooleanExtra("stop", false)) askToStop()
         if (intent.getBooleanExtra("sounds", false)) Requests.sounds = true
         intent.getStringExtra("tab")?.let { Requests.tab = it }
+    }
+
+    // check-leave.py: `--es leaveMode except --es leaveApps a.b,c.d` picks the apps without the picker (debug builds).
+    private fun leaveLab(i: Intent) {
+        if (!BuildConfig.DEBUG) return
+        if (i.hasExtra("leaveMode")) LeaveWatch.set(this, mode = i.getStringExtra("leaveMode"))
+        if (i.hasExtra("leaveApps")) LeaveWatch.set(this, apps = i.getStringExtra("leaveApps").orEmpty().split(',').filter { it.isNotBlank() }.toSet())
     }
 
     private fun askToStop() {
@@ -102,6 +112,7 @@ class MainActivity : ComponentActivity() {
         shown(true)
         cover = isCoverScreen(this)
         expectingLeave = false
+        LeaveWatch.stop()
         KavanaApp.repo.back(System.currentTimeMillis())
         KavanaApp.repo.sync.opened()
     }
@@ -114,13 +125,14 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         shown(false)
         // On a cover screen, going to another of its widgets isn't leaving: the phone is closed.
-        if (!isChangingConfigurations && !expectingLeave && !cover) {
+        if (!isChangingConfigurations && expectingLeave && !cover) LeaveWatch.trip(this, leftFor)
+        else if (!isChangingConfigurations && !cover) {
             val at = System.currentTimeMillis()
             val d = display
             // A Flip closed is the phone put down, not another app, but its cover screen lights up as it closes, so the phone
             // still counts as on. Wait a moment and look at this screen itself: closed, it's dark.
-            if (foldable) Handler(Looper.getMainLooper()).postDelayed({ if (!visible && screenOn(d)) KavanaApp.repo.left(at) }, 1200)
-            else if (screenOn(d)) KavanaApp.repo.left(at)
+            if (foldable) Handler(Looper.getMainLooper()).postDelayed({ if (!visible && screenOn(d)) LeaveWatch.behind(this, at) }, 1200)
+            else if (screenOn(d)) LeaveWatch.behind(this, at)
         }
         super.onStop()
     }
@@ -146,11 +158,15 @@ class MainActivity : ComponentActivity() {
 
     fun askOverlay() = leaveFor(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
 
+    /** Usage access, for picked apps: straight to Chataltul's switch where the phone can, the list of apps otherwise. */
+    fun askUsage() = leaveFor(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.parse("package:$packageName"))) || leaveFor(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+
     fun openUrl(url: String) = leaveFor(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 
-    private fun leaveFor(i: Intent) {
+    private fun leaveFor(i: Intent): Boolean {
         expectingLeave = true
-        runCatching { startActivity(i) }.onFailure { expectingLeave = false }
+        leftFor = System.currentTimeMillis()
+        return runCatching { startActivity(i) }.onFailure { expectingLeave = false }.isSuccess
     }
 
     fun copy(text: String) {
