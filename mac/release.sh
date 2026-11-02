@@ -12,7 +12,7 @@
 #   SIGN_KEYCHAIN=...        the keychain file that holds it
 #   SIGN_PASSWORD_FILE=...   the file that unlocks that keychain
 #   TAP=git@github.com:owner/homebrew-tap.git
-# The keychain is locked again afterwards. The version is X.Y.Z; the build number is 10000*X + 100*Y + Z, so each
+# It signs from a copy of that keychain, which is locked and deleted afterwards. The version is X.Y.Z; the build number is 10000*X + 100*Y + Z, so each
 # release outranks the last. The release's tag is mac-vX.Y.Z, so it can't be taken for one of the Android app's
 # (vX.Y.Z) in the same repository.
 set -euo pipefail
@@ -60,18 +60,23 @@ forget_app() {
   pluginkit -r "$OUT/Chataltul.app/Contents/PlugIns/ChataltulWidgets.appex" >/dev/null 2>&1 || true
   rm -rf "$OUT/Chataltul.app"
 }
-trap 'forget_app; git -C "$ROOT" worktree remove --force "$WORK/src" >/dev/null 2>&1 || true; rm -rf "$WORK"; security lock-keychain "$SIGN_KEYCHAIN" >/dev/null 2>&1 || true' EXIT
+trap 'forget_app; security lock-keychain "${KC:-}" >/dev/null 2>&1 || true; git -C "$ROOT" worktree remove --force "$WORK/src" >/dev/null 2>&1 || true; rm -rf "$WORK"' EXIT
 git worktree add -q --detach "$WORK/src" "$SHA"
 
 # --- build, signed with the shared identity (its hash stays in a variable, never printed)
-HASH=$(security find-identity -p codesigning "$SIGN_KEYCHAIN" | sed -n "s/^ *[0-9]*) \([0-9A-F]\{40\}\) \"$SIGN_NAME\".*/\1/p" | head -1)
+# It signs from a copy of the keychain under a new name, which goes with $WORK: the keychain service can hold an old view of
+# a keychain file at its usual path (a copy brought over from another account was refused there with the right password),
+# and this way the keychain itself is never left unlocked.
+KC=$WORK/sign.keychain-db
+( umask 077; cp "$SIGN_KEYCHAIN" "$KC" )
+HASH=$(security find-identity -p codesigning "$KC" | sed -n "s/^ *[0-9]*) \([0-9A-F]\{40\}\) \"$SIGN_NAME\".*/\1/p" | head -1)
 [[ -n $HASH ]] || { echo "no identity named $SIGN_NAME in the keychain" >&2; exit 1; }
-security unlock-keychain -p "$(cat "$SIGN_PASSWORD_FILE")" "$SIGN_KEYCHAIN"
+security unlock-keychain -p "$(cat "$SIGN_PASSWORD_FILE")" "$KC" || { echo "the keychain didn't unlock with the password in $SIGN_PASSWORD_FILE" >&2; exit 1; }
 OUT=$ROOT/mac/build/release
 rm -rf "$OUT"; mkdir -p "$OUT"
-( cd "$WORK/src/mac" && CHATALTUL_OUT=$OUT CHATALTUL_VERSION=$V CHATALTUL_BUILD=$BUILD CHATALTUL_SIGN=$HASH CHATALTUL_KEYCHAIN=$SIGN_KEYCHAIN ./build.sh >$OUT/build.log 2>&1 ) || { grep -E "error" "$OUT/build.log" | head; fail "the build (see mac/build/release/build.log)"; }
+( cd "$WORK/src/mac" && CHATALTUL_OUT=$OUT CHATALTUL_VERSION=$V CHATALTUL_BUILD=$BUILD CHATALTUL_SIGN=$HASH CHATALTUL_KEYCHAIN=$KC ./build.sh >$OUT/build.log 2>&1 ) || { grep -E "error" "$OUT/build.log" | head; fail "the build (see mac/build/release/build.log)"; }
 APP="$OUT/Chataltul.app"
-security lock-keychain "$SIGN_KEYCHAIN"
+security lock-keychain "$KC"
 
 # --- what the app says about itself, before anything leaves the Mac
 say "checking"

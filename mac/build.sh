@@ -77,8 +77,11 @@ cp $R/rig.json $R/sounds.json $APP/Contents/Resources/
 # which is enough to run it on this Mac.
 IDENTITY=${CHATALTUL_SIGN:-$(security find-identity -v -p codesigning | sed -n 's/^ *[0-9]*) \([0-9A-F]*\) "Apple Development.*/\1/p' | head -1)}
 [[ $IDENTITY == "-" ]] && IDENTITY=""
+# two words: zsh keeps ${X:+--keychain "$X"} as one, which codesign took for an option it didn't know, and then it looked
+# for the identity in the person's own keychains instead
+KEYCHAIN=(); [[ -n ${CHATALTUL_KEYCHAIN:-} ]] && KEYCHAIN=(--keychain "$CHATALTUL_KEYCHAIN")
 # the widgets first, with their own entitlements (the sandbox), then the app around them
-[[ -n $EXT ]] && codesign --force --options runtime --entitlements $OUT/widgets.entitlements ${CHATALTUL_KEYCHAIN:+--keychain "$CHATALTUL_KEYCHAIN"} --sign "${IDENTITY:--}" $EXT
-codesign --force --options runtime --entitlements Chataltul/Chataltul.entitlements ${CHATALTUL_KEYCHAIN:+--keychain "$CHATALTUL_KEYCHAIN"} --sign "${IDENTITY:--}" $APP
+[[ -n $EXT ]] && codesign --force --options runtime --entitlements $OUT/widgets.entitlements $KEYCHAIN --sign "${IDENTITY:--}" $EXT
+codesign --force --options runtime --entitlements Chataltul/Chataltul.entitlements $KEYCHAIN --sign "${IDENTITY:--}" $APP
 [[ -n $IDENTITY ]] || echo "note: signed ad hoc; fine on this Mac"
 echo "built $APP"
