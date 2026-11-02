@@ -63,6 +63,16 @@ I wear a Pixel Watch, so Chataltul has a watch part too: a tile and a complicati
 
 The watch doesn't decide anything itself. Every tap goes to the phone, which does it and sends the new state back, so the phone, the widgets and the watch always agree, and with "Hide block titles" on the watch doesn't show them either. It needs the phone app on the phone the watch is paired with, both from the same release. Like the phone app it doesn't come from the Play Store: it goes onto the watch from a computer with adb, over Wi-Fi (Wireless debugging in the watch's Developer options).
 
+### On a Galaxy Flip (not released yet)
+
+![The cover screen: ready to start, a block running, a check-in, Today and your cat; then a running block half folded, the clock above the fold](docs/flip.webp)
+
+Chataltul works with a Galaxy Z Flip shut, too. On the cover screen it's a few pages you swipe through, like the cover's own widgets. **Focus** starts a block (drag around the window for how long) and then shows the kitten growing in its ring with Pause and Stop, a check-in with Yes and Drifted, and how it went. **Today** is the goal as a ring, the streak, the treats and the missions, with Collect. Then your **cat** to pet, and **Later** (kept hidden while the phone is locked, since the cover is a lock screen). It's the same block as inside: start it on the cover, open the phone, and there it is.
+
+There are two ways onto the cover. Samsung lets an app offer widgets for it, so the Window, Pet the cat, Daily goal and Your café are made for the cover's size, and their taps open these pages on the cover rather than inside (Settings → Cover screen → Widgets). The Flip 7 may only list Samsung's own and a few others', though. If they're not there, Good Lock's MultiStar can put Chataltul itself on the cover, and it opens to these pages.
+
+Half folded on a table (Flex Mode), a running block stands above the fold like a little clock, with the buttons on the half lying flat. And shutting the phone during a block is putting it down, not leaving: the kitten doesn't wander off because the Flip is closed. All of this is checked on Android's foldable emulator, not on a real Flip yet.
+
 ### Building it
 
 It builds on my Mac over SSH, the same way as Daf and Binah (JDK 17 and `~/android-sdk` there):

@@ -44,7 +44,8 @@ object WidgetUpdater {
     /** Every kind of widget there is. */
     private val WIDGETS = listOf<androidx.glance.appwidget.GlanceAppWidget>(WindowWidget(), QuickStartWidget(), TodayWidget(), LaterWidget(), SoundWidget(),
         StreakWidget(), GoalWidget(), MissionsWidget(), PetCatWidget(), ClockWidget(),
-        ConstellationWidget(), WeatherWidget(), CafeWidget(), FriendsWidget())
+        ConstellationWidget(), WeatherWidget(), CafeWidget(), FriendsWidget(),
+        CoverWindowWidget(), CoverPetWidget(), CoverGoalWidget(), CoverCafeWidget())
 
     /** Each widget's state holds a number that changes on every refresh, so Glance draws it again from the latest snapshot. */
     val TICK = longPreferencesKey("tick")

@@ -104,6 +104,27 @@
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/friends_widget_info" />
         </receiver>
+        <!-- The same widgets on a Galaxy Flip's cover screen (CoverWidgets.kt) -->
+        <receiver android:name=".widget.CoverWindowReceiver" android:exported="true" android:label="@string/widget_window_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/cover_window_info" />
+            <meta-data android:name="com.samsung.android.appwidget.provider" android:resource="@xml/cover_samsung" />
+        </receiver>
+        <receiver android:name=".widget.CoverPetReceiver" android:exported="true" android:label="@string/widget_pet_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/cover_pet_info" />
+            <meta-data android:name="com.samsung.android.appwidget.provider" android:resource="@xml/cover_samsung" />
+        </receiver>
+        <receiver android:name=".widget.CoverGoalReceiver" android:exported="true" android:label="@string/widget_goal_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/cover_goal_info" />
+            <meta-data android:name="com.samsung.android.appwidget.provider" android:resource="@xml/cover_samsung" />
+        </receiver>
+        <receiver android:name=".widget.CoverCafeReceiver" android:exported="true" android:label="@string/widget_cafe_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/cover_cafe_info" />
+            <meta-data android:name="com.samsung.android.appwidget.provider" android:resource="@xml/cover_samsung" />
+        </receiver>
         <receiver android:name=".widget.DayReceiver" android:exported="false" />
         <!-- taps from the Wear OS app (the Wearable Data Layer) -->
         <service android:name=".widget.WatchListenerService" android:exported="true">
@@ -135,6 +156,15 @@
         <!-- The launcher's long-press shortcuts land here, do their one thing and go (no screen of its own) -->
         <activity android:name=".widget.ShortcutActivity" android:exported="false" android:theme="@style/Theme.Kavana.Transparent"
             android:taskAffinity="" android:excludeFromRecents="true" android:noHistory="true" />
+        <!-- A Galaxy Flip's cover screen: Chataltul's pages there, opened from its cover widgets (over the lock screen, like the cover) -->
+        <activity
+            android:name=".CoverActivity"
+            android:exported="false"
+            android:taskAffinity="xyz.tiresia.kavana.cover"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density|uiMode" />
         <!-- "Park a thought" from a widget: a small dialog over whatever is on the screen, not the whole app -->
         <activity
             android:name=".widget.ParkActivity"

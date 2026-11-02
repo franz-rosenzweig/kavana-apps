@@ -5,9 +5,13 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
+import android.view.Display
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -22,8 +26,10 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import xyz.tiresia.kavana.ui.CoverScreen
 import xyz.tiresia.kavana.ui.KavanaTheme
 import xyz.tiresia.kavana.ui.Root
+import xyz.tiresia.kavana.ui.isCoverScreen
 
 /** Things other parts of the phone ask the screens to do. */
 object Requests {
@@ -39,6 +45,8 @@ class MainActivity : ComponentActivity() {
     val resumes = mutableIntStateOf(0)
     /** Kavana itself sent you to Settings or a link: that's not leaving in the middle of a block. */
     private var expectingLeave = false
+    /** On a Flip's cover screen (Good Lock, or the app carried over as the phone closed): the cover's pages instead of the app. */
+    private var cover by mutableStateOf(false)
 
     private val askNotify = registerForActivityResult(ActivityResultContracts.RequestPermission()) { resumes.intValue++ }
 
@@ -52,13 +60,15 @@ class MainActivity : ComponentActivity() {
         if (BuildConfig.DEBUG && intent.hasExtra("server")) repo.prefs.edit().putString("server", intent.getStringExtra("server")).apply()
         // check-widgets.py: `--ei wallpaperHour 14` draws the café wallpaper as at that hour (-1: the clock's), to see it by day and at night.
         if (BuildConfig.DEBUG && intent.hasExtra("wallpaperHour")) repo.prefs.edit().putInt("wallpaperHour", intent.getIntExtra("wallpaperHour", -1)).apply()
+        if (BuildConfig.DEBUG && intent.hasExtra("flex")) repo.prefs.edit().putBoolean("flexDebug", intent.getBooleanExtra("flex", false)).apply()
         // The sound mix is snapshot state in a global object: create it here, outside any composition, or the
         // first frame of a cold start can read it from a snapshot that doesn't know it yet (a crash).
         xyz.tiresia.kavana.ui.SoundMix.mix
         if (intent.getBooleanExtra("stop", false)) askToStop()
         if (intent.getBooleanExtra("sounds", false)) Requests.sounds = true
         intent.getStringExtra("tab")?.let { Requests.tab = it }
-        setContent { KavanaTheme { Root(this) } }
+        cover = isCoverScreen(this)
+        setContent { KavanaTheme { if (cover) CoverScreen(stopAsked = Requests.stop) { Requests.stop = false } else Root(this) } }
         lifecycleScope.launch { repo.act(op("tick")) }
         // Signed in: what your other devices did, every 30 seconds while Kavana is on the screen.
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { while (true) { delay(30_000); repo.sync.pull() } } }
@@ -69,6 +79,8 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         // (the widgets' check, debug builds: the wallpaper's hour, also when the app is already open)
         if (BuildConfig.DEBUG && intent.hasExtra("wallpaperHour")) KavanaApp.repo.prefs.edit().putInt("wallpaperHour", intent.getIntExtra("wallpaperHour", -1)).apply()
+        // (check-flip.py: `--ez flex true|false`, the half-folded layout on the emulator, whose fold always says it's flat)
+        if (BuildConfig.DEBUG && intent.hasExtra("flex")) { KavanaApp.repo.prefs.edit().putBoolean("flexDebug", intent.getBooleanExtra("flex", false)).apply(); resumes.intValue++ }
         if (intent.getBooleanExtra("stop", false)) askToStop()
         if (intent.getBooleanExtra("sounds", false)) Requests.sounds = true
         intent.getStringExtra("tab")?.let { Requests.tab = it }
@@ -79,9 +91,16 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch { delay(4_000); Requests.stop = false } // not a surprise dialog later, if there's no block to stop
     }
 
+    // Opened or closed, a Flip moves the app between its screens without starting it again (configChanges): pick the screens again.
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        cover = isCoverScreen(this)
+    }
+
     override fun onStart() {
         super.onStart()
-        visible = true
+        shown(true)
+        cover = isCoverScreen(this)
         expectingLeave = false
         KavanaApp.repo.back(System.currentTimeMillis())
         KavanaApp.repo.sync.opened()
@@ -93,11 +112,22 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
-        visible = false
-        val screenOn = getSystemService(PowerManager::class.java).isInteractive
-        if (!isChangingConfigurations && !expectingLeave && screenOn) KavanaApp.repo.left(System.currentTimeMillis())
+        shown(false)
+        // On a cover screen, going to another of its widgets isn't leaving: the phone is closed.
+        if (!isChangingConfigurations && !expectingLeave && !cover) {
+            val at = System.currentTimeMillis()
+            val d = display
+            // A Flip closed is the phone put down, not another app, but its cover screen lights up as it closes, so the phone
+            // still counts as on. Wait a moment and look at this screen itself: closed, it's dark.
+            if (foldable) Handler(Looper.getMainLooper()).postDelayed({ if (!visible && screenOn(d)) KavanaApp.repo.left(at) }, 1200)
+            else if (screenOn(d)) KavanaApp.repo.left(at)
+        }
         super.onStop()
     }
+
+    private val foldable by lazy { packageManager.hasSystemFeature(PackageManager.FEATURE_SENSOR_HINGE_ANGLE) }
+
+    private fun screenOn(d: Display?) = getSystemService(PowerManager::class.java).isInteractive && (d == null || d.state == Display.STATE_ON)
 
     fun notificationsOn() = Notify.enabled(this)
     fun overlayOn() = CatOverlay.allowed(this)
@@ -128,8 +158,10 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
-        /** Kavana is on the screen (its check-ins show there instead of over another app). */
-        @Volatile var visible = false
-            private set
+        private val showing = java.util.concurrent.atomic.AtomicInteger(0)
+        /** Kavana is on a screen, the inside one or a Flip's cover (its check-ins show there instead of over another app). */
+        val visible: Boolean get() = showing.get() > 0
+        /** An activity of Chataltul's came on a screen, or went (the two can overlap as a Flip opens or closes). */
+        fun shown(yes: Boolean) { if (yes) showing.incrementAndGet() else showing.updateAndGet { maxOf(0, it - 1) } }
     }
 }

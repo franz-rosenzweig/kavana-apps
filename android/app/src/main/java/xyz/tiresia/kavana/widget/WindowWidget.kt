@@ -105,12 +105,11 @@ class WindowWidgetReceiver : DayWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = WindowWidget()
 }
 
-private val OPEN: Action @Composable get() = actionStartActivity<MainActivity>()
+private val OPEN: Action @Composable get() = openAction()
 
 @Composable
 private fun stopAction(): Action {
-    val ctx = LocalContext.current
-    return actionStartActivity(Intent(ctx, MainActivity::class.java).putExtra("stop", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+    return openAction(stop = true)
 }
 
 private fun answer(id: String, n: Int, what: String) = actionRunCallback<AnswerAction>(actionParametersOf(WidgetKeys.ID to id, WidgetKeys.N to n, WidgetKeys.WHAT to what))
@@ -198,7 +197,7 @@ private fun Wide(ctx: Context, s: Snap, now: Long, mode: WMode, pal: Pal, size: 
                             if (mode == WMode.EXTRA) Pill("Done", pal.green, pal.onGreen, stopAction(), GlanceModifier.defaultWeight(), R.drawable.w_check, height = bh, textSize = 14.sp)
                             else Pill("Pause", pal.amber, pal.onAmber, actionRunCallback<PauseAction>(), GlanceModifier.defaultWeight(), R.drawable.w_pause, height = bh, textSize = 14.sp)
                             Spacer(GlanceModifier.width(8.dp))
-                            Round(R.drawable.w_bulb, "Park a thought", pal.chip, pal.ink, actionStartActivity<ParkActivity>(), bh)
+                            Round(R.drawable.w_bulb, "Park a thought", pal.chip, pal.ink, parkAction(), bh)
                             Spacer(GlanceModifier.width(8.dp))
                             if (mode != WMode.EXTRA) Round(R.drawable.w_stop, "Stop", pal.chip, pal.ink, stopAction(), bh)
                         }
@@ -296,7 +295,7 @@ private fun Big(ctx: Context, s: Snap, now: Long, mode: WMode, pal: Pal, size: D
                     if (mode == WMode.EXTRA) Pill("Done", pal.green, pal.onGreen, stopAction(), GlanceModifier.defaultWeight(), R.drawable.w_check, height = bh, textSize = 15.sp)
                     else Pill("Pause", pal.amber, pal.onAmber, actionRunCallback<PauseAction>(), GlanceModifier.defaultWeight(), R.drawable.w_pause, height = bh, textSize = 15.sp)
                     Spacer(GlanceModifier.width(10.dp))
-                    Round(R.drawable.w_bulb, "Park a thought", pal.chip, pal.ink, actionStartActivity<ParkActivity>(), bh)
+                    Round(R.drawable.w_bulb, "Park a thought", pal.chip, pal.ink, parkAction(), bh)
                     if (mode != WMode.EXTRA) {
                         Spacer(GlanceModifier.width(10.dp))
                         Round(R.drawable.w_stop, "Stop", pal.chip, pal.ink, stopAction(), bh)

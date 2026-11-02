@@ -96,7 +96,7 @@ object PlayArt {
         val theme = if (night) "night" else s.theme
         val wall = wallFor(theme, dark || night)
         val strip = hDp < 100f
-        val wide = !strip && wDp >= 250f
+        val wide = !strip && wDp >= 250f && wDp >= hDp * 1.4f // (a nearly square one, a Flip's cover, has the cat in the middle)
         val sleeping = pose == Pose.SLEEP || pose == Pose.DREAM
         val catPath = when {
             sleeping -> if (boo) s.booNap else s.nap

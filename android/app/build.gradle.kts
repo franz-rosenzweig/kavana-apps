@@ -89,5 +89,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.11.0")
     // The home-screen widgets (stable; 1.3 is still alpha)
     implementation("androidx.glance:glance-appwidget:1.2.0")
+    // a Flip half folded (Flex Mode): where the fold is
+    implementation("androidx.window:window:1.4.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

@@ -49,6 +49,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import xyz.tiresia.kavana.*
@@ -68,6 +71,10 @@ fun FocusTab(s: UiState, now: Long, form: StartForm, act: MainActivity, wall: Wa
         else -> HomeScreen(s, form, act, wall, newsUnread, onNews, onGoals, onSettings)
     }
 }
+
+/** Where a Flip's fold is, in the window, while it's half folded with the fold across (Flex Mode); otherwise null. */
+data class Hinge(val top: Dp, val bottom: Dp)
+val LocalHinge = androidx.compose.runtime.compositionLocalOf<Hinge?> { null }
 
 /** Each cat's walk painting (cats.js poses.walk), for the tiptoe. */
 val LocalWalks = androidx.compose.runtime.staticCompositionLocalOf<Map<String, String>> { emptyMap() }
@@ -157,10 +164,10 @@ fun RunScreen(s: UiState, a: Block, now: Long, dive: Float, onSound: () -> Unit)
     // Stop, asked for by a widget
     LaunchedEffect(xyz.tiresia.kavana.Requests.stop) { if (xyz.tiresia.kavana.Requests.stop) { xyz.tiresia.kavana.Requests.stop = false; stop() } }
 
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(top = 52.dp, bottom = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
+    // The top: what it is, the ring with the kitten, the time. The rest below. A Flip half folded on a table (Flex Mode) shows
+    // the top above the fold, standing up like a little clock, and the buttons on the half that lies flat.
+    @Composable
+    fun Upper(ring: Dp) {
         Column(Modifier.graphicsLayer { alpha = fadeIn }, horizontalAlignment = Alignment.CenterHorizontally) {
         Eyebrow(when { paused -> "Paused"; over -> "Extra time"; a.stopwatch -> "Stopwatch"; else -> "Focusing" },
             color = if (paused) k.orange else if (dusk) Color.White else MaterialTheme.colorScheme.primary)
@@ -175,8 +182,6 @@ fun RunScreen(s: UiState, a: Block, now: Long, dive: Float, onSound: () -> Unit)
         }
         if (a.tag != null) TagChip(a.tag, s.view.settings.tags, Modifier.padding(top = 6.dp))
         Spacer(Modifier.height(18.dp))
-        // The ring takes about a third of the screen's height, so Stop and Pause stay in view on a short phone.
-        val ring = (LocalConfiguration.current.screenHeightDp * 0.3f).dp.coerceIn(200.dp, 264.dp)
         Dial(frac, paused, ring, track = Color.White.copy(alpha = if (dusk) .28f else .5f), modifier = Modifier.graphicsLayer { val sc = 0.62f + 0.38f * rise; scaleX = sc; scaleY = sc }) {
             if (s.catsOn) {
                 // the kitten on its cushion, like in the window
@@ -184,8 +189,12 @@ fun RunScreen(s: UiState, a: Block, now: Long, dive: Float, onSound: () -> Unit)
                 Box(Modifier.align(Alignment.BottomCenter).padding(bottom = ring * 0.17f)) { Kitten(a, grow, paused, ring * 0.62f) }
             } else Text(clock, style = MaterialTheme.typography.displayMedium.merge(tabular), color = ink)
         }
+        if (s.catsOn) Text(clock, style = MaterialTheme.typography.displayMedium.merge(tabular), color = ink, modifier = Modifier.padding(top = 10.dp).graphicsLayer { alpha = fadeIn })
+    }
+
+    @Composable
+    fun Lower() {
         Column(Modifier.graphicsLayer { alpha = fadeIn }, horizontalAlignment = Alignment.CenterHorizontally) {
-        if (s.catsOn) Text(clock, style = MaterialTheme.typography.displayMedium.merge(tabular), color = ink, modifier = Modifier.padding(top = 10.dp))
         Text(when { paused -> "Paused"; a.stopwatch -> "Started at ${clockTime(a.start)}"; over -> "Ended at ${clockTime(a.over!!)}"; else -> "Ends at ${clockTime(a.end)}" },
             style = MaterialTheme.typography.bodyMedium, color = muted)
         if (s.catsOn) Text(kittenSays(a, c, paused, grow, spent), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center,
@@ -220,6 +229,35 @@ fun RunScreen(s: UiState, a: Block, now: Long, dive: Float, onSound: () -> Unit)
             if (!paused) FilterChip(selected = awake, onClick = { awake = !awake; repo.prefs.edit().putBoolean("awake", awake).apply() },
                 label = { Text(if (awake) "Screen stays on" else "Screen on") }, leadingIcon = { Icon(Icons.Rounded.LightMode, null, Modifier.size(18.dp)) }, colors = glassChip, border = null)
         }
+        }
+    }
+
+    val hinge = LocalHinge.current
+    var top by remember { mutableFloatStateOf(0f) } // where this screen starts in the window (the fold is in the window's terms)
+    val dens = LocalDensity.current
+    Box(Modifier.fillMaxSize().onGloballyPositioned { top = it.positionInWindow().y }) {
+        if (hinge == null) Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(top = 52.dp, bottom = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // The ring takes about a third of the screen's height, so Stop and Pause stay in view on a short phone.
+            Upper((LocalConfiguration.current.screenHeightDp * 0.3f).dp.coerceIn(200.dp, 264.dp))
+            Lower()
+        } else Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+            val above = hinge.top - with(dens) { top.toDp() }
+            Box(Modifier.fillMaxWidth().height(above.coerceAtLeast(0.dp)).padding(top = 52.dp, bottom = 10.dp), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Upper((above - 52.dp - 130.dp - (if (a.tag != null) 34.dp else 0.dp)).coerceIn(110.dp, 264.dp))
+                }
+            }
+            Spacer(Modifier.height(hinge.bottom - hinge.top))
+            // the half that lies flat: the buttons in its middle, under your thumb
+            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+                Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = maxHeight).padding(top = 8.dp, bottom = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Lower()
+                }
+            }
         }
     }
 

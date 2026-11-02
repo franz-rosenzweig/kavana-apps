@@ -119,6 +119,11 @@ class WidgetLab : Activity() {
             }
             "milo" -> listOf(d("milo ready", 340, 150, "ready", cat = "pepper", name = "Milo"), d("milo focusing", 340, 150, "focusing", cat = "pepper", name = "Milo"), d("milo home", 340, 150, "home", cat = "pepper", name = "Milo"))
             "themes" -> listOf("classic", "mint", "sakura", "library", "night").map { d(it, 340, 150, "focusing", it) }
+            // a Galaxy Flip's cover screen (the Flex Window): its own widgets, at the size Samsung gives them (352 x 339 inside the host's padding)
+            "cover" -> listOf("ready", "focusing", "checkin", "home").map { Demo("cover window: $it", CoverWindowReceiver::class.java, 368, 355, Demos.snap(it, now)) } +
+                listOf(Demo("cover pet", CoverPetReceiver::class.java, 368, 355, Demos.snap("ready", now).copy(demo = SnapDemo(Demos.at(14, 20), 0))),
+                    Demo("cover goal", CoverGoalReceiver::class.java, 368, 355, Demos.snap("ready", now)),
+                    Demo("cover café", CoverCafeReceiver::class.java, 368, 355, Demos.snap("ready", now)))
             else -> emptyList()
         }
     }
@@ -147,7 +152,7 @@ class WidgetLab : Activity() {
         val provider: Class<*> = when (intent.getStringExtra("provider")) {
             "pet" -> PetCatWidgetReceiver::class.java; "clock" -> ClockWidgetReceiver::class.java; "friends" -> FriendsWidgetReceiver::class.java; "cafe" -> CafeWidgetReceiver::class.java
             "constellation" -> ConstellationWidgetReceiver::class.java; "weather" -> WeatherWidgetReceiver::class.java; "streak" -> StreakWidgetReceiver::class.java
-            "goal" -> GoalWidgetReceiver::class.java; "missions" -> MissionsWidgetReceiver::class.java; else -> WindowWidgetReceiver::class.java
+            "goal" -> GoalWidgetReceiver::class.java; "missions" -> MissionsWidgetReceiver::class.java; "cover" -> CoverWindowReceiver::class.java; else -> WindowWidgetReceiver::class.java
         }
         val demos = if (live) listOf(Demo("live", provider, intent.getIntExtra("w", 340), intent.getIntExtra("h", 150), null)) else sets(intent.getStringExtra("set") ?: "window").let { all -> intent.getIntExtra("part", -1).let { k -> if (k < 0) all else all.chunked(intent.getIntExtra("per", 4)).getOrElse(k) { emptyList() } } } // `--ei part N`: four at a time, so a page never needs scrolling
         val bound = ArrayList<Int>()

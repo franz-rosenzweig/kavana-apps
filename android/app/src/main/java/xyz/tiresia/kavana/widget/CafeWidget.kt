@@ -67,7 +67,7 @@ object CafeRender {
 
     fun file(ctx: Context, night: Boolean) = File(ctx.filesDir, if (night) "cafe-night.webp" else "cafe-day.webp")
 
-    private fun used(ctx: Context): Boolean = AppWidgetManager.getInstance(ctx).getAppWidgetIds(ComponentName(ctx, CafeWidgetReceiver::class.java)).isNotEmpty()
+    private fun used(ctx: Context): Boolean = listOf(CafeWidgetReceiver::class.java, CoverCafeReceiver::class.java).any { AppWidgetManager.getInstance(ctx).getAppWidgetIds(ComponentName(ctx, it)).isNotEmpty() }
 
     /** The app's state changed: draw the two pictures again if what they show is different (nothing, if there's no café widget). */
     fun update(ctx: Context, st: UiState, force: Boolean = false) {
@@ -114,7 +114,7 @@ internal class CafeWidget : SnapWidget() {
     override fun Content(s: Snap) = CafeContent(s)
 }
 
-class CafeWidgetReceiver : DayWidgetReceiver() {
+open class CafeWidgetReceiver : DayWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = CafeWidget()
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
