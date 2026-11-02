@@ -519,8 +519,12 @@ enum LiveScenarios {
         check("widgets: a test copy doesn't ask WidgetKit for anything", !app.widgets.tellWidgetKit)
         app.openLink(WidgetSnapshot.startLink(50)); spin()
         check("widgets: Start 50 starts a block of 50 minutes", store.active?.minutes == 50)
-        let written = (try? Data(contentsOf: widgetFile)).flatMap { WidgetSnapshot.decode($0) }
-        check("widgets: now.json says a block is on", written?.phase == .focus && written?.run?.minutes == 50)
+        // the app writes on the next turn of its run loop, after the change
+        func written() -> WidgetSnapshot? { (try? Data(contentsOf: widgetFile)).flatMap { WidgetSnapshot.decode($0) } }
+        let asked = Date()
+        let on = SyncScenarios.wait("now.json to say a block is on", 5) { written()?.phase == .focus && written()?.run?.minutes == 50 }
+        check("widgets: now.json says a block is on", on)
+        print("  (now.json said so after \(Int(Date().timeIntervalSince(asked) * 1000)) ms)")
         app.openLink(WidgetSnapshot.startLink(25)); spin()
         check("widgets: Start while a block is on opens the popover and starts nothing", app.popover.isShown && store.active?.minutes == 50)
         app.popover.hide()
