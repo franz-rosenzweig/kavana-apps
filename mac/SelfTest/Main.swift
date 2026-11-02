@@ -37,6 +37,8 @@ final class SelfTestDelegate: NSObject, NSApplicationDelegate {
                 do { try SyncScenarios.run(base: base, outbox: URL(fileURLWithPath: UserDefaults.standard.string(forKey: "SelfTestOutbox") ?? "/nonexistent")) } catch { print("FAIL sync scenarios: \(error)"); failed += 1 }
             } else {
                 do { try UIScenarios.run() } catch { print("FAIL scenarios: \(error)"); failed += 1 }
+                // before the live app starts: its own widget feed writes to the same folder
+                do { try WidgetScenarios.run() } catch { print("FAIL widget scenarios: \(error)"); failed += 1 }
                 do { try LiveScenarios.run() } catch { print("FAIL live scenarios: \(error)"); failed += 1 }
             }
             print("\(passed) passed, \(failed) failed")

@@ -52,7 +52,15 @@ say "$TAG (build $BUILD) from $(git log --oneline -1 "$SHA")"
 
 # a clean checkout of exactly that commit: what ships is what is committed
 WORK=$(mktemp -d)
-trap 'git -C "$ROOT" worktree remove --force "$WORK/src" >/dev/null 2>&1 || true; rm -rf "$WORK"; security lock-keychain "$SIGN_KEYCHAIN" >/dev/null 2>&1 || true' EXIT
+# macOS takes note of every app it finds, and the copy built here has the installed app's bundle id: left here, its widgets
+# could be the ones the desktop runs. However it ends, that copy is forgotten and goes; only the zip stays.
+forget_app() {
+  [[ -n ${OUT:-} && -d $OUT/Chataltul.app ]] || return 0
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$OUT/Chataltul.app" >/dev/null 2>&1 || true
+  pluginkit -r "$OUT/Chataltul.app/Contents/PlugIns/ChataltulWidgets.appex" >/dev/null 2>&1 || true
+  rm -rf "$OUT/Chataltul.app"
+}
+trap 'forget_app; git -C "$ROOT" worktree remove --force "$WORK/src" >/dev/null 2>&1 || true; rm -rf "$WORK"; security lock-keychain "$SIGN_KEYCHAIN" >/dev/null 2>&1 || true' EXIT
 git worktree add -q --detach "$WORK/src" "$SHA"
 
 # --- build, signed with the shared identity (its hash stays in a variable, never printed)
@@ -86,6 +94,19 @@ pb() { /usr/libexec/PlistBuddy -c "Print :$1" "$plist"; }
 [[ -z $(grep -r -l -a '/Users/' "$APP" || true) ]] || fail "a home folder's path is in the app: $(grep -r -l -a '/Users/' "$APP")"
 [[ -z $(grep -r -l -a -E '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}:[0-9]{2,5}|@pm\.me|@passmail|proton' "$APP" || true) ]] || fail "a private address or an email is in the app"
 [[ -z $(find "$APP" -name 'doc.json*' -o -name 'mac.json' -o -name 'timing.json' -o -name 'usage.json' -o -name 'sync.json' -o -name 'session*' || true) ]] || fail "someone's data is in the app"
+[[ $(pb CFBundleURLTypes:0:CFBundleURLSchemes:0) == chataltul ]] || fail "the app doesn't take the widgets' chataltul:// links"
+# the desktop widgets: inside the app, signed the same way, sandboxed to the app's widget folder, starting as an extension
+EXT="$APP/Contents/PlugIns/ChataltulWidgets.appex"
+[[ -d $EXT ]] || fail "the widgets aren't in the app"
+esig=$(codesign -dvv "$EXT" 2>&1)
+[[ $(sed -n 's/^Authority=//p' <<<"$esig" | sort -u) == "$SIGN_NAME" ]] || fail "the widgets aren't signed by $SIGN_NAME alone"
+[[ $esig == *$'\n'"TeamIdentifier=not set"* ]] || fail "the widgets carry a team"
+eent=$(codesign -d --entitlements - "$EXT" 2>/dev/null)
+[[ $eent == *"com.apple.security.app-sandbox"*"[Bool] true"* && $eent == *"[String] /Library/Application Support/xyz.tiresia.chataltul/widget/"* ]] || fail "the widgets' sandbox"
+epb() { /usr/libexec/PlistBuddy -c "Print :$1" "$EXT/Contents/Info.plist"; }
+[[ $(epb CFBundleIdentifier) == xyz.tiresia.chataltul.widgets && $(epb CFBundleShortVersionString) == $V && $(epb CFBundleVersion) == $BUILD ]] || fail "the widgets' bundle id or version"
+[[ $(epb NSExtension:NSExtensionPointIdentifier) == com.apple.widgetkit-extension ]] || fail "the widgets' extension point"
+[[ $(nm -m "$EXT/Contents/MacOS/ChataltulWidgets") == *"external _NSExtensionMain"* ]] || fail "the widgets don't start in NSExtensionMain (WidgetKit would crash them)"
 
 # --- it starts: the signed app, run once with a folder of its own and nothing on the screen
 say "starting it once"
@@ -97,6 +118,8 @@ rm -rf "$F"
 # --- the zip and the cask
 ZIP="$OUT/Chataltul-$V-mac.zip"
 ditto -c -k --keepParent "$APP" "$ZIP"
+WEB_COMMIT=$(cut -c1-7 < "$APP/Contents/Resources/js/WEB_COMMIT")
+forget_app
 SUM=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)
 say "$(du -h "$ZIP" | cut -f1) zip, sha256 $SUM"
 CASK="$OUT/chataltul.rb"
@@ -114,6 +137,8 @@ cask "chataltul" do
 
   app "Chataltul.app"
 
+  zap trash: "~/Library/Containers/xyz.tiresia.chataltul.widgets"
+
   postflight do
     system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{appdir}/Chataltul.app"]
   end
@@ -121,7 +146,7 @@ end
 CASKEOF
 ruby -c "$CASK" >/dev/null || fail "the cask isn't valid Ruby"
 cat > "$OUT/release-notes.md" <<NOTESEOF
-Chataltul for Mac $V. The web engine in this build is at $(cut -c1-7 < "$APP/Contents/Resources/js/WEB_COMMIT"). Built from $(git log --format=%h -1 "$SHA").
+Chataltul for Mac $V. The web engine in this build is at $WEB_COMMIT. Built from $(git log --format=%h -1 "$SHA").
 
 Install: \`brew install --cask franz-rosenzweig/tap/chataltul\`, or unzip it and move Chataltul.app to Applications. It needs macOS 14 or newer.
 It is signed with my own identity, not Apple's, so the first time you may have to open it with a right click, then Open.

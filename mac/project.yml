@@ -18,6 +18,8 @@ targets:
     sources:
       - path: Chataltul
         excludes: ["Info.plist", "Chataltul.entitlements"]
+    dependencies:
+      - target: ChataltulWidgets
     settings:
       base:
         PRODUCT_NAME: Chataltul
@@ -43,9 +45,49 @@ targets:
         NSPrincipalClass: NSApplication
         NSAppleEventsUsageDescription: Chataltul reads the address of the page in front in Safari, Chrome, Brave, Arc and Edge, only to see whether it is a site on your list. Nothing is sent anywhere.
         NSUserNotificationsUsageDescription: Chataltul shows your check-ins when the cat is not on screen.
+        # the desktop widgets' clicks: chataltul://start?minutes=25, open, park, window/today
+        CFBundleURLTypes:
+          - CFBundleURLName: xyz.tiresia.chataltul
+            CFBundleURLSchemes: [chataltul]
     entitlements:
       path: Chataltul/Chataltul.entitlements
       properties:
         # Sandbox off: it watches which app is in front and talks to other apps with Apple events.
         com.apple.security.app-sandbox: false
         com.apple.security.automation.apple-events: true
+  # The desktop widgets (Widgets/): an app extension inside the app. It must be sandboxed; it reads only the app's
+  # widget folder, where the app writes what they show (App/WidgetFeed.swift).
+  ChataltulWidgets:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Widgets
+        excludes: ["Info.plist", "Widgets.entitlements"]
+      - path: Chataltul/Core/WidgetSnapshot.swift
+      - path: Chataltul/Core/Format.swift
+    settings:
+      base:
+        PRODUCT_NAME: ChataltulWidgets
+        PRODUCT_BUNDLE_IDENTIFIER: xyz.tiresia.chataltul.widgets
+        MARKETING_VERSION: "0.3.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.9"
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
+    info:
+      path: Widgets/Info.plist
+      properties:
+        CFBundleDisplayName: Chataltul
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: "14.0"
+        NSHumanReadableCopyright: "Free software."
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Widgets/Widgets.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        # the one folder of the person's it may read: the app's widget folder (a path from the home folder)
+        com.apple.security.temporary-exception.files.home-relative-path.read-only:
+          - /Library/Application Support/xyz.tiresia.chataltul/widget/

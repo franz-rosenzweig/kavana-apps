@@ -500,6 +500,39 @@ enum LiveScenarios {
         app.openSettings("blocklist")
         spin()
         check("settings: the window is made", NSApp.windows.contains { $0.title == "Chataltul Settings" })
+        let settingsWindow = NSApp.windows.first { $0.title == "Chataltul Settings" }
+        check("settings: the window can be made bigger", settingsWindow?.styleMask.contains(.resizable) == true)
         for w in NSApp.windows where w.title == "Chataltul Settings" { w.orderOut(nil) }
+        check("settings: gone before ⌘,", !(settingsWindow?.isVisible ?? true))
+        app.installMainMenu()   // done at launch, which this test skips
+        if let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0, windowNumber: 0, context: nil, characters: ",", charactersIgnoringModifiers: ",", isARepeat: false, keyCode: 43) {
+            check("settings: ⌘, is in the menu", NSApp.mainMenu?.performKeyEquivalent(with: e) == true)
+        }
+        spin()
+        check("settings: ⌘, opens it", settingsWindow?.isVisible == true)
+        for w in NSApp.windows where w.title == "Chataltul Settings" { w.orderOut(nil) }
+
+        // ---- the desktop widgets' clicks, and what the app writes for them
+        fresh()
+        app.popover.hide(); spin()
+        let widgetFile = app.widgets.folder.appendingPathComponent(WidgetSnapshot.file)
+        check("widgets: a test copy doesn't ask WidgetKit for anything", !app.widgets.tellWidgetKit)
+        app.openLink(WidgetSnapshot.startLink(50)); spin()
+        check("widgets: Start 50 starts a block of 50 minutes", store.active?.minutes == 50)
+        let written = (try? Data(contentsOf: widgetFile)).flatMap { WidgetSnapshot.decode($0) }
+        check("widgets: now.json says a block is on", written?.phase == .focus && written?.run?.minutes == 50)
+        app.openLink(WidgetSnapshot.startLink(25)); spin()
+        check("widgets: Start while a block is on opens the popover and starts nothing", app.popover.isShown && store.active?.minutes == 50)
+        app.popover.hide()
+        app.openLink(WidgetSnapshot.link("park")); spin()
+        check("widgets: Park a thought opens the small field", app.park.isShown)
+        app.park.hide()
+        app.openLink(WidgetSnapshot.link("window/later")); spin(0.5)
+        check("widgets: Later opens the window on Later", AppWindow.shared.isShown && AppWindow.shared.nav.section == .later)
+        AppWindow.shared.windowForTest?.orderOut(nil)
+        app.openLink(URL(string: "chataltul://start?minutes=abc")!); spin()
+        check("widgets: a link it can't read starts nothing new", store.active?.minutes == 50)
+        app.popover.hide()
+        store.act("cancel")
     }
 }

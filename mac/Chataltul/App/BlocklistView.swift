@@ -41,19 +41,30 @@ struct BlocklistView: View {
     @State private var customError = false
     @State private var allowText = ""
     @State private var allowError = false
+    /// Too narrow for the lists in a column and the cards side by side (the Settings window, a small app window).
+    @State private var narrow = false
 
     private var lists: [GuardList] { store.settings.blocklist.lists }
     private var index: Int { lists.firstIndex { $0.id == (selected ?? lists.first?.id) } ?? 0 }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 22) {
-            column
+        let layout = narrow ? AnyLayout(VStackLayout(alignment: .leading, spacing: 18)) : AnyLayout(HStackLayout(alignment: .top, spacing: 22))
+        layout {
+            if narrow { listChips } else { column }
             if lists.isEmpty {
                 Text("No lists yet.").foregroundStyle(Palette.muted)
             } else {
                 detail(binding(for: index)).frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onGeometryChange(for: Bool.self) { $0.size.width < 840 } action: { narrow = $0 }
+    }
+
+    /// Side by side when there is room, else one under the other.
+    private func pair<C: View>(_ spacing: CGFloat, @ViewBuilder _ content: () -> C) -> some View {
+        let layout = narrow ? AnyLayout(VStackLayout(alignment: .leading, spacing: spacing)) : AnyLayout(HStackLayout(alignment: .top, spacing: spacing))
+        return layout(content)
     }
 
     private func binding(for i: Int) -> Binding<GuardList> {
@@ -82,13 +93,40 @@ struct BlocklistView: View {
                     .contentShape(Rectangle())
                 }.buttonStyle(.plain)
             }
-            Button {
-                let n = GuardList(name: "New list", color: lists.count % listColors.count)
-                store.settings.blocklist.lists.append(n)
-                selected = n.id
-            } label: { Text("+ New list").font(.system(size: 13)).foregroundStyle(Palette.accentText).padding(.horizontal, 10).padding(.vertical, 7) }.buttonStyle(.plain)
+            Button(action: newList) { Text("+ New list").font(.system(size: 13)).foregroundStyle(Palette.accentText).padding(.horizontal, 10).padding(.vertical, 7) }.buttonStyle(.plain)
         }
         .frame(width: 170, alignment: .leading)
+    }
+
+    /// The lists in a row, when there's no room for the column.
+    private var listChips: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label11(text: "LISTS")
+            FlowLayout {
+                ForEach(lists) { l in
+                    let on = l.id == (selected ?? lists.first?.id)
+                    Button { selected = l.id } label: {
+                        HStack(spacing: 8) {
+                            Circle().fill(listColors[l.color % listColors.count]).frame(width: 8, height: 8)
+                            Text(l.name).font(.system(size: 13, weight: on ? .semibold : .regular)).lineLimit(1)
+                            Text("\(l.count)").font(.system(size: 12)).foregroundStyle(Palette.muted)
+                        }
+                        .foregroundStyle(Palette.ink)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(on ? Palette.card : .clear))
+                        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(on ? Palette.ringTrack : .clear, lineWidth: 1))
+                        .contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                }
+                Button(action: newList) { Text("+ New list").font(.system(size: 13)).foregroundStyle(Palette.accentText).padding(.horizontal, 10).padding(.vertical, 6) }.buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func newList() {
+        let n = GuardList(name: "New list", color: lists.count % listColors.count)
+        store.settings.blocklist.lists.append(n)
+        selected = n.id
     }
 
     // ---------------------------------------------------------------- one list
@@ -103,19 +141,19 @@ struct BlocklistView: View {
                 Spacer()
                 Toggle("", isOn: $store.settings.speedBump).toggleStyle(.switch).labelsHidden().tint(Palette.teal).help("Watching on or off, for every list")
             }
-            HStack(alignment: .top, spacing: 16) {
-                appsCard(list).frame(maxWidth: 330)
+            pair(16) {
+                appsCard(list).frame(maxWidth: narrow ? .infinity : 330)
                 sitesCard(list)
             }
             VStack(alignment: .leading, spacing: 10) {
                 Text("What happens when you open one").font(.system(size: 13, weight: .bold)).foregroundStyle(Palette.ink)
-                HStack(alignment: .top, spacing: 12) {
+                pair(12) {
                     modeCard(list, .speedBump, "Speed bump", "The cat walks over it. Come back within 15 seconds, or hold to leave and \(store.cat(nil).name) wanders off.")
                     modeCard(list, .waitItOut, "Wait it out", "A 30-second countdown with the cat before it opens, every time. Most urges pass by then.")
                     modeCard(list, .locked, "Locked", "It won't open until the block ends, and the block can't be stopped. Chataltul refuses to quit meanwhile.")
                 }.fixedSize(horizontal: false, vertical: true)
             }
-            HStack(alignment: .top, spacing: 16) {
+            pair(16) {
                 whenCard(list)
                 allowanceCard(list)
             }
@@ -333,7 +371,7 @@ struct BlocklistView: View {
                 Divider().overlay(Palette.hairline)
                 HStack { Text("Used today").font(.system(size: 14)).foregroundStyle(Palette.ink); Spacer(); Text("\(min(used, l.allowanceMin)) of \(l.allowanceMin) min").font(.system(size: 14)).foregroundStyle(Palette.muted) }
             }
-            Text(l.when.kind == .blocks ? "The allowance counts outside blocks, inside the times on the left, so it needs weekdays or Always." : "After it's used up, it asks for \(l.mode == .locked ? "the lock" : "the wait") for the rest of the day.")
+            Text(l.when.kind == .blocks ? "The allowance counts outside blocks, inside the times \(narrow ? "above" : "on the left"), so it needs weekdays or Always." : "After it's used up, it asks for \(l.mode == .locked ? "the lock" : "the wait") for the rest of the day.")
                 .font(.system(size: 12)).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
         }
     }
