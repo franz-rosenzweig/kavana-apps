@@ -2,6 +2,7 @@
 # Makes Chataltul/Resources/AppIcon.icns from the web repo's icon drawing (design/icon/final/icon.svg), which
 # is already drawn on the macOS icon grid, with its margin and shadow. Quick Look draws the SVG.
 #   KAVANA_REPO=~/src/kavana mac/tools/make-icon.sh
+# AppIcon.icon beside build.sh is the same drawing in layers (its art alone, art.png), the one build.sh uses with Xcode.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO=${KAVANA_REPO:?set KAVANA_REPO to a clone of the kavana repo}

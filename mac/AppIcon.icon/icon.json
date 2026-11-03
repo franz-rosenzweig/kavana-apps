@@ -1,0 +1,48 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "linear-gradient": [
+          "srgb:0.99216,0.96078,0.90980,1.00000",
+          "srgb:0.96078,0.89412,0.79608,1.00000"
+        ],
+        "orientation": {
+          "start": {
+            "x": 0.5,
+            "y": 0
+          },
+          "stop": {
+            "x": 0.5,
+            "y": 1
+          }
+        }
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": "system-dark"
+    }
+  ],
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "art.png",
+          "name": "art",
+          "glass": false
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.25
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

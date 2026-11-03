@@ -71,7 +71,19 @@ plutil -lint -s $APP/Contents/Info.plist
 R=Chataltul/Resources
 cp -R $R/js $R/cats $R/cafe $R/audio $APP/Contents/Resources/
 cp $R/rig.json $R/sounds.json $APP/Contents/Resources/
-[[ -f $R/AppIcon.icns ]] && cp $R/AppIcon.icns $APP/Contents/Resources/ && plutil -replace CFBundleIconFile -string AppIcon $APP/Contents/Info.plist
+# The icon, layered as Icon Composer makes them (AppIcon.icon: the cat in its window over the cream),
+# so macOS 26 draws it as it draws its own, light, dark, tinted and clear; actool also writes the
+# .icns. Without actool (it comes with Xcode), the plain AppIcon.icns.
+if xcrun -f actool >/dev/null 2>&1; then
+    # full paths: actool hands the work to a helper that may still be running from another build's folder
+    xcrun actool "$PWD/AppIcon.icon" --compile "${APP:a}/Contents/Resources" --app-icon AppIcon --platform macosx \
+        --minimum-deployment-target $MACOS --output-partial-info-plist "${OUT:a}/icon-partial.plist" >/dev/null
+    rm -f $OUT/icon-partial.plist
+    plutil -replace CFBundleIconFile -string AppIcon $APP/Contents/Info.plist
+    plutil -replace CFBundleIconName -string AppIcon $APP/Contents/Info.plist
+elif [[ -f $R/AppIcon.icns ]]; then
+    cp $R/AppIcon.icns $APP/Contents/Resources/ && plutil -replace CFBundleIconFile -string AppIcon $APP/Contents/Info.plist
+fi
 
 # An Apple Development identity if there is one (Xcode makes it from your Apple ID), ad hoc otherwise,
 # which is enough to run it on this Mac.
