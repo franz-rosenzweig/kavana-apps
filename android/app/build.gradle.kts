@@ -18,8 +18,8 @@ android {
         applicationId = "xyz.tiresia.kavana"
         minSdk = 31
         targetSdk = 36
-        versionCode = 15
-        versionName = "0.5.0"
+        versionCode = 16
+        versionName = "0.6.0"
         resValue("string", "app_name", "Chataltul")
         // Where the account and its sync live: the same server as the web app.
         buildConfigField("String", "SERVER", "\"https://stuffs.tiresia.xyz/kavana/\"")
@@ -84,7 +84,13 @@ dependencies {
     implementation("androidx.concurrent:concurrent-futures-ktx:1.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    // the watch: Google's Wearable Data Layer (Play services); without them the watch part does nothing
+    implementation("com.google.android.gms:play-services-wearable:19.0.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.11.0")
     // The home-screen widgets (stable; 1.3 is still alpha)
     implementation("androidx.glance:glance-appwidget:1.2.0")
+    // a Flip half folded (Flex Mode): where the fold is
+    implementation("androidx.window:window:1.4.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    testImplementation("junit:junit:4.13.2")
 }

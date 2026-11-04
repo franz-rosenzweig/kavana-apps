@@ -117,7 +117,8 @@ class PetAction : ActionCallback {
             p[PET_MODE] = if (purr) 2 else 1
             p[PET_AT] = at
         }
-        PetCatWidget().update(context, glanceId)
+        val widget = if (CoverWidgets.isCover(context, glanceId)) CoverPetWidget() else PetCatWidget() // (the cover's has its own taps)
+        widget.update(context, glanceId)
         if (purr) Haptics.purr(context) else Haptics.hop(context)
         // She settles a moment later, from the app's own scope, and this returns now: a handler that waited would hold up the next tap,
         // and a quick second tap has to find her still up.
@@ -125,7 +126,7 @@ class PetAction : ActionCallback {
             delay(if (purr) 5_000L else 1_800L) // (a widget takes a moment to redraw, so the hop is on screen for a good part of this)
             var settled = false
             updateAppWidgetState(context, glanceId) { p -> if (p[PET_AT] == at) { p[PET_MODE] = 0; settled = true } } // untouched since: back to sitting
-            if (settled) PetCatWidget().update(context, glanceId)
+            if (settled) widget.update(context, glanceId)
         }
     }
 }
@@ -176,7 +177,7 @@ fun PetContent(s: Snap, stateMode: Int) {
     val muted = if (WidgetArt.lightInk(theme, dark || night)) Color(0xFFB7AEA5) else Color(0xFF5D5249)
     val bmp = remember(s.portrait, s.nap, s.loaf, s.booNap, s.theme, s.catsOn, size, pose, dark, boo, night) { PlayArt.pet(ctx, s, size.width.value, size.height.value, pose, dark, boo, night) }
     val strip = size.height < 100.dp
-    val wide = !strip && size.width >= 250.dp
+    val wide = !strip && size.width >= 250.dp && size.width >= size.height * 1.4f // (as PlayArt.pet)
     val pet = actionRunCallback<PetAction>()
     val mode = s.mode()
     val name = if (boo) "Boo" else s.catName
@@ -323,7 +324,7 @@ object DayAlarms {
 
     private fun used(ctx: Context): Boolean {
         val mgr = AppWidgetManager.getInstance(ctx)
-        return WidgetPins.KINDS.any { mgr.getAppWidgetIds(android.content.ComponentName(ctx, it.receiver)).isNotEmpty() }
+        return (WidgetPins.KINDS.map { it.receiver } + CoverWidgets.RECEIVERS).any { mgr.getAppWidgetIds(android.content.ComponentName(ctx, it)).isNotEmpty() }
     }
 
     fun schedule(ctx: Context) {

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- the countdown during a block, which also keeps the check-ins and the cat on time -->
@@ -15,10 +16,25 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- the account and the sync of your history (only when you sign in), and a sound's recording the first time it's picked -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Usage access, only with picked apps for the cat (Settings, Apps during a block): which app is in front during a block -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
+
+    <!-- the picker lists the apps with a launcher icon, and the home screen never counts as leaving (not QUERY_ALL_PACKAGES) -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+        </intent>
+    </queries>
 
     <application
         android:name=".KavanaApp"
         android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"
@@ -104,7 +120,35 @@
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/friends_widget_info" />
         </receiver>
+        <!-- The same widgets on a Galaxy Flip's cover screen (CoverWidgets.kt) -->
+        <receiver android:name=".widget.CoverWindowReceiver" android:exported="true" android:label="@string/widget_window_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/cover_window_info" />
+            <meta-data android:name="com.samsung.android.appwidget.provider" android:resource="@xml/cover_samsung" />
+        </receiver>
+        <receiver android:name=".widget.CoverPetReceiver" android:exported="true" android:label="@string/widget_pet_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/cover_pet_info" />
+            <meta-data android:name="com.samsung.android.appwidget.provider" android:resource="@xml/cover_samsung" />
+        </receiver>
+        <receiver android:name=".widget.CoverGoalReceiver" android:exported="true" android:label="@string/widget_goal_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/cover_goal_info" />
+            <meta-data android:name="com.samsung.android.appwidget.provider" android:resource="@xml/cover_samsung" />
+        </receiver>
+        <receiver android:name=".widget.CoverCafeReceiver" android:exported="true" android:label="@string/widget_cafe_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/cover_cafe_info" />
+            <meta-data android:name="com.samsung.android.appwidget.provider" android:resource="@xml/cover_samsung" />
+        </receiver>
         <receiver android:name=".widget.DayReceiver" android:exported="false" />
+        <!-- taps from the Wear OS app (the Wearable Data Layer) -->
+        <service android:name=".widget.WatchListenerService" android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/chataltul" />
+            </intent-filter>
+        </service>
         <!-- the café as a live wallpaper -->
         <service android:name=".wallpaper.CafeWallpaperService" android:exported="true" android:label="@string/wallpaper_name" android:permission="android.permission.BIND_WALLPAPER">
             <intent-filter><action android:name="android.service.wallpaper.WallpaperService" /></intent-filter>
@@ -128,6 +172,15 @@
         <!-- The launcher's long-press shortcuts land here, do their one thing and go (no screen of its own) -->
         <activity android:name=".widget.ShortcutActivity" android:exported="false" android:theme="@style/Theme.Kavana.Transparent"
             android:taskAffinity="" android:excludeFromRecents="true" android:noHistory="true" />
+        <!-- A Galaxy Flip's cover screen: Chataltul's pages there, opened from its cover widgets (over the lock screen, like the cover) -->
+        <activity
+            android:name=".CoverActivity"
+            android:exported="false"
+            android:taskAffinity="xyz.tiresia.kavana.cover"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density|uiMode" />
         <!-- "Park a thought" from a widget: a small dialog over whatever is on the screen, not the whole app -->
         <activity
             android:name=".widget.ParkActivity"

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- On a Galaxy Flip's cover screen (Samsung's sizes for the Flex Window; keyguard keeps it off the home screen's list) -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="352dp"
+    android:minHeight="339dp"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="keyguard"
+    android:description="@string/widget_goal_about"
+    android:previewImage="@drawable/widget_preview_goal"
+    android:initialLayout="@layout/widget_loading" />

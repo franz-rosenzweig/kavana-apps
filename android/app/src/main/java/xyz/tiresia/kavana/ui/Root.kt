@@ -49,6 +49,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.window.layout.FoldingFeature
+import androidx.window.layout.WindowInfoTracker
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import xyz.tiresia.kavana.KavanaApp
@@ -180,7 +182,15 @@ fun Root(act: MainActivity) {
     val here = when (tab) { Tab.Cats -> catsPane; else -> tab.name.lowercase() }
 
     val walks = remember(s.cats) { s.cats.mapNotNull { c -> c.poses?.get("walk")?.let { c.id to it } }.toMap() }
-    CompositionLocalProvider(LocalWalks provides walks) {
+    // A Flip half folded with the fold across (Flex Mode): where the fold is, so a running block can stand above it.
+    val layout by remember(act) { WindowInfoTracker.getOrCreate(act).windowLayoutInfo(act) }.collectAsStateWithLifecycle(null)
+    val dens = androidx.compose.ui.platform.LocalDensity.current
+    // check-flip.py: `--ez flex true` takes the fold as half folded (the emulator's foldable always says it's flat)
+    val flexDebug = xyz.tiresia.kavana.BuildConfig.DEBUG && act.resumes.intValue >= 0 && repo.prefs.getBoolean("flexDebug", false)
+    val hinge = layout?.displayFeatures?.filterIsInstance<FoldingFeature>()
+        ?.firstOrNull { (it.state == FoldingFeature.State.HALF_OPENED || flexDebug) && it.orientation == FoldingFeature.Orientation.HORIZONTAL }
+        ?.let { f -> with(dens) { Hinge(f.bounds.top.toDp(), f.bounds.bottom.toDp()) } }
+    CompositionLocalProvider(LocalWalks provides walks, LocalHinge provides hinge) {
     ModalNavigationDrawer(
         drawerState = drawer, gesturesEnabled = drawer.isOpen,
         drawerContent = { Menu(s, here, newsUnread) { go(it) } },
