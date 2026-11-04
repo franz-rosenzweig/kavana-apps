@@ -55,15 +55,15 @@ On a tablet (or a phone, if you stretch them) they have bigger shapes: the Windo
 
 The countdown on the lock screen has the kitten walking along its bar, with a dot for each check-in, and it never says what you called the block (the shade does, once you're unlocked). One switch in Settings, "Hide block titles", takes the titles off the widgets too. The widgets are made with Jetpack Glance and draw from a small saved snapshot, so they never wake the app to look at something. The pictures in them are drawn by the app and kept small.
 
-### On the watch (Wear OS, not released yet)
+### On the watch (Wear OS)
 
 ![The watch's tile: ready, focusing, extra time, a check-in, paused and came home; then the complication, round and short, between blocks and during one](docs/watch.webp)
 
 I wear a Pixel Watch, so Chataltul has a watch part too: a tile and a complication. Swipe to the tile and it's the window with your cat: ready, with Start 25 and 15, 50 and ∞; focusing, with a ring that empties, the minutes left and Pause (Done instead, in extra time or once a stopwatch has passed 10 minutes); a check-in, with Yes and Drifted; paused, with Resume; and the kitten come home with its treats, and Done. The complication puts the minutes left on the watch face while a block runs (the watch counts them down by itself), and today's minutes against the goal the rest of the time. Opening Chataltul from the watch's list of apps shows the same thing as the tile.
 
-The watch doesn't decide anything itself. Every tap goes to the phone, which does it and sends the new state back, so the phone, the widgets and the watch always agree, and with "Hide block titles" on the watch doesn't show them either. It needs the phone app on the phone the watch is paired with, both from the same release. Like the phone app it doesn't come from the Play Store: it goes onto the watch from a computer with adb, over Wi-Fi (Wireless debugging in the watch's Developer options).
+The watch doesn't decide anything itself. Every tap goes to the phone, which does it and sends the new state back, so the phone, the widgets and the watch always agree, and with "Hide block titles" on the watch doesn't show them either. It needs the phone app on the phone the watch is paired with, both the same version. Like the phone app it doesn't come from the Play Store: it goes onto the watch from a computer with adb, over Wi-Fi (Wireless debugging in the watch's Developer options). Its APK, Chataltul-Watch-<version>.apk, is in a release of its own, marked as a pre-release, so Obtainium on the phone never picks it up.
 
-### On a Galaxy Flip (not released yet)
+### On a Galaxy Flip
 
 ![The cover screen: ready to start, a block running, a check-in, Today and your cat; then a running block half folded, the clock above the fold](docs/flip.webp)
 
@@ -73,7 +73,7 @@ There are two ways onto the cover. Samsung lets an app offer widgets for it, so 
 
 Half folded on a table (Flex Mode), a running block stands above the fold like a little clock, with the buttons on the half lying flat. And shutting the phone during a block is putting it down, not leaving: the kitten doesn't wander off because the Flip is closed. All of this is checked on Android's foldable emulator, not on a real Flip yet.
 
-### Which apps bring the cat (not released yet)
+### Which apps bring the cat
 
 ![The cat comes for: every app except these, with Usage access on and my work app ticked, in light and dark mode; the cat over an app that isn't on the list; and the same screen on a tablet](docs/leave-apps.webp)
 
