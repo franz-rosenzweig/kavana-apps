@@ -18,6 +18,8 @@ public struct Enforcement: Equatable {
     public var listName: String
     /// When it stops: the block's end, or the end of the window today. Nil when there's no end to name.
     public var until: Int?
+    /// The list is an "every app except these" one: what's in front isn't on it.
+    public var outside = false
 }
 
 public enum GuardPolicy {
@@ -26,14 +28,14 @@ public enum GuardPolicy {
     /// for the wait instead.
     public static func enforcement(for list: GuardList, now: Date, blockEnd: Int?, usedMs: Int, calendar: Calendar = .current) -> Enforcement? {
         if let end = blockEnd {
-            return Enforcement(mode: list.mode, reason: .block, listName: list.name, until: end)
+            return Enforcement(mode: list.mode, reason: .block, listName: list.name, until: end, outside: list.kind == .only)
         }
         guard list.when.covers(now, calendar: calendar) else { return nil }
         let allowed = list.allowanceMin * 60_000
         if allowed > 0, usedMs < allowed { return nil }   // still inside the allowance: free, and it is counted
         let mode: GuardMode = list.mode == .speedBump ? .waitItOut : list.mode
         let end = list.when.end(on: now, calendar: calendar).map { Int($0.timeIntervalSince1970 * 1000) }
-        return Enforcement(mode: mode, reason: allowed > 0 ? .allowanceUsed : .schedule, listName: list.name, until: end)
+        return Enforcement(mode: mode, reason: allowed > 0 ? .allowanceUsed : .schedule, listName: list.name, until: end, outside: list.kind == .only)
     }
 
     /// Does this list count the time spent on it today (outside a block, inside its window, inside its allowance)?
@@ -43,6 +45,19 @@ public enum GuardPolicy {
 
     /// A locked list during a block can't be got out of by stopping the block.
     public static func locksTheBlock(_ b: Blocklist) -> Bool { b.lists.contains { $0.mode == .locked && $0.count > 0 } }
+
+    /// The app in front becomes "where you were", where Back to work goes: an app no list stops, and not the
+    /// Finder, the Dock, System Settings or any of the others that never count.
+    public static func whereYouWere(hit: GuardHit?, bundleID: String?) -> String? {
+        guard hit == nil, let b = bundleID, !Blocklist.neverCounts(b) else { return nil }
+        return b
+    }
+
+    /// With an "every app except these" list's card up, the Finder, the Dock and the like change nothing: they
+    /// don't bring a card, and they don't take one away (the 15 seconds go on). Only an allowed app does that.
+    public static func passes(hit: GuardHit?, bundleID: String?, onlyCardUp: Bool) -> Bool {
+        hit == nil && onlyCardUp && bundleID.map(Blocklist.neverCounts) == true
+    }
 }
 
 /// How much of its allowance each list has used today (usage.json). A new day starts at zero.
@@ -98,6 +113,8 @@ public struct OtherCard: Equatable {
     public var until: Int?
     public var cat: String
     public var catName: String
+    /// For an "every app except these" list: the thing in front isn't on it.
+    public var outside = false
 
     public func secondsLeft(now: Int) -> Int { max(0, (waitMs - (now - shownAt) + 999) / 1000) }
     public func fraction(now: Int) -> Double { max(0, min(1, Double(waitMs - (now - shownAt)) / Double(max(1, waitMs)))) }
@@ -114,10 +131,14 @@ public struct OtherCard: Equatable {
         case .waitItOut:
             let s = secondsLeft(now: now)
             return "\(target.label) opens in \(s) \(s == 1 ? "second" : "seconds"). Most urges pass by then."
-        case .locked: return "\(target.label) is on your \(listName) list, and it won't open until your block ends."
-        case .usedUp: return "You've used the time \(target.label) gets outside your blocks." + (until.map { " It opens again after \(clockTime($0))." } ?? "")
+        case .locked: return "\(target.label) \(outside ? "isn't" : "is") on your \(listName) list, and it won't open until your block ends."
+        case .usedUp:
+            return (outside ? "You've used today's time for what isn't on your \(listName) list." : "You've used the time \(target.label) gets outside your blocks.")
+                + (until.map { " It opens again after \(clockTime($0))." } ?? "")
         }
     }
+    /// The line at the bottom of the card.
+    public var footer: String { "\(target.label) \(outside ? "isn't" : "is") on your \(listName) list" }
 }
 
 public enum OtherAction: Equatable {
@@ -159,11 +180,11 @@ public final class OtherGuard {
         let kind: OtherKind = e.reason == .allowanceUsed ? .usedUp : (e.mode == .waitItOut ? .waitItOut : .locked)
         if var c = card {
             if c.target == target && c.kind == kind { return [] }
-            c.target = target; c.kind = kind; c.until = e.until; c.listName = e.listName
+            c.target = target; c.kind = kind; c.until = e.until; c.listName = e.listName; c.outside = e.outside
             card = c
             return [.update(c)]
         }
-        let c = OtherCard(kind: kind, target: target, listName: e.listName, shownAt: now, waitMs: waitMs, until: e.until, cat: cat, catName: catName)
+        let c = OtherCard(kind: kind, target: target, listName: e.listName, shownAt: now, waitMs: waitMs, until: e.until, cat: cat, catName: catName, outside: e.outside)
         card = c
         return [.show(c)]
     }

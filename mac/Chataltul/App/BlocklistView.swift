@@ -136,17 +136,18 @@ struct BlocklistView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
                     TextField("Name", text: list.name).textFieldStyle(.plain).font(.system(size: 24, weight: .bold)).foregroundStyle(Palette.ink)
-                    Text("The apps and sites the cat walks over while you focus.").font(.system(size: 13)).foregroundStyle(Palette.muted)
+                    Text(list.wrappedValue.kind == .only ? "The apps and sites you can use while you focus." : "The apps and sites the cat walks over while you focus.").font(.system(size: 13)).foregroundStyle(Palette.muted)
                 }
                 Spacer()
                 Toggle("", isOn: $store.settings.speedBump).toggleStyle(.switch).labelsHidden().tint(Palette.teal).help("Watching on or off, for every list")
             }
+            kindCard(list)
             pair(16) {
                 appsCard(list).frame(maxWidth: narrow ? .infinity : 330)
                 sitesCard(list)
             }
             VStack(alignment: .leading, spacing: 10) {
-                Text("What happens when you open one").font(.system(size: 13, weight: .bold)).foregroundStyle(Palette.ink)
+                Text(list.wrappedValue.kind == .only ? "What happens when you open something else" : "What happens when you open one").font(.system(size: 13, weight: .bold)).foregroundStyle(Palette.ink)
                 pair(12) {
                     modeCard(list, .speedBump, "Speed bump", "The cat walks over it. Come back within 15 seconds, or hold to leave and \(store.cat(nil).name) wanders off.")
                     modeCard(list, .waitItOut, "Wait it out", "A 30-second countdown with the cat before it opens, every time. Most urges pass by then.")
@@ -174,6 +175,19 @@ struct BlocklistView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.card))
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Palette.ringTrack, lineWidth: 1))
+    }
+
+    /// What the list is for: the things on it, or everything else (Android's "The cat comes for").
+    private func kindCard(_ list: Binding<GuardList>) -> some View {
+        let k = list.wrappedValue.kind
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("The cat comes for").font(.system(size: 13, weight: .bold)).foregroundStyle(Palette.ink)
+            card {
+                radio("These apps and sites", k == .block) { list.wrappedValue.kind = .block }
+                Divider().overlay(Palette.hairline)
+                radio("Every app and site except these", k == .only) { list.wrappedValue.kind = .only }
+            }
+        }
     }
 
     private func appsCard(_ list: Binding<GuardList>) -> some View {
@@ -216,9 +230,12 @@ struct BlocklistView: View {
                 Button("Add") { addSite(list) }.buttonStyle(Chip(fill: Palette.accent, text: Palette.onAccent, size: 13, radius: 9, padding: EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14)))
             }
             if siteError { Text("That isn't a website address.").font(.system(size: 12)).foregroundStyle(Palette.orange) }
-            Divider().overlay(Palette.hairline)
-            readyMade(list)
-            Text("Covers subdomains. Safari, Chrome, Brave, Arc and Edge are read by the Mac app. Firefox and Zen can't be, so list the app itself if you want it guarded.")
+            if list.wrappedValue.kind == .block {
+                Divider().overlay(Palette.hairline)
+                readyMade(list)
+            }
+            Text(list.wrappedValue.kind == .only ? "Covers subdomains. Safari, Chrome, Brave, Arc and Edge are read by the Mac app. Firefox and Zen can't be."
+                 : "Covers subdomains. Safari, Chrome, Brave, Arc and Edge are read by the Mac app. Firefox and Zen can't be, so list the app itself if you want it guarded.")
                 .font(.system(size: 12)).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -409,8 +426,14 @@ struct BlocklistView: View {
     private func addSite(_ list: Binding<GuardList>) {
         siteError = false
         guard let d = Blocklist.normalizeDomain(site) else { if !site.trimmingCharacters(in: .whitespaces).isEmpty { siteError = true }; return }
-        if !store.settings.blocklist.sites.contains(d) { list.wrappedValue.sites.append(d) }
+        if !taken(list).sites.contains(d) { list.wrappedValue.sites.append(d) }
         site = ""
+    }
+
+    /// What's already listed, for not adding it twice: on any list of things to block, or on this list of what's allowed.
+    private func taken(_ list: Binding<GuardList>) -> (apps: [ListedApp], sites: [String]) {
+        let l = list.wrappedValue.kind == .only ? [list.wrappedValue] : store.settings.blocklist.blocking
+        return (l.flatMap { $0.apps }, l.flatMap { $0.sites })
     }
 
     private func addCustom(_ list: Binding<GuardList>) {
@@ -434,7 +457,7 @@ struct BlocklistView: View {
         p.prompt = "Add"
         guard p.runModal() == .OK else { return }
         for url in p.urls {
-            guard let b = Bundle(url: url), let id = b.bundleIdentifier, !store.settings.blocklist.apps.contains(where: { $0.bundleID == id }) else { continue }
+            guard let b = Bundle(url: url), let id = b.bundleIdentifier, !taken(list).apps.contains(where: { $0.bundleID == id }) else { continue }
             let name = (b.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String) ?? (b.object(forInfoDictionaryKey: "CFBundleName") as? String) ?? url.deletingPathExtension().lastPathComponent
             list.wrappedValue.apps.append(ListedApp(bundleID: id, name: name))
         }

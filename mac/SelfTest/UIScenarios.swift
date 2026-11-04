@@ -220,6 +220,26 @@ enum UIScenarios {
         rich = savedList
         store.settings.blocklist = savedList
 
+        // ---- every app and site except these: a list for work, and the cat over an app that isn't on it
+        let app = { (id: String, name: String) in ListedApp(bundleID: id, name: name) }
+        store.settings.blocklist = Blocklist(lists: [
+            GuardList(name: "Work", color: 4, apps: [app("com.apple.mail", "Mail"), app("com.apple.iCal", "Calendar"), app("com.apple.Notes", "Notes"), app("com.apple.Safari", "Safari"), app("com.apple.Terminal", "Terminal")],
+                      sites: ["github.com", "docs.google.com", "stackoverflow.com"], mode: .speedBump, when: GuardWhen(.weekdays), kind: .only),
+            GuardList(name: "Distractions", color: 0, apps: [app("com.apple.MobileSMS", "Messages"), app("com.apple.news", "News")], sites: ["youtube.com", "reddit.com"]),
+        ])
+        check("only: an app that isn't on the list counts", store.settings.blocklist.outside(app: app("com.apple.TV", "TV"))?.list.name == "Work")
+        check("only: the Finder never does", store.settings.blocklist.outside(app: app("com.apple.finder", "Finder")) == nil)
+        for dark in [false, true] {
+            let root = WindowRoot(store: store, nav: WindowNav(.blocklist), sync: sync2, watcher: watch2, openSettings: { _ in }, startBlock: {}).frame(width: 1240, height: 1000)
+            check("window-blocklist-only \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(root, name: "window-blocklist-only", dark: dark, pad: 0, wall: false)))
+            let bm = BumpModel()
+            let n = nowMs()
+            bm.card = BumpCard(target: .app(app("com.apple.TV", "TV")), shownAt: n - 4_000, blockID: "x", cat: "miso", catName: "Miso", title: "Draft the newsletter", blockEnd: n + 31 * MIN, onlyList: "Work")
+            let page = ZStack { Color(white: dark ? 0.12 : 0.97); SpeedBumpView(model: bm) }.frame(width: 1100, height: 820)
+            check("guard-only \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(page, name: "guard-only", dark: dark, pad: 0, wall: false)))
+        }
+        store.settings.blocklist = savedList
+
         // ---- the ready-made lists: some here, one coming, one that failed, one added by link
         func fakeDomains(_ n: Int, _ tag: String) -> [String] { (0..<n).map { "\(tag)\($0).test" } }
         let mineList = Catalog.custom(name: "Work distractions", link: "https://lists.example.net/work.txt")!

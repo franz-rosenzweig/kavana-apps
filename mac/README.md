@@ -12,7 +12,7 @@ mac/
   Chataltul/
     Core/                no AppKit, so the self-test runs it without a screen:
                          EngineHost (the web's engine in JavaScriptCore), Models, SpeedBump (+ HoldTracker),
-                         AwayTracker, PingTracker, Blocklist (lists, modes, schedules), Categories (the ready-made lists),
+                         AwayTracker, PingTracker, Blocklist (lists, modes, schedules, and lists of what's allowed), Categories (the ready-made lists),
                          ListStore (their download), DomainSet (the hashes and the list reader), GuardPolicy (what a list asks
                          for now, wait it out, locked, allowances), Breaks (cycles, ideas, eye breaks), Insights (the
                          numbers in Today), Timing (where each block went), Review (streaks with a pause, the
@@ -69,7 +69,9 @@ UT1 is the Université Toulouse Capitole blacklist, `https://dsi.ut-capitole.fr/
 
 `ListStore.swift` downloads a list when it is switched on (and about weekly after that, checking again every six hours while the app runs), asks with the `ETag` and `Last-Modified` it was given so an unchanged list costs a `304`, refuses more than 64 MB, and only takes https (plain http only to this Mac, for the tests). The answer is read as a hosts file, a plain list of domains or AdGuard rules; only whole domains count (`||example.com^`, not paths, wildcards or `@@` exceptions), a leading `www.` is dropped, and local names and addresses are skipped. What is kept is `lists/<list>.chd`: a sorted array of 64-bit hashes (FNV-1a and a mixer, which must not change), so a lookup is a binary search for the host and each parent of it, never a single name like `com`, and the names themselves aren't on disk. A list that comes back as a web page, or with fewer domains than a floor set per list, is refused and the copy already here stays. A failed list is tried again after an hour.
 
-A list's typed sites are checked first, then its ready-made lists unless the host is under one of its **Always allow** sites. One lookup across all eight categories takes a few microseconds; all of them together are about 2.5 MB on disk.
+A list's typed sites are checked first, then its ready-made lists unless the host is under one of its **Always allow** sites.
+
+A list's `kind` is `block` (the things on it, the way every list worked at first and what an older `mac.json` decodes to) or `only` (every app and site except them). The lists of things to block are asked first, as they always were. Then `Blocklist.outside(app:)`: an app that isn't on a list of what's allowed counts against it, unless it's one of `Blocklist.alwaysAllowed` (the Finder, System Settings, the Dock, Spotlight, Notification Center, Control Center, the login window, the screen saver, the password and permission prompts, Chataltul). In a browser that's read, `outside(url:)` does the same for a page whose host isn't under one of the list's sites; only http and https pages count, so a new tab never does. A list with no apps leaves apps to the others, and one with no sites leaves sites. Of two lists an app is outside, one whose block or times are on now comes first. While such a list's card is up, the always-allowed apps change nothing (`GuardPolicy.passes`), and they never become the app Back to work goes to (`GuardPolicy.whereYouWere`); with nowhere to go back to, it opens Chataltul's window. A list of what's allowed has no ready-made lists. One lookup across all eight categories takes a few microseconds; all of them together are about 2.5 MB on disk.
 
 ## The desktop widgets
 
