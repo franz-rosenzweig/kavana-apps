@@ -6,6 +6,7 @@ import androidx.concurrent.futures.SuspendToFutureAdapter
 import androidx.wear.protolayout.ActionBuilders
 import androidx.wear.protolayout.ColorBuilders.argb
 import androidx.wear.protolayout.DeviceParametersBuilders.DeviceParameters
+import androidx.wear.protolayout.DimensionBuilders
 import androidx.wear.protolayout.DimensionBuilders.dp
 import androidx.wear.protolayout.LayoutElementBuilders
 import androidx.wear.protolayout.ModifiersBuilders
@@ -13,7 +14,6 @@ import androidx.wear.protolayout.ResourceBuilders
 import androidx.wear.protolayout.TimelineBuilders
 import androidx.wear.protolayout.material.Button
 import androidx.wear.protolayout.material.ButtonColors
-import androidx.wear.protolayout.material.Chip
 import androidx.wear.protolayout.material.ChipColors
 import androidx.wear.protolayout.material.CircularProgressIndicator
 import androidx.wear.protolayout.material.CompactChip
@@ -21,8 +21,6 @@ import androidx.wear.protolayout.material.ProgressIndicatorColors
 import androidx.wear.protolayout.material.Text
 import androidx.wear.protolayout.material.Typography
 import androidx.wear.protolayout.material.layouts.EdgeContentLayout
-import androidx.wear.protolayout.material.layouts.MultiButtonLayout
-import androidx.wear.protolayout.material.layouts.PrimaryLayout
 import androidx.wear.tiles.RequestBuilders
 import androidx.wear.tiles.TileBuilders
 import androidx.wear.tiles.TileService
@@ -53,12 +51,17 @@ class FocusTile : TileService() {
     }
 }
 
-/** What the tile looks like for a snapshot (the tile, and in debug builds the tile lab, draw it). */
+/**
+ * What the tile looks like for a snapshot (the tile, and in debug builds the tile lab, draw it). Each state is one column in the middle
+ * of the round screen, sized from its width (a 192 dp Pixel Watch to the 227 dp ones), with compact chips that stay inside the circle.
+ */
 object TileLayout {
     private val teal = 0xFF5FD0C0.toInt()
     private val onTeal = 0xFF10302B.toInt()
     private val amber = 0xFFFFCF8A.toInt()
     private val orange = 0xFFE98A3C.toInt()
+    private val green = 0xFF7FDC9B.toInt()
+    private val onGreen = 0xFF0E2A18.toInt()
     private val ink = 0xFFF2EDE6.toInt()
     private val muted = 0xFFB7AEA5.toInt()
     private val chip = 0xFF2E2733.toInt()
@@ -78,27 +81,46 @@ object TileLayout {
     private fun tap(id: String) = ModifiersBuilders.Clickable.Builder().setId(id).setOnClick(ActionBuilders.LoadAction.Builder().build()).build()
 
     private fun text(ctx: Context, s: String, typo: Int, color: Int, lines: Int = 1) =
-        Text.Builder(ctx, s).setTypography(typo).setColor(argb(color)).setMaxLines(lines).build()
+        Text.Builder(ctx, s).setTypography(typo).setColor(argb(color)).setMaxLines(lines)
+            .setOverflow(LayoutElementBuilders.TEXT_OVERFLOW_ELLIPSIZE_END).build()
 
     private fun window(size: Float): LayoutElementBuilders.LayoutElement =
         LayoutElementBuilders.Image.Builder().setResourceId("window").setWidth(dp(size)).setHeight(dp(size)).build()
 
-    private fun column(vararg e: LayoutElementBuilders.LayoutElement) = LayoutElementBuilders.Column.Builder().apply {
+    private fun gap(h: Float) = LayoutElementBuilders.Spacer.Builder().setHeight(dp(h)).build()
+    private fun across(w: Float) = LayoutElementBuilders.Spacer.Builder().setWidth(dp(w)).build()
+
+    private fun column(width: Float, vararg e: LayoutElementBuilders.LayoutElement) = LayoutElementBuilders.Column.Builder().apply {
+        setWidth(dp(width))
         setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
         e.forEach { addContent(it) }
     }.build()
 
-    private fun mainChip(ctx: Context, label: String, id: String, dev: DeviceParameters, bg: Int = teal, fg: Int = onTeal) =
-        Chip.Builder(ctx, tap(id), dev).setPrimaryLabelContent(label).setChipColors(ChipColors(bg, fg)).build()
+    private fun row(vararg e: LayoutElementBuilders.LayoutElement) = LayoutElementBuilders.Row.Builder().apply {
+        setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
+        e.forEach { addContent(it) }
+    }.build()
 
-    private fun smallChip(ctx: Context, label: String, id: String, dev: DeviceParameters, bg: Int = chip, fg: Int = ink) =
+    /** The whole screen, black, with this in the middle. */
+    private fun screen(content: LayoutElementBuilders.LayoutElement) = LayoutElementBuilders.Box.Builder()
+        .setWidth(DimensionBuilders.expand()).setHeight(DimensionBuilders.expand())
+        .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER).setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
+        .addContent(content).build()
+
+    private fun action(ctx: Context, label: String, id: String, dev: DeviceParameters, bg: Int = teal, fg: Int = onTeal) =
         CompactChip.Builder(ctx, label, tap(id), dev).setChipColors(ChipColors(bg, fg)).build()
+
+    private fun round(ctx: Context, label: String, id: String, size: Float) =
+        Button.Builder(ctx, tap(id)).setTextContent(label).setButtonColors(ButtonColors(chip, ink)).setSize(dp(size)).build()
 
     private fun minutesLeft(s: WatchSnap, now: Long) = ((s.end - (s.paused ?: now) + 59_999L) / 60_000L).coerceAtLeast(0)
 
     fun layout(ctx: Context, s: WatchSnap?, dev: DeviceParameters): LayoutElementBuilders.LayoutElement {
         val now = System.currentTimeMillis()
-        if (s == null) return PrimaryLayout.Builder(dev).setContent(text(ctx, "Waiting for the phone", Typography.TYPOGRAPHY_BODY1, muted, 2)).build()
+        val w = dev.screenWidthDp.toFloat().coerceAtLeast(150f)
+        val k = (w / 192f).coerceIn(0.85f, 1.25f) // a Pixel Watch is 192 dp across, the bigger ones up to 227
+        val inner = w * 0.72f                     // what fits across the middle of the circle, with room to spare
+        if (s == null) return screen(column(inner, text(ctx, "Waiting for the phone", Typography.TYPOGRAPHY_BODY1, muted, 2)))
         val name = if (s.catsOn) s.catName else "Chataltul"
         return when (s.mode) {
             "FOCUSING", "EXTRA", "GONE" -> {
@@ -107,51 +129,47 @@ object TileLayout {
                     else -> (1f - (s.end - now).toFloat() / s.total.coerceAtLeast(1)).coerceIn(0f, 1f)
                 }
                 val clock = when { s.over != null -> "extra time"; s.stopwatch -> "focusing"; else -> "${minutesLeft(s, now)} min left" }
+                val under = if (s.mode == "GONE") "$name wandered off" else s.title.ifEmpty { if (s.catsOn) "$name is growing" else "" }
                 EdgeContentLayout.Builder(dev)
                     .setEdgeContent(CircularProgressIndicator.Builder().setProgress(progress)
                         .setCircularProgressIndicatorColors(ProgressIndicatorColors(teal, 0x33FFFFFF)).build())
-                    .setContent(column(
-                        window(56f),
+                    .setContent(column(w * 0.66f,
+                        window(46f * k),
                         text(ctx, clock, Typography.TYPOGRAPHY_TITLE2, ink),
-                        text(ctx, if (s.mode == "GONE") "$name wandered off" else s.title.ifEmpty { if (s.catsOn) "$name is growing" else "" }, Typography.TYPOGRAPHY_CAPTION1, muted),
-                        LayoutElementBuilders.Spacer.Builder().setHeight(dp(6f)).build(),
-                        if (s.finishes(now)) smallChip(ctx, "Done", "stop", dev, 0xFF7FDC9B.toInt(), 0xFF0E2A18.toInt()) else smallChip(ctx, "Pause", "pause", dev, amber, 0xFF3A2510.toInt()),
+                        text(ctx, under, Typography.TYPOGRAPHY_CAPTION1, muted),
+                        gap(6f),
+                        if (s.finishes(now)) action(ctx, "Done", "stop", dev, green, onGreen) else action(ctx, "Pause", "pause", dev, amber, 0xFF3A2510.toInt()),
                     ))
                     .build()
             }
-            "CHECKIN" -> PrimaryLayout.Builder(dev)
-                .setPrimaryLabelTextContent(text(ctx, "BOO! CHECK-IN", Typography.TYPOGRAPHY_CAPTION1, orange))
-                .setContent(column(
-                    text(ctx, if (s.title.isNotEmpty()) "Still on: ${s.title}?" else "Still focusing?", Typography.TYPOGRAPHY_BODY1, ink, 3),
-                    LayoutElementBuilders.Spacer.Builder().setHeight(dp(6f)).build(),
-                    smallChip(ctx, "Drifted", "drifted", dev),
-                ))
-                .setPrimaryChipContent(mainChip(ctx, "Yes", "yes", dev))
-                .build()
-            "PAUSED" -> PrimaryLayout.Builder(dev)
-                .setPrimaryLabelTextContent(text(ctx, "PAUSED", Typography.TYPOGRAPHY_CAPTION1, orange))
-                .setContent(column(window(52f), text(ctx, "${minutesLeft(s, now)} min left", Typography.TYPOGRAPHY_TITLE3, ink)))
-                .setPrimaryChipContent(mainChip(ctx, "Resume", "resume", dev, 0xFF7FDC9B.toInt(), 0xFF0E2A18.toInt()))
-                .build()
-            "HOME", "STOPPED" -> PrimaryLayout.Builder(dev)
-                .setPrimaryLabelTextContent(text(ctx, if (s.mode == "HOME") "${name.uppercase()} CAME HOME" else "STOPPED EARLY", Typography.TYPOGRAPHY_CAPTION1, if (s.mode == "HOME") teal else orange))
-                .setContent(column(window(52f), text(ctx, if (s.mode == "HOME") "+${s.treats} treats" else "${s.minutes} min", Typography.TYPOGRAPHY_TITLE3, ink)))
-                .setPrimaryChipContent(mainChip(ctx, "Done", "done", dev))
-                .build()
+            "CHECKIN" -> screen(column(inner,
+                text(ctx, "BOO! CHECK-IN", Typography.TYPOGRAPHY_CAPTION1, orange),
+                gap(4f),
+                text(ctx, if (s.title.isNotEmpty()) "Still on: ${s.title}?" else "Still focusing?", Typography.TYPOGRAPHY_BODY1, ink, 2),
+                gap(10f),
+                row(action(ctx, "Yes", "yes", dev), across(6f), action(ctx, "Drifted", "drifted", dev, chip, ink)),
+            ))
+            "PAUSED" -> screen(column(inner,
+                text(ctx, "PAUSED", Typography.TYPOGRAPHY_CAPTION1, orange),
+                gap(4f), window(44f * k),
+                text(ctx, "${minutesLeft(s, now)} min left", Typography.TYPOGRAPHY_TITLE3, ink),
+                gap(8f), action(ctx, "Resume", "resume", dev, green, onGreen),
+            ))
+            "HOME", "STOPPED" -> screen(column(inner,
+                text(ctx, if (s.mode == "HOME") "${name.uppercase()} CAME HOME" else "STOPPED EARLY", Typography.TYPOGRAPHY_CAPTION1, if (s.mode == "HOME") teal else orange),
+                gap(4f), window(44f * k),
+                text(ctx, if (s.mode == "HOME") "+${s.treats} treats" else "${s.minutes} min", Typography.TYPOGRAPHY_TITLE3, ink),
+                gap(8f), action(ctx, "Done", "done", dev),
+            ))
             else -> { // ready (or a break): Start 25, and 15, 50, ∞
-                PrimaryLayout.Builder(dev)
-                    .setPrimaryLabelTextContent(text(ctx, if (s.mode == "BREAK") "BREAK" else if (s.catsOn) "$name is waiting" else "Ready", Typography.TYPOGRAPHY_CAPTION1, teal))
-                    .setContent(column(
-                        window(44f),
-                        LayoutElementBuilders.Spacer.Builder().setHeight(dp(4f)).build(),
-                        MultiButtonLayout.Builder()
-                            .addButtonContent(Button.Builder(ctx, tap("start15")).setTextContent("15").setButtonColors(ButtonColors(chip, ink)).setSize(dp(36f)).build())
-                            .addButtonContent(Button.Builder(ctx, tap("start50")).setTextContent("50").setButtonColors(ButtonColors(chip, ink)).setSize(dp(36f)).build())
-                            .addButtonContent(Button.Builder(ctx, tap("startInf")).setTextContent("∞").setButtonColors(ButtonColors(chip, ink)).setSize(dp(36f)).build())
-                            .build(),
-                    ))
-                    .setPrimaryChipContent(mainChip(ctx, "Start 25", "start25", dev))
-                    .build()
+                val b = 34f * k
+                screen(column(inner,
+                    text(ctx, if (s.mode == "BREAK") "BREAK" else if (s.catsOn) "$name is waiting" else "Ready", Typography.TYPOGRAPHY_CAPTION1, teal),
+                    gap(4f), window(38f * k), gap(6f),
+                    row(round(ctx, "15", "start15", b), across(8f), round(ctx, "50", "start50", b), across(8f), round(ctx, "∞", "startInf", b)),
+                    gap(8f),
+                    action(ctx, "Start 25", "start25", dev),
+                ))
             }
         }
     }
