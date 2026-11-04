@@ -15,6 +15,8 @@ final class Watcher {
     var onFront: (GuardHit?, String?) -> Void = { _, _ in }
     /// A readable browser is in front during a block with sites on the list, and the person hasn't been asked yet.
     var onNeedBrowserAccess: (ReadableBrowser) -> Void = { _ in }
+    /// Does a list ask for anything now? An "every app except these" list that does is the one that counts.
+    var isActive: (GuardList) -> Bool = { _ in true }
 
     private var access: [String: BrowserAccess] = [:]
     private let scripts = DispatchQueue(label: "xyz.tiresia.chataltul.applescript")
@@ -45,7 +47,8 @@ final class Watcher {
         guard let app = NSWorkspace.shared.frontmostApplication, let bid = app.bundleIdentifier else { return }
         // Chataltul's own windows in front (its popover, settings) change nothing
         if bid == Bundle.main.bundleIdentifier { return }
-        if let h = store.settings.blocklist.hit(bundleID: bid) {
+        let lists = store.settings.blocklist
+        if let h = lists.hit(bundleID: bid) ?? lists.outside(app: ListedApp(bundleID: bid, name: app.localizedName ?? bid), active: isActive) {
             onFront(h, bid)
             return
         }
@@ -125,7 +128,9 @@ final class Watcher {
                 // only act if the browser is still the one in front
                 guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == browser.bundleID else { return }
                 if let url, let d = Blocklist.host(of: url) { self.lastDomain[browser.bundleID] = (d, nowMs()) }
-                if let url, let hit = self.store.settings.blocklist.hit(url: url, browser: browser.name, matcher: self.store.categories) {
+                let lists = self.store.settings.blocklist
+                if let url, let hit = lists.hit(url: url, browser: browser.name, matcher: self.store.categories)
+                    ?? lists.outside(url: url, browser: browser.name, bundleID: browser.bundleID, active: self.isActive) {
                     self.lastURL[browser.bundleID] = url
                     self.onFront(hit, browser.bundleID)
                 } else {
@@ -147,9 +152,10 @@ final class Watcher {
         return ReadableBrowser.with(bundleID: bid) != nil
     }
 
-    /// Brings an app back to the front.
-    static func activate(_ bundleID: String?) {
-        guard let id = bundleID, let app = NSRunningApplication.runningApplications(withBundleIdentifier: id).first else { return }
-        app.activate(options: [])
+    /// Brings an app back to the front. False if there's none to bring.
+    @discardableResult
+    static func activate(_ bundleID: String?) -> Bool {
+        guard let id = bundleID, let app = NSRunningApplication.runningApplications(withBundleIdentifier: id).first else { return false }
+        return app.activate(options: [])
     }
 }

@@ -34,6 +34,14 @@ public struct BumpCard: Equatable {
     public var catName: String
     public var title: String
     public var blockEnd: Int
+    /// The "every app except these" list the thing in front isn't on, when that is why the card is up.
+    public var onlyList: String?
+
+    /// The line at the bottom of the card.
+    public var footer: String {
+        if let l = onlyList { return "Only your \(l) list is open until \(clockTime(blockEnd))" }
+        return "\(target.label) is on your list until \(clockTime(blockEnd))"
+    }
 
     /// Whole seconds left of the grace, 15 down to 0.
     public func secondsLeft(now: Int, graceMs: Int) -> Int { max(0, (graceMs - (now - shownAt) + 999) / 1000) }
@@ -72,7 +80,8 @@ public final class SpeedBump {
 
     /// The front app changed (or was looked at again). `target` is what's on the list that it matches, if
     /// anything; `bundleID` is the front app, which becomes "where they were" when it isn't on the list.
-    public func front(target: Target?, bundleID: String?, block: BumpBlock?, now: Int) -> [BumpAction] {
+    /// `onlyList`: the "every app except these" list the target isn't on, when that's why it counts.
+    public func front(target: Target?, bundleID: String?, block: BumpBlock?, now: Int, onlyList: String? = nil) -> [BumpAction] {
         guard let target else {
             dismissed = nil
             if let b = bundleID { previous = b }
@@ -82,11 +91,11 @@ public final class SpeedBump {
         if let d = dismissed, d == target { return [] }
         if var c = card {
             if c.target == target { return [] }
-            c.target = target
+            c.target = target; c.onlyList = onlyList
             card = c
             return [.update(c)]
         }
-        let c = BumpCard(target: target, shownAt: now, blockID: b.id, cat: b.cat, catName: b.catName, title: b.title, blockEnd: b.end)
+        let c = BumpCard(target: target, shownAt: now, blockID: b.id, cat: b.cat, catName: b.catName, title: b.title, blockEnd: b.end, onlyList: onlyList)
         card = c
         return [.show(c)]
     }

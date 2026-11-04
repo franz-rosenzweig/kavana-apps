@@ -415,6 +415,80 @@ oa = other.front(hit: GuardHit(list: news, target: .site(domain: "bbc.co.uk", br
 if case .show(let ucard)? = oa.first { equal("used up says so", ucard.kind, .usedUp) } else { check("used up card", false) }
 equal("a speed bump isn't this guard's", other.front(hit: GuardHit(list: dist, target: .site(domain: "youtube.com", browser: "Chrome")), enforcement: Enforcement(mode: .speedBump, reason: .block, listName: "Distractions", until: blockEnd), bundleID: "com.google.Chrome", cat: "miso", catName: "Miso", now: t + 1000), [.hide])
 
+// ---------------------------------------------------------------- every app except these
+section("every app except these")
+let mail = ListedApp(bundleID: "com.apple.mail", name: "Mail"), notes = ListedApp(bundleID: "com.apple.Notes", name: "Notes")
+let safari = ListedApp(bundleID: "com.apple.Safari", name: "Safari"), tv = ListedApp(bundleID: "com.apple.TV", name: "TV")
+var work = GuardList(id: "w", name: "Work", apps: [mail, notes, safari], sites: ["github.com", "docs.google.com"], mode: .speedBump, kind: .only)
+var both = Blocklist(lists: [GuardList(id: "d", name: "Distractions", apps: [ListedApp(bundleID: "com.apple.MobileSMS", name: "Messages")], sites: ["youtube.com"]), work])
+equal("a list from before there was a choice is one of things to block", try JSONDecoder().decode(GuardList.self, from: Data("{\"name\":\"Old\"}".utf8)).kind, .block)
+equal("the choice survives a round trip", try JSONDecoder().decode(Blocklist.self, from: JSONEncoder().encode(both)), both)
+equal("an app that isn't on it counts", both.outside(app: tv)?.list.id, "w")
+equal("as the app it is", both.outside(app: tv)?.target, .app(tv))
+equal("an app on it doesn't", both.outside(app: mail) == nil, true)
+equal("an app on it isn't something to block either", both.hit(bundleID: "com.apple.mail") == nil, true)
+equal("a list of things to block still comes first", both.hit(bundleID: "com.apple.MobileSMS")?.list.id, "d")
+for (id, what) in [("com.apple.finder", "the Finder"), ("com.apple.systempreferences", "System Settings"), ("com.apple.dock", "the Dock"),
+                   ("com.apple.Spotlight", "Spotlight"), ("com.apple.notificationcenterui", "Notification Center"), ("com.apple.controlcenter", "Control Center"),
+                   ("com.apple.loginwindow", "the login window"), ("com.apple.ScreenSaver.Engine", "the screen saver"), ("com.apple.SecurityAgent", "a password prompt"),
+                   ("com.apple.UserNotificationCenter", "a system alert"), ("xyz.tiresia.chataltul", "Chataltul"), ("xyz.tiresia.chataltul.selftest", "its test copy")] {
+    equal("\(what) never counts", both.outside(app: ListedApp(bundleID: id, name: what)) == nil, true)
+}
+equal("an empty list of what's allowed is the way it always was", Blocklist(lists: [GuardList(name: "Work", kind: .only)]).outside(app: tv) == nil, true)
+equal("its ready-made lists aren't downloaded or used", Blocklist(lists: [GuardList(name: "Work", apps: [mail], categories: ["social"], kind: .only)]).categoryIDs, [])
+let evening = GuardList(id: "e", name: "Evening", apps: [notes], when: GuardWhen(.always), kind: .only)
+let workAndEvening = Blocklist(lists: [work, evening])
+equal("of two lists, the one that asks for something now", workAndEvening.outside(app: tv, active: { $0.id == "e" })?.list.id, "e")
+equal("else the first, so a window that begins is seen", workAndEvening.outside(app: tv, active: { _ in false })?.list.id, "w")
+equal("each list holds on its own: an app one allows can be outside the other", workAndEvening.outside(app: mail)?.list.id, "e")
+
+section("every site except these")
+equal("a site on it, in a browser on it", both.outside(url: "https://github.com/franz", browser: "Safari", bundleID: "com.apple.Safari") == nil, true)
+equal("and its subdomains", both.outside(url: "https://gist.github.com/x", browser: "Safari", bundleID: "com.apple.Safari") == nil, true)
+equal("another site counts, by its host", both.outside(url: "https://www.youtube.com/watch?v=1", browser: "Safari", bundleID: "com.apple.Safari")?.target, .site(domain: "youtube.com", browser: "Safari"))
+equal("a look-alike counts too", both.outside(url: "https://notgithub.com/", browser: "Safari", bundleID: "com.apple.Safari")?.list.id, "w")
+for page in ["chrome://newtab/", "about:blank", "favorites://", "file:///Users/me/a.html", "", "http://localhost:8080/"] {
+    equal("\(page.isEmpty ? "no page" : page) never counts", both.outside(url: page, browser: "Safari", bundleID: "com.apple.Safari") == nil, true)
+}
+equal("allowed sites aren't something to block", both.hit(url: "https://github.com/", browser: "Safari") == nil, true)
+let appsOnly = Blocklist(lists: [GuardList(name: "Work", apps: [mail, safari], kind: .only)])
+equal("with no sites on it, sites are left to the other lists", appsOnly.outside(url: "https://youtube.com/", browser: "Safari", bundleID: "com.apple.Safari") == nil, true)
+let sitesOnly = Blocklist(lists: [GuardList(name: "Web", sites: ["github.com"], kind: .only)])
+equal("with no apps on it, apps are left to the other lists", sitesOnly.outside(app: tv) == nil, true)
+equal("and every browser it reads is held to its sites", sitesOnly.outside(url: "https://youtube.com/", browser: "Chrome", bundleID: "com.google.Chrome")?.list.name, "Web")
+equal("it watches sites", sitesOnly.watchesSites, true)
+equal("during blocks only, a browser isn't read every second outside them", sitesOnly.watchesSitesOnSchedule, false)
+equal("on weekdays it is", Blocklist(lists: [GuardList(name: "Web", sites: ["github.com"], when: GuardWhen(.weekdays), kind: .only)]).watchesSitesOnSchedule, true)
+
+section("every app except these: the cards")
+let onlyEnf = GuardPolicy.enforcement(for: work, now: mon10, blockEnd: blockEnd, usedMs: 0, calendar: utc)
+equal("a block: the list's own mode, and it says it's the list of what's allowed", [onlyEnf?.mode == .speedBump, onlyEnf?.outside == true], [true, true])
+equal("a list of things to block doesn't", GuardPolicy.enforcement(for: dist, now: mon10, blockEnd: blockEnd, usedMs: 0, calendar: utc)?.outside, false)
+var sb = SpeedBump()
+_ = sb.front(target: nil, bundleID: GuardPolicy.whereYouWere(hit: nil, bundleID: "com.apple.mail"), block: BumpBlock(id: "b", end: blockEnd), now: t)
+var sa = sb.front(target: .app(tv), bundleID: nil, block: BumpBlock(id: "b", end: blockEnd), now: t + 1000, onlyList: "Work")
+if case .show(let oc)? = sa.first { equal("the speed bump's line says which list is open", oc.footer, "Only your Work list is open until \(clockTime(blockEnd))") } else { check("the speed bump comes up for an app that isn't on the list", false) }
+equal("the Finder doesn't become where you were", GuardPolicy.whereYouWere(hit: nil, bundleID: "com.apple.finder"), nil)
+equal("an allowed app does", GuardPolicy.whereYouWere(hit: nil, bundleID: "com.apple.Notes"), "com.apple.Notes")
+equal("an app that counts doesn't", GuardPolicy.whereYouWere(hit: both.outside(app: tv), bundleID: "com.apple.TV"), nil)
+equal("so Back to work goes to the last allowed app", sb.backToWork(), [.hide, .activate("com.apple.mail")])
+equal("with the card up, the Finder changes nothing", GuardPolicy.passes(hit: nil, bundleID: "com.apple.finder", onlyCardUp: true), true)
+equal("an allowed app does", GuardPolicy.passes(hit: nil, bundleID: "com.apple.Notes", onlyCardUp: true), false)
+equal("and with a list of things to block's card, the Finder is coming back, as before", GuardPolicy.passes(hit: nil, bundleID: "com.apple.finder", onlyCardUp: false), false)
+sb = SpeedBump()
+sa = sb.front(target: .site(domain: "youtube.com", browser: "Chrome"), bundleID: nil, block: BumpBlock(id: "b", end: blockEnd), now: t)
+if case .show(let bc)? = sa.first { equal("a listed site's card says so, as before", bc.footer, "youtube.com is on your list until \(clockTime(blockEnd))") } else { check("listed site card", false) }
+other = OtherGuard()
+let tvHit = both.outside(app: tv)!
+oa = other.front(hit: tvHit, enforcement: Enforcement(mode: .locked, reason: .block, listName: "Work", until: blockEnd, outside: true), bundleID: nil, cat: "miso", catName: "Miso", now: t)
+if case .show(let lc)? = oa.first {
+    equal("locked: it isn't on the list", lc.line(now: t), "TV isn't on your Work list, and it won't open until your block ends.")
+    equal("and the line at the bottom", lc.footer, "TV isn't on your Work list")
+} else { check("locked card for an app that isn't on the list", false) }
+other = OtherGuard()
+oa = other.front(hit: tvHit, enforcement: Enforcement(mode: .waitItOut, reason: .allowanceUsed, listName: "Work", until: nil, outside: true), bundleID: nil, cat: "miso", catName: "Miso", now: t)
+if case .show(let uc)? = oa.first { equal("used up: today's time for what isn't on it", uc.line(now: t), "You've used today's time for what isn't on your Work list.") } else { check("used-up card", false) }
+
 // ---------------------------------------------------------------- breaks
 section("breaks")
 equal("Pomodoro is 25 and 5", [CyclePreset.pomodoro.minutes!.focus, CyclePreset.pomodoro.minutes!.rest], [25, 5])

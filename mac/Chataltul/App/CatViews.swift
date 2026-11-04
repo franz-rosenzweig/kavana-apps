@@ -192,7 +192,7 @@ struct SpeedBumpView: View {
                     .font(.system(size: 12)).foregroundStyle(Palette.muted).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).padding(.top, -4)
                 Rectangle().fill(Palette.hairline).frame(height: 1)
                 HStack(spacing: 4) {
-                    Text("\(c.target.label) is on your list until \(clockTime(c.blockEnd)) ·").font(.system(size: 12)).foregroundStyle(Palette.muted)
+                    Text("\(c.footer) ·").font(.system(size: 12)).foregroundStyle(Palette.muted)
                     Button("Edit the list", action: model.editList).buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.accentText)
                 }
             }
@@ -232,7 +232,7 @@ struct SpeedBumpView: View {
                     .probe("back")
                 Rectangle().fill(Palette.hairline).frame(height: 1)
                 HStack(spacing: 4) {
-                    Text("\(c.target.label) is on your \(c.listName) list ·").font(.system(size: 12)).foregroundStyle(Palette.muted)
+                    Text("\(c.footer) ·").font(.system(size: 12)).foregroundStyle(Palette.muted)
                     Button("Edit the list", action: model.editList).buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Palette.accentText)
                 }
             }

@@ -85,6 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         watcher.onFront = { [weak self] hit, bid in self?.looked(hit, bid) }
         watcher.onNeedBrowserAccess = { [weak self] browser in self?.askBrowserAccess(browser) }
+        watcher.isActive = { [weak self] list in self?.enforcement(for: list) != nil }
         notifier.onAnswer = { [weak self] id, n, a in self?.answerFromNotification(id, n, a) }
         notifier.onOpen = { [weak self] in self?.popover.show(key: true) }
 
@@ -278,7 +279,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         seconds += 1
         status.refresh(now: now)
         if seconds % 2 == 0 { away.sample(now: now) }
-        if bumpable || currentHit != nil || (store.settings.recordTiming && store.running) { watcher.look() }
+        if bumpable || currentHit != nil || (store.settings.recordTiming && store.running)
+            || (store.settings.blocklist.watchesSitesOnSchedule && watcher.browserInFront) { watcher.look() }
         // an allowance counts the seconds spent on a list outside a block
         if let h = currentHit {
             let date = Date()
@@ -336,14 +338,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Something was brought to the front (or looked at again): the speed bump, the wait or the lock may answer.
     func looked(_ hit: GuardHit?, _ bundleID: String?) {
+        if GuardPolicy.passes(hit: hit, bundleID: bundleID, onlyCardUp: onlyCardUp) { currentHit = nil; currentBundle = bundleID; return }
         currentHit = hit; currentBundle = bundleID
         let n = nowMs()
-        guard store.settings.speedBump else { apply(speed.front(target: nil, bundleID: bundleID, block: nil, now: n)); applyOther(other.front(hit: nil, enforcement: nil, bundleID: bundleID, cat: "", catName: "", now: n)); return }
+        let was = GuardPolicy.whereYouWere(hit: hit, bundleID: bundleID)
+        guard store.settings.speedBump else { onlyCardUp = false; apply(speed.front(target: nil, bundleID: was, block: nil, now: n)); applyOther(other.front(hit: nil, enforcement: nil, bundleID: was, cat: "", catName: "", now: n)); return }
         let enf = hit.flatMap { enforcement(for: $0.list) }
         let bumpTarget = enf?.mode == .speedBump ? hit?.target : nil
-        apply(speed.front(target: bumpTarget, bundleID: hit == nil ? bundleID : nil, block: bumpBlock(), now: n))
+        let onlyList = hit?.list.kind == .only ? hit?.list.name : nil
+        apply(speed.front(target: bumpTarget, bundleID: was, block: bumpBlock(), now: n, onlyList: onlyList))
         let cat = store.active?.cat ?? store.state.companion
-        applyOther(other.front(hit: hit, enforcement: enf, bundleID: bundleID, cat: cat, catName: store.cat(cat).name, now: n))
+        applyOther(other.front(hit: hit, enforcement: enf, bundleID: was, cat: cat, catName: store.cat(cat).name, now: n))
+        onlyCardUp = onlyList != nil && (speed.card != nil || other.card != nil)
+    }
+    /// The card up is an "every app except these" list's, so the Finder and the like leave it be.
+    private var onlyCardUp = false
+
+    /// Back to work: where they were, or Chataltul's window if there's nowhere (so the thing in front isn't left open).
+    private func backTo(_ bundleID: String?) {
+        if !Watcher.activate(bundleID) { openWindow(nil) }
     }
 
     func applyOther(_ actions: [OtherAction]) {
@@ -356,7 +369,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .hide:
                 bump.model.other = nil
                 if bump.model.card == nil { bump.hide() }
-            case .activate(let bid): Watcher.activate(bid)
+            case .activate(let bid): backTo(bid)
             }
         }
     }
@@ -377,7 +390,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .wandered(let name):
                 let id = store.active?.cat ?? store.state.companion
                 say("\(name) wandered off.", "Your block keeps going.", cat: id, seconds: 4, kind: "gone", picture: Art.gone)
-            case .activate(let bid): Watcher.activate(bid)
+            case .activate(let bid): backTo(bid)
             }
         }
     }
