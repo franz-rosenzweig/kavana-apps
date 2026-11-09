@@ -40,6 +40,9 @@ SIGN_KEYCHAIN=${SIGN_KEYCHAIN/#\~/$HOME}; SIGN_PASSWORD_FILE=${SIGN_PASSWORD_FIL
 REPO=franz-rosenzweig/kavana-apps
 TAG=mac-v$V
 say() { echo "release: $*"; }
+# Commits and tags that go public carry GitHub's noreply address, whatever
+# this machine's own git identity is (it may be a personal one)
+NOREPLY=(-c user.name=franz-rosenzweig -c user.email=159979406+franz-rosenzweig@users.noreply.github.com)
 fail() { echo "CHECK FAILED: $*" >&2; exit 1; }
 
 git fetch -q origin
@@ -171,7 +174,7 @@ if ! grep -q 'chataltul' "$WORK/tap/README.md"; then
   echo "| [chataltul](Casks/chataltul.rb) | [Chataltul](https://github.com/$REPO): focus timer with a kitten, for the Mac |" >> "$WORK/tap/README.md"
 fi
 git -C "$WORK/tap" add Casks/chataltul.rb README.md
-git -C "$WORK/tap" commit -q -m "chataltul $V"
-git -C "$WORK/tap" pull -q --rebase
+git -C "$WORK/tap" "${NOREPLY[@]}" commit -q -m "chataltul $V"
+git -C "$WORK/tap" "${NOREPLY[@]}" pull -q --rebase
 git -C "$WORK/tap" push -q
 say "released: $(gh release view "$TAG" --repo $REPO --json url -q .url), and the cask is at $V"
