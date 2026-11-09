@@ -16,8 +16,8 @@ android {
         applicationId = "xyz.tiresia.kavana"
         minSdk = 30
         targetSdk = 34
-        versionCode = 16
-        versionName = "0.6.0"
+        versionCode = 17
+        versionName = "0.6.1"
         resValue("string", "app_name", "Chataltul")
     }
 

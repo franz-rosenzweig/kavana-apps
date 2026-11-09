@@ -18,8 +18,8 @@ android {
         applicationId = "xyz.tiresia.kavana"
         minSdk = 31
         targetSdk = 36
-        versionCode = 16
-        versionName = "0.6.0"
+        versionCode = 17
+        versionName = "0.6.1"
         resValue("string", "app_name", "Chataltul")
         // Where the account and its sync live: the same server as the web app.
         buildConfigField("String", "SERVER", "\"https://stuffs.tiresia.xyz/kavana/\"")
