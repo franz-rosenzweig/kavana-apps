@@ -357,9 +357,9 @@ struct BlocklistView: View {
     private func whenCard(_ list: Binding<GuardList>) -> some View {
         let w = list.wrappedValue.when
         return card {
-            radio("During every block", w.kind == .blocks) { list.wrappedValue.when.kind = .blocks }
+            radio("During every block", w.kind == .blocks) { list.wrappedValue.when.choose(.blocks) }
             Divider().overlay(Palette.hairline)
-            radio("And on weekdays, \(hourLabel(w.fromMin)) to \(hourLabel(w.toMin))", w.kind == .weekdays) { list.wrappedValue.when.kind = .weekdays }
+            radio("And on weekdays, \(hourLabel(w.fromMin)) to \(hourLabel(w.toMin))", w.kind == .weekdays) { list.wrappedValue.when.choose(.weekdays) }
             if w.kind == .weekdays {
                 HStack {
                     Picker("From", selection: list.when.fromMin) { ForEach(Array(stride(from: 5 * 60, through: 22 * 60, by: 30)), id: \.self) { Text(hourLabel($0)).tag($0) } }.fixedSize()
@@ -367,7 +367,7 @@ struct BlocklistView: View {
                 }.font(.system(size: 13))
             }
             Divider().overlay(Palette.hairline)
-            radio("Always", w.kind == .always) { list.wrappedValue.when.kind = .always }
+            radio("Always", w.kind == .always) { list.wrappedValue.when.choose(.always) }
         }
     }
 
@@ -417,7 +417,7 @@ struct BlocklistView: View {
             let installed = ReadableBrowser.all.filter { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0.bundleID) != nil }
             if installed.isEmpty { Text("No browser it can read is installed.").font(.system(size: 13)).foregroundStyle(Palette.muted) }
             ForEach(installed, id: \.bundleID) { b in BrowserRow(browser: b, watcher: watcher) }
-            Text("macOS asks once for each browser (Automation). Say no and Chataltul simply doesn't watch that browser's sites.").font(.system(size: 12)).foregroundStyle(Palette.muted)
+            Text("macOS asks once for each browser (Automation, or Accessibility for Zen). Say no and Chataltul simply doesn't watch that browser's sites.").font(.system(size: 12)).foregroundStyle(Palette.muted)
         }
     }
 
@@ -492,7 +492,7 @@ struct BrowserRow: View {
             switch status {
             case .allowed: Text("Allowed").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.accentText)
             case .denied:
-                Button("Open System Settings") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!) }
+                Button("Open System Settings") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_\(pane)")!) }
                     .buttonStyle(Chip(size: 12, radius: 9, padding: EdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10)))
             case .notRunning: Text("Not open").font(.system(size: 13)).foregroundStyle(Palette.muted)
             case .unknown:
@@ -503,10 +503,13 @@ struct BrowserRow: View {
         .onAppear { watcher.refreshAccess(browser) { status = $0 } }
     }
 
+    /// Where macOS keeps the answer.
+    private var pane: String { browser.reader == .accessibility ? "Accessibility" : "Automation" }
+
     private var detail: String {
         switch status {
         case .allowed: return "Chataltul can see the address of the front tab."
-        case .denied: return "Not allowed, so its sites aren't watched. Turn it on under Privacy → Automation."
+        case .denied: return "Not allowed, so its sites aren't watched. Turn it on under Privacy → \(pane)."
         case .notRunning: return "Open it, and this shows whether it is allowed."
         case .unknown: return "Not asked yet."
         }

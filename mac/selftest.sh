@@ -5,6 +5,7 @@
 #   ./selftest.sh core       the same
 #   ./selftest.sh sync       the account and sync, against a sandbox copy of the web server on this Mac
 #   ./selftest.sh ui         the app's own windows and desktop widgets drawn to PNG files in build/selftest/shots
+#   ./selftest.sh zen        reading the page in Zen, against a Zen of its own opened in the background
 #   ./selftest.sh all
 #
 # core: the engine in JavaScriptCore (a block, its pings, the cat names in them, the away op), the speed
@@ -24,6 +25,7 @@ mkdir -p $OUT
 core() {
   command -v swiftc >/dev/null || { echo "no swiftc: run xcode-select --install" >&2; exit 1; }
   MACOS=$(sed -n 's/^ *macOS: *"\(.*\)"/\1/p' project.yml | head -1)
+  rm -f $OUT/core-tests   # a build that fails must not leave the last one to run
   swiftc -O -sdk "$(xcrun --sdk macosx --show-sdk-path)" -target "$(uname -m)-apple-macos$MACOS" -swift-version 5 \
       Chataltul/Core/*.swift Tests/main.swift -o $OUT/core-tests 2>&1 | grep -E "error|warning: unre" || true
   [[ -x $OUT/core-tests ]] || { echo "the core tests didn't build" >&2; exit 1; }
@@ -115,6 +117,42 @@ sync() {
   grep -q "SELFTEST passed" $OUT/sync.log
 }
 
+# Zen's page, read through Accessibility, against a Zen of its own: a new profile, opened in the background on
+# two pages from a small web server on this Mac, and closed again. The person's own Zen is never read. It needs
+# whatever runs this (Terminal, say) to be allowed under Privacy & Security → Accessibility, and says SKIP if not.
+zen() {
+  local ZEN; ZEN=$(mdfind "kMDItemCFBundleIdentifier == 'app.zen-browser.zen'" 2>/dev/null | head -1)
+  [[ -z $ZEN && -d /Applications/Zen.app ]] && ZEN=/Applications/Zen.app
+  [[ -n $ZEN ]] || { echo "SKIP zen: Zen isn't installed"; return 0; }
+  command -v python3 >/dev/null || { echo "SKIP zen: no python3"; return 0; }
+  local APP=$OUT/ui/Chataltul.app
+  build_ui
+  ZPAGES=$(mktemp -d -t chataltul-pages); ZPROFILE=$(mktemp -d -t chataltul-zen); ZFOLDER=$(mktemp -d -t chataltul-zentest)
+  ZSERVER=""; ZPID=""
+  trap 'kill $ZPID $ZSERVER 2>/dev/null || true; sleep 1; rm -rf "$ZPAGES" "$ZPROFILE" "$ZFOLDER"' EXIT
+  echo "<!doctype html><title>Page A</title><p>A" > $ZPAGES/a.html
+  echo "<!doctype html><title>Page B</title><p>B" > $ZPAGES/b.html
+  # no welcome screen, no questions: just the two pages
+  printf '%s\n' 'user_pref("zen.welcome-screen.seen", true);' 'user_pref("browser.shell.checkDefaultBrowser", false);' \
+      'user_pref("browser.aboutwelcome.enabled", false);' 'user_pref("datareporting.policy.dataSubmissionEnabled", false);' \
+      'user_pref("browser.startup.homepage_override.mstone", "ignore");' > $ZPROFILE/user.js
+  local PORT; PORT=$(python3 -c "import socket; s=socket.socket(); s.bind(('127.0.0.1', 0)); print(s.getsockname()[1])")
+  python3 -m http.server $PORT --bind 127.0.0.1 --directory $ZPAGES >$OUT/zen-pages.log 2>&1 &
+  ZSERVER=$!
+  for i in {1..50}; do curl -sf http://127.0.0.1:$PORT/a.html >/dev/null && break; sleep 0.1; done
+  open -g -n -a "$ZEN" --args -no-remote -profile "$ZPROFILE" http://127.0.0.1:$PORT/a.html http://127.0.0.1:$PORT/b.html
+  for i in {1..80}; do ZPID=$(pgrep -f -- "-profile $ZPROFILE" | head -1); [[ -n $ZPID ]] && break; sleep 0.25; done
+  [[ -n $ZPID ]] || { echo "the test's own Zen didn't start" >&2; exit 1; }
+  ( sleep 120; pkill -f "$APP/Contents/MacOS/Chataltul" ) 2>/dev/null &
+  local watchdog=$!
+  CHATALTUL_OFFSCREEN=1 CHATALTUL_NO_NOTIFY=1 CHATALTUL_NO_WATCH=1 CHATALTUL_NO_LISTS=1 CHATALTUL_MUTE=1 CHATALTUL_FOLDER=$ZFOLDER CHATALTUL_FILE_SESSION=1 \
+      "$APP/Contents/MacOS/Chataltul" -SelfTestZen $ZPID -SelfTestZenPort $PORT -ApplePersistenceIgnoreState YES >$OUT/zen.log 2>&1 || true
+  kill $watchdog 2>/dev/null || true
+  forget $APP
+  grep -E "^(PASS|FAIL|SKIP|  \(|[0-9]+ passed|SELFTEST|UNCAUGHT|SIGNAL)" $OUT/zen.log || { echo "no result; see build/selftest/zen.log" >&2; tail -20 $OUT/zen.log; exit 1; }
+  grep -q "SELFTEST passed" $OUT/zen.log
+}
+
 # the app as it ships (no test code), started and left again: it must not crash on its way up
 launch() {
   CHATALTUL_BUNDLE_ID=xyz.tiresia.chataltul.selftest CHATALTUL_OUT=$OUT/launch CHATALTUL_SIGN=- CHATALTUL_OPT=${CHATALTUL_OPT:--Onone} ./build.sh >$OUT/launch-build.log 2>&1 || { grep -E "error" $OUT/launch-build.log | head; exit 1; }
@@ -143,6 +181,7 @@ case $MODE in
   sync) sync ;;
   launch) launch ;;
   ui) ui ;;
-  all) core; ui; sync; launch ;;
+  zen) zen ;;
+  all) core; ui; sync; zen; launch ;;
   *) echo "unknown mode $MODE" >&2; exit 2 ;;
 esac

@@ -8,12 +8,13 @@ The native Mac app for my focus app. The user-facing description and the screens
 mac/
   project.yml            XcodeGen spec (the Xcode project is generated, not kept)
   build.sh               builds Chataltul.app with swiftc, reading project.yml
-  selftest.sh            core | ui | sync | launch | all
+  selftest.sh            core | ui | sync | zen | launch | all
   Chataltul/
     Core/                no AppKit, so the self-test runs it without a screen:
                          EngineHost (the web's engine in JavaScriptCore), Models, SpeedBump (+ HoldTracker),
                          AwayTracker, PingTracker, Blocklist (lists, modes, schedules, and lists of what's allowed), Categories (the ready-made lists),
-                         ListStore (their download), DomainSet (the hashes and the list reader), GuardPolicy (what a list asks
+                         ListStore (their download), DomainSet (the hashes and the list reader), PageReader (the page in front
+                         of Zen, from Accessibility), GuardPolicy (what a list asks
                          for now, wait it out, locked, allowances), Breaks (cycles, ideas, eye breaks), Insights (the
                          numbers in Today), Timing (where each block went), Review (streaks with a pause, the
                          week in words, answers, export), MacSettings, Sounds, SyncClient, DocStore, WidgetSnapshot
@@ -31,7 +32,7 @@ mac/
   Widgets/               the desktop widgets, an app extension inside the app: Widgets.swift (the six widgets and
                          their timelines) and WidgetViews.swift (their faces, which the self-test draws too)
   Tests/main.swift       the core tests
-  SelfTest/              the window and live tests, and the sync test (built in place of Main.swift)
+  SelfTest/              the window and live tests, the sync test and the Zen test (built in place of Main.swift)
   tools/                 sync-web.sh, check-web.js, test-takeoff.js, make-icon.sh
   docs/engine-takeoff.*  the one change I need in the web engine
 ```
@@ -88,6 +89,8 @@ The app writes `now.json` after every change the engine makes, when its settings
 
 A click on a widget is a `chataltul://` link: `start?minutes=25` (starts a block if nothing is on, else opens the popover), `open`, `park`, `window/today`, `window/later` or `window/cafe`. Only the app's own bundle id takes these links: `build.sh` removes them from any copy built under another id, so a test copy can't catch them.
 
+One link isn't a widget's: `list?name=Work&watch=on` (or `off`), for something else on the Mac, such as a work mode, opened with `open -g`. On makes the list watched all the time (`GuardWhen.kind = .always`) and keeps what it was in `GuardWhen.before`; off puts that back, or during blocks if there's nothing kept. It goes through `Store.open(_:)`, which sets `settings.blocklist` the way the Blocklist view's bindings do, so `mac.json` is written the same way. It shows nothing and doesn't activate the app; the only thing that can come up is the cat's card, when the app in front is one the list now stops. An unknown name or a `watch` that isn't on or off is logged with `NSLog` and changes nothing. A link that launches the app can arrive before `applicationDidFinishLaunching`, so it waits in `waitingLinks` until the store is there.
+
 macOS takes note of every app it comes across, wherever it was built. A copy left with the real bundle id could then have its widgets in the gallery beside the installed app's. So `release.sh` deletes its unzipped copy once the zip is made, and `selftest.sh` makes macOS forget its test copies after each run.
 
 ## Where things live on the Mac
@@ -102,11 +105,13 @@ The doc is `~/Library/Application Support/<bundle id>/doc.json`, written whole a
 
 `core` also starts a small web server on this Mac (`python3 -m http.server`) with lists of every kind, and some that aren't (a web page, a nearly empty list, a 404, one too big, a tar.gz), and downloads them with the real code, including a second ask that gets a `304`. `ui` draws the Blocklist with the ready-made lists in each state and has the cat's card come up over a site only a ready-made list names; the self-test copies never go to the web.
 
+`zen` checks reading the page in Zen (`PageReader`) against a Zen of its own: a new profile in a temporary folder, opened with `open -g -n` on two pages from `python3 -m http.server` on this Mac, and closed afterwards. It reads the first page from a cold start (Firefox's engine builds its accessibility tree only when first asked), switches tabs the way a click does and reads each one, types into the address bar without pressing Return and checks the page read is still the open one, and times a look. The person's own Zen is never read. Accessibility is granted to whatever runs the test (the Terminal, say), so without it the test says SKIP.
+
 `sync` starts a sandbox copy of the web server on a free port of this Mac (`KAVANA_MAIL=outbox`, so the sign-in codes are written to a file the test reads), plays a second Mac through the API, and walks signing in with a wrong and a right code, syncing both ways, a recording being downloaded and played (muted), signing out and back in. It refuses any server that isn't on this Mac. It needs a clone of the web repo: `KAVANA_REPO`, or `kavana-web` or `kavana` beside this repo; without one it says SKIP.
 
 ## What I could not check without a person
 
-The permission prompts (Notifications, and Automation for each browser), a real full-screen app with the cat over it, the two-second hold with a real mouse, and the widgets on a real desktop: how they look when the desktop isn't in front (macOS greys them), and a click on one going to the app. The code for each is there and its rules are tested; the system's side of them is not.
+The permission prompts (Notifications, Automation for each browser, and Accessibility for Zen), Zen read while it's really the front app (the test's Zen stays in the background, so the side being used in a split view is only checked in `core`), a real full-screen app with the cat over it, the two-second hold with a real mouse, and the widgets on a real desktop: how they look when the desktop isn't in front (macOS greys them), and a click on one going to the app. The code for each is there and its rules are tested; the system's side of them is not.
 
 ## Releasing
 

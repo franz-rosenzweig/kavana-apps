@@ -45,7 +45,7 @@ targets:
         NSPrincipalClass: NSApplication
         NSAppleEventsUsageDescription: Chataltul reads the address of the page in front in Safari, Chrome, Brave, Arc and Edge, only to see whether it is a site on your list. Nothing is sent anywhere.
         NSUserNotificationsUsageDescription: Chataltul shows your check-ins when the cat is not on screen.
-        # the desktop widgets' clicks: chataltul://start?minutes=25, open, park, window/today
+        # the desktop widgets' clicks: chataltul://start?minutes=25, open, park, window/today; and list?name=Work&watch=on (or off)
         CFBundleURLTypes:
           - CFBundleURLName: xyz.tiresia.chataltul
             CFBundleURLSchemes: [chataltul]

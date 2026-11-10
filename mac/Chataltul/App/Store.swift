@@ -145,6 +145,19 @@ final class Store: ObservableObject {
         categories.remove(sources: sources)
     }
 
+    /// chataltul://list?name=Work&watch=on (or off): the list watched all the time, or back to its own times, saved
+    /// the way a change in Settings is. Says what it did, for the log; an unknown name changes nothing.
+    @discardableResult
+    func open(_ link: ListLink) -> String {
+        var lists = settings.blocklist
+        guard let changed = lists.apply(link) else {
+            return "no list called \"\(link.name)\" (the lists are \(settings.blocklist.lists.map { "\"\($0.name)\"" }.joined(separator: ", "))), so nothing changed"
+        }
+        if changed > 0 { settings.blocklist = lists }
+        let what = link.on ? "watched all the time" : "back to its own times"
+        return changed > 0 ? "\"\(link.name)\" is \(what)" : "\"\(link.name)\" was \(what) already"
+    }
+
     /// Days in a row, with the week's pause.
     var streak: StreakInfo { Streaks.withPause(state.history) }
 

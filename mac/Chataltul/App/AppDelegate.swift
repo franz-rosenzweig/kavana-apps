@@ -110,8 +110,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the ready-made lists that are on: fetched a little after launch, then looked at every few hours (a list is only fetched again after a week)
         DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in self?.store.refreshLists() }
         listTimer = Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { [weak self] _ in self?.store.refreshLists() }
+        openWaitingLinks()
     }
     private var listTimer: Timer?
+    /// A link can start Chataltul, and macOS may hand it over before the launch is done.
+    private(set) var waitingLinks: [URL] = []
+
+    /// The links that came with the launch, before there was a store to act on.
+    func openWaitingLinks() {
+        let early = waitingLinks; waitingLinks = []
+        for u in early { openLink(u) }
+    }
 
     // ---------------------------------------------------------------- shortcuts
 
@@ -354,6 +363,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The card up is an "every app except these" list's, so the Finder and the like leave it be.
     private var onlyCardUp = false
 
+    /// A list changed from outside (a link): what is in front is looked at again with the lists as they are
+    /// now, so a card comes up at once, or goes.
+    func lookAgain() {
+        if let h = currentHit, let l = store.settings.blocklist.lists.first(where: { $0.id == h.list.id }) {
+            looked(GuardHit(list: l, target: h.target), currentBundle)
+        }
+        watcher.look()
+    }
+
     /// Back to work: where they were, or Chataltul's window if there's nowhere (so the thing in front isn't left open).
     private func backTo(_ bundleID: String?) {
         if !Watcher.activate(bundleID) { openWindow(nil) }
@@ -401,7 +419,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let c = store.shownCat
         cat.show("access", model: CatCardModel(
             label: "ONE QUESTION", cat: c.id, title: "May I see which page is open in \(browser.name)?",
-            body: (store.settings.blocklist.watchesSites ? "Your list has websites on it. " : "So a block can show which sites it went to. ") + "macOS will ask once. I only note the site's name, never the address, and nothing leaves this Mac. If you say no, I just won't watch \(browser.name).",
+            body: (store.settings.blocklist.watchesSites ? "Your list has websites on it. " : "So a block can show which sites it went to. ")
+                + (browser.reader == .accessibility ? "macOS will send you to Accessibility in System Settings to switch me on. " : "macOS will ask once. ")
+                + "I only note the site's name, never the address, and nothing leaves this Mac. If you say no, I just won't watch \(browser.name).",
             buttons: [
                 CatButton(label: "Ask macOS", primary: true) { [weak self] in
                     self?.cat.hide("access")
@@ -497,13 +517,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // ---------------------------------------------------------------- the widgets' links
 
     /// A widget was clicked: chataltul://start?minutes=25, open, park, or window/<page> (today, later, cafe).
+    /// Or something else on the Mac switched a list: chataltul://list?name=Work&watch=on (or off).
     func application(_ application: NSApplication, open urls: [URL]) {
-        for u in urls where u.scheme == WidgetSnapshot.scheme { openLink(u) }
+        for u in urls where u.scheme == WidgetSnapshot.scheme {
+            if store == nil { waitingLinks.append(u) } else { openLink(u) }
+        }
     }
 
     func openLink(_ u: URL) {
         guard store != nil else { return }
         switch u.host ?? "" {
+        case ListLink.host:
+            // nothing is shown and nothing comes to the front: `open -g` leaves the person where they are
+            let (link, why) = ListLink.read(u)
+            guard let link else { NSLog("Chataltul: \(u.absoluteString) does nothing: \(why)"); return }
+            NSLog("Chataltul: \(u.absoluteString): \(store.open(link))")
+            lookAgain()
         case "start":
             let asked = URLComponents(url: u, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "minutes" }?.value.flatMap { Int($0) }
             if store.active == nil, store.awaiting == nil, store.onBreak == nil {

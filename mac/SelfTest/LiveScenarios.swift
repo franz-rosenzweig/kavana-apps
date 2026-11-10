@@ -538,5 +538,54 @@ enum LiveScenarios {
         check("widgets: a link it can't read starts nothing new", store.active?.minutes == 50)
         app.popover.hide()
         store.act("cancel")
+
+        // ---- a list switched by a link, the way a mode switch opens it (open -g "chataltul://list?name=…&watch=on")
+        fresh()
+        app.popover.hide(); app.park.hide(); AppWindow.shared.windowForTest?.orderOut(nil); spin()
+        let writer = ListedApp(bundleID: "test.writer", name: "Writer"), other = ListedApp(bundleID: "test.other", name: "Other")
+        store.settings.blocklist = Blocklist(lists: [GuardList(id: "d", name: "Distractions", apps: [fake]),
+                                                     GuardList(id: "work", name: "Deep Work", apps: [writer], sites: ["example.test"], kind: .only)])
+        spin()
+        func workList() -> GuardList? { store.settings.blocklist.lists.first { $0.id == "work" } }
+        func onDisk() -> GuardList? { MacSettingsStore(folder: store.folder).read().blocklist.lists.first { $0.id == "work" } }
+        func openWindows() -> [Int] { NSApp.windows.filter { $0.isVisible && $0 !== app.bump.panel }.map { $0.windowNumber }.sorted() }   // the card is the list at work
+        func hitOther() -> GuardHit? { store.settings.blocklist.outside(app: other, active: { app.enforcement(for: $0) != nil }) }
+        // in a work app: the link changes the list and nothing else
+        let shownBefore = openWindows(), activeBefore = NSApp.isActive
+        app.application(NSApp, open: [URL(string: "chataltul://list?name=Deep%20Work&watch=on")!]); spin()
+        check("list link: on, the list is watched all the time", workList()?.when.kind == .always && workList()?.when.before == .blocks)
+        check("list link: saved in mac.json, as a change in Settings is", onDisk()?.when.kind == .always && onDisk()?.when.before == .blocks)
+        check("list link: the other list is left as it was", store.settings.blocklist.lists[0].when.kind == .blocks)
+        check("list link: no block, and the list asks for something now", store.active == nil && workList().flatMap { app.enforcement(for: $0) } != nil)
+        check("list link: no window, popover, field or card opens", !app.popover.isShown && !app.park.isShown && !AppWindow.shared.isShown && !app.bump.isShown && openWindows() == shownBefore)
+        check("list link: Chataltul doesn't come to the front", NSApp.isActive == activeBefore)
+        app.openLink(URL(string: "chataltul://list?name=Deep%20Work&watch=off")!); spin()
+        check("list link: off, back to during blocks", workList()?.when.kind == .blocks && workList()?.when.before == nil)
+        check("list link: and saved so", onDisk()?.when.kind == .blocks && onDisk()?.when.before == nil)
+        check("list link: off, and still nothing opens", !app.bump.isShown && openWindows() == shownBefore && NSApp.isActive == activeBefore)
+        // in an app that isn't on the list: the card comes at once, and goes at once
+        app.looked(hitOther(), "test.other"); spin()
+        check("list link: before it, an app that isn't on the list is left alone outside a block", !app.bump.isShown)
+        app.openLink(URL(string: "chataltul://list?name=Deep%20Work&watch=on")!); spin()
+        check("list link: the app in front is looked at again at once, and gets the wait", app.bump.isShown && app.bump.model.other?.kind == .waitItOut && app.bump.model.other?.listName == "Deep Work")
+        app.openLink(URL(string: "chataltul://list?name=Deep%20Work&watch=off")!); spin()
+        check("list link: and the wait goes at once", app.bump.model.other == nil && !app.bump.isShown)
+        app.looked(nil, "test.writer")
+        let listsBefore = store.settings.blocklist
+        let fileBefore = try? Data(contentsOf: MacSettingsStore(folder: store.folder).file)
+        for bad in ["chataltul://list?name=Work&watch=on", "chataltul://list?name=Deep%20Work&watch=maybe", "chataltul://list?watch=on"] {
+            app.openLink(URL(string: bad)!); spin()
+            check("list link: \(bad) changes nothing", store.settings.blocklist == listsBefore && (try? Data(contentsOf: MacSettingsStore(folder: store.folder).file)) == fileBefore)
+        }
+        check("list link: and opens nothing either", !app.popover.isShown && !app.park.isShown && !AppWindow.shared.isShown && !app.bump.isShown)
+        // a link that starts Chataltul can come before the launch is done: it waits for the store, then counts
+        let early = AppDelegate()
+        early.application(NSApp, open: [URL(string: "chataltul://list?name=deep+work&watch=on")!])
+        check("list link: one that comes before the launch waits", early.waitingLinks.count == 1)
+        early.store = store; early.watcher = app.watcher
+        early.openWaitingLinks()
+        check("list link: and is acted on once the app is up", workList()?.when.kind == .always && early.waitingLinks.isEmpty)
+        app.openLink(ListLink.make(name: "Deep Work", on: false)); spin()
+        check("list link: the link the code makes works too", workList()?.when.kind == .blocks)
     }
 }
