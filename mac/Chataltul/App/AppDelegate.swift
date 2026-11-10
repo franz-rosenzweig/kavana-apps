@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import os
 import SwiftUI
 
 extension Notification.Name {
@@ -524,14 +525,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// What a link did, or why it did nothing, in the Mac's log: Console shows it (search for Chataltul, or the
+    /// category "link"). NSLog's words are kept private by macOS, so these are marked public: only a link's own
+    /// text and a list's name are in them.
+    static let linkLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "xyz.tiresia.chataltul", category: "link")
+
     func openLink(_ u: URL) {
         guard store != nil else { return }
         switch u.host ?? "" {
         case ListLink.host:
             // nothing is shown and nothing comes to the front: `open -g` leaves the person where they are
             let (link, why) = ListLink.read(u)
-            guard let link else { NSLog("Chataltul: \(u.absoluteString) does nothing: \(why)"); return }
-            NSLog("Chataltul: \(u.absoluteString): \(store.open(link))")
+            guard let link else { Self.linkLog.notice("\(u.absoluteString, privacy: .public) does nothing: \(why, privacy: .public)"); return }
+            let did = store.open(link)
+            Self.linkLog.notice("\(u.absoluteString, privacy: .public): \(did, privacy: .public)")
             lookAgain()
         case "start":
             let asked = URLComponents(url: u, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "minutes" }?.value.flatMap { Int($0) }

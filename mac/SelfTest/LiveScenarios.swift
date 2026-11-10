@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -578,6 +579,12 @@ enum LiveScenarios {
             check("list link: \(bad) changes nothing", store.settings.blocklist == listsBefore && (try? Data(contentsOf: MacSettingsStore(folder: store.folder).file)) == fileBefore)
         }
         check("list link: and opens nothing either", !app.popover.isShown && !app.park.isShown && !AppWindow.shared.isShown && !app.bump.isShown)
+        // and the log says why, in words (selftest.sh checks from outside that macOS doesn't hide them as <private>)
+        let logs = try? OSLogStore(scope: .currentProcessIdentifier)
+        let said = ((try? logs?.getEntries(at: logs?.position(date: Date().addingTimeInterval(-300)), matching: NSPredicate(format: "category == %@", "link"))) ?? nil)
+            .map { Array($0).compactMap { ($0 as? OSLogEntryLog)?.composedMessage } } ?? []
+        check("list link: the log says a name isn't a list", said.contains { $0.contains("chataltul://list?name=Work&watch=on: no list called \"Work\"") })
+        check("list link: and that a watch it can't read does nothing", said.contains { $0.contains("does nothing: watch is \"maybe\", not on or off") })
         // a link that starts Chataltul can come before the launch is done: it waits for the store, then counts
         let early = AppDelegate()
         early.application(NSApp, open: [URL(string: "chataltul://list?name=deep+work&watch=on")!])

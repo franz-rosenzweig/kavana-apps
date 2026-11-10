@@ -158,6 +158,8 @@ Each comes in small and medium, and Focus, Today, Later and Café in large too. 
 
 That makes three ways of reading a page, one for each family of browser. Safari and Orion, which copies Safari's AppleScript, are asked for "the current tab". Chrome and the browsers built on Chromium (Brave, Arc, Edge and Chromium itself) are asked for "the active tab". Zen and Firefox are read through Accessibility. Each browser on the list only says which family it's in, so adding another one is a single line. Orion and Chromium are new here: Chromium is the plain one or the ungoogled one, and both are asked once under Automation, like Safari and Chrome.
 
+**0.7.1: the log says why.** When a link does nothing, Chataltul writes why in the Mac's log. In 0.7.0 macOS kept those words private, so Console showed that a line was there but not what it said. Now it says it plainly: the link, and what it did or why it did nothing.
+
 ![Every app and site except these: a list for work in light and dark, and the cat over an app that isn't on it](docs/mac-only.webp)
 
 ![The widgets in light and dark: Focus while a block runs, Quick start, Today, Streak and goal, Later and the café](docs/mac-widgets.webp)
