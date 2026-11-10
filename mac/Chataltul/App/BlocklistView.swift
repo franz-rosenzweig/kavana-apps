@@ -234,8 +234,7 @@ struct BlocklistView: View {
                 Divider().overlay(Palette.hairline)
                 readyMade(list)
             }
-            Text(list.wrappedValue.kind == .only ? "Covers subdomains. Safari, Chrome, Brave, Arc and Edge are read by the Mac app. Firefox and Zen can't be."
-                 : "Covers subdomains. Safari, Chrome, Brave, Arc and Edge are read by the Mac app. Firefox and Zen can't be, so list the app itself if you want it guarded.")
+            Text("Covers subdomains. Read in \(ReadableBrowser.names).")
                 .font(.system(size: 12)).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -417,7 +416,7 @@ struct BlocklistView: View {
             let installed = ReadableBrowser.all.filter { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0.bundleID) != nil }
             if installed.isEmpty { Text("No browser it can read is installed.").font(.system(size: 13)).foregroundStyle(Palette.muted) }
             ForEach(installed, id: \.bundleID) { b in BrowserRow(browser: b, watcher: watcher) }
-            Text("macOS asks once for each browser (Automation, or Accessibility for Zen). Say no and Chataltul simply doesn't watch that browser's sites.").font(.system(size: 12)).foregroundStyle(Palette.muted)
+            Text("macOS asks once for each browser (Automation, or Accessibility for Zen and Firefox). Say no and Chataltul simply doesn't watch that browser's sites.").font(.system(size: 12)).foregroundStyle(Palette.muted)
         }
     }
 

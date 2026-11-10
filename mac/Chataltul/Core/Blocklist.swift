@@ -348,37 +348,61 @@ public enum Target: Equatable {
     }
 }
 
-/// Browsers whose address the app can read, and how: most with AppleScript, and Zen, which has none,
-/// through Accessibility. Firefox, which Zen is built on, isn't on it yet.
+/// Browsers whose address the app can read. There are three ways, one for each family a browser is built
+/// on, so a browser only says which family it's in.
 public struct ReadableBrowser: Equatable {
+    public enum Family: Equatable {
+        /// Safari's AppleScript, "URL of current tab": Safari, and Orion, which copies it.
+        case safari
+        /// Chrome's AppleScript, "URL of active tab": the browsers built on Chromium.
+        case chromium
+        /// No AppleScript: the page is read through Accessibility (PageFinder). Firefox and the browsers built on it.
+        case mozilla
+    }
     public enum Reader: Equatable {
-        /// An AppleScript that gives the front window's current address (run in the browser). macOS asks once,
-        /// under Privacy → Automation.
+        /// An AppleScript that gives the front window's current address (run in the browser). macOS asks once
+        /// for each browser, under Privacy → Automation.
         case appleScript(String)
-        /// The front window's page, found in its accessibility tree (PageFinder). macOS asks once for all such
-        /// browsers, under Privacy → Accessibility.
+        /// The front window's page, found in its accessibility tree. macOS asks once for all such browsers,
+        /// under Privacy → Accessibility.
         case accessibility
     }
     public let bundleID: String
     public let name: String
-    public let reader: Reader
+    public let family: Family
 
-    public init(bundleID: String, name: String, reader: Reader) { self.bundleID = bundleID; self.name = name; self.reader = reader }
-    init(bundleID: String, name: String, script: String) { self.init(bundleID: bundleID, name: name, reader: .appleScript(script)) }
+    public init(_ bundleID: String, _ name: String, _ family: Family) { self.bundleID = bundleID; self.name = name; self.family = family }
 
+    public var reader: Reader {
+        // AppleScript is sent to one app by its id; the rest of the line is the family's
+        let ask = "tell application id \"\(bundleID)\" to if (count of windows) > 0 then return URL of"
+        switch family {
+        case .safari: return .appleScript("\(ask) current tab of front window")
+        case .chromium: return .appleScript("\(ask) active tab of front window")
+        case .mozilla: return .accessibility
+        }
+    }
     public var script: String? { if case .appleScript(let s) = reader { return s } else { return nil } }
 
     public static let all: [ReadableBrowser] = [
-        ReadableBrowser(bundleID: "com.apple.Safari", name: "Safari", script: "tell application id \"com.apple.Safari\" to if (count of windows) > 0 then return URL of current tab of front window"),
-        ReadableBrowser(bundleID: "com.google.Chrome", name: "Chrome", script: "tell application id \"com.google.Chrome\" to if (count of windows) > 0 then return URL of active tab of front window"),
-        ReadableBrowser(bundleID: "com.brave.Browser", name: "Brave", script: "tell application id \"com.brave.Browser\" to if (count of windows) > 0 then return URL of active tab of front window"),
-        ReadableBrowser(bundleID: "company.thebrowser.Browser", name: "Arc", script: "tell application id \"company.thebrowser.Browser\" to if (count of windows) > 0 then return URL of active tab of front window"),
-        ReadableBrowser(bundleID: "com.microsoft.edgemac", name: "Edge", script: "tell application id \"com.microsoft.edgemac\" to if (count of windows) > 0 then return URL of active tab of front window"),
-        ReadableBrowser(bundleID: "app.zen-browser.zen", name: "Zen", reader: .accessibility),
+        ReadableBrowser("com.apple.Safari", "Safari", .safari),
+        ReadableBrowser("com.kagi.kagimacOS", "Orion", .safari),
+        ReadableBrowser("com.google.Chrome", "Chrome", .chromium),
+        ReadableBrowser("com.brave.Browser", "Brave", .chromium),
+        ReadableBrowser("company.thebrowser.Browser", "Arc", .chromium),
+        ReadableBrowser("com.microsoft.edgemac", "Edge", .chromium),
+        ReadableBrowser("org.chromium.Chromium", "Chromium", .chromium),
+        ReadableBrowser("io.ungoogled-software.ungoogled-chromium", "Chromium", .chromium),
+        ReadableBrowser("app.zen-browser.zen", "Zen", .mozilla),
+        ReadableBrowser("org.mozilla.firefox", "Firefox", .mozilla),
     ]
 
     public static func with(bundleID: String) -> ReadableBrowser? { all.first { $0.bundleID == bundleID } }
 
-    /// Browsers that can't be read, so the list says so.
-    public static let unreadable: [String: String] = ["org.mozilla.firefox": "Firefox"]
+    /// "Safari, Orion, … and Firefox", each name once, for the Blocklist.
+    public static var names: String {
+        var seen = Set<String>()
+        let n = all.map { $0.name }.filter { seen.insert($0).inserted }
+        return n.count < 2 ? n.joined() : n.dropLast().joined(separator: ", ") + " and " + n.last!
+    }
 }

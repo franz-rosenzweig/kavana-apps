@@ -1,3 +1,4 @@
+import CoreServices
 import Foundation
 
 // The core self-test: the engine in JavaScriptCore, the pings, the away op, the cat names, and the rules of
@@ -184,12 +185,33 @@ equal("not a domain", Blocklist.normalizeDomain("cats"), nil)
 equal("an app by bundle id", list.app("com.apple.MobileSMS")?.name, "Messages")
 check("adding a site twice adds it once", list.add(site: "reddit.com") && !list.add(site: "www.reddit.com"))
 equal("the starter list has sites", Blocklist.starter.sites.contains("youtube.com"), true)
-equal("Firefox can't be read", ReadableBrowser.with(bundleID: "org.mozilla.firefox") == nil, true)
-equal("Safari can", ReadableBrowser.with(bundleID: "com.apple.Safari")?.name, "Safari")
-equal("with AppleScript", ReadableBrowser.with(bundleID: "com.apple.Safari")?.script?.contains("URL of current tab of front window"), true)
-equal("Zen can, through Accessibility", ReadableBrowser.with(bundleID: "app.zen-browser.zen")?.reader, .accessibility)
-equal("and is called Zen", ReadableBrowser.with(bundleID: "app.zen-browser.zen")?.name, "Zen")
-equal("so it isn't among the ones that can't", ReadableBrowser.unreadable["app.zen-browser.zen"], nil)
+
+section("browsers: three ways of reading, one for each family")
+func browser(_ id: String) -> ReadableBrowser? { ReadableBrowser.with(bundleID: id) }
+equal("Safari reads like Safari", browser("com.apple.Safari")?.family, .safari)
+equal("with its AppleScript", browser("com.apple.Safari")?.script, "tell application id \"com.apple.Safari\" to if (count of windows) > 0 then return URL of current tab of front window")
+equal("Orion copies Safari's", browser("com.kagi.kagimacOS")?.script, "tell application id \"com.kagi.kagimacOS\" to if (count of windows) > 0 then return URL of current tab of front window")
+equal("Chrome has its own", browser("com.google.Chrome")?.script, "tell application id \"com.google.Chrome\" to if (count of windows) > 0 then return URL of active tab of front window")
+equal("Brave, Arc, Edge and Chromium (plain and ungoogled) read like Chrome",
+      ["com.brave.Browser", "company.thebrowser.Browser", "com.microsoft.edgemac", "org.chromium.Chromium", "io.ungoogled-software.ungoogled-chromium"].map { browser($0)?.family },
+      [.chromium, .chromium, .chromium, .chromium, .chromium])
+equal("Chromium is called Chromium", browser("io.ungoogled-software.ungoogled-chromium")?.name, "Chromium")
+equal("Zen and Firefox, through Accessibility", ["app.zen-browser.zen", "org.mozilla.firefox"].map { browser($0)?.reader }, [.accessibility, .accessibility])
+equal("with no script", browser("org.mozilla.firefox")?.script, nil)
+equal("each browser is on it once", Set(ReadableBrowser.all.map { $0.bundleID }).count, ReadableBrowser.all.count)
+equal("an app that isn't a browser isn't read", browser("com.apple.mail"), nil)
+equal("the Blocklist names each once", ReadableBrowser.names, "Safari, Orion, Chrome, Brave, Arc, Edge, Chromium, Zen and Firefox")
+// the browsers installed on this Mac: each family's line fits their own dictionary, read from the app without
+// starting it or sending it anything (so no permission is asked)
+func installed(_ id: String) -> Bool { (LSCopyApplicationURLsForBundleIdentifier(id as CFString, nil)?.takeRetainedValue() as? [URL])?.isEmpty == false }
+func fits(_ script: String) -> Bool { var e: NSDictionary?; return NSAppleScript(source: script)?.compileAndReturnError(&e) == true }
+var dictionaries = 0
+for b in ReadableBrowser.all where b.script != nil && installed(b.bundleID) {
+    dictionaries += 1
+    check("\(b.name) (\(b.bundleID)) on this Mac: its family's line fits its dictionary", fits(b.script!))
+    check("\(b.name): the other family's doesn't", !fits(ReadableBrowser(b.bundleID, b.name, b.family == .safari ? .chromium : .safari).script!))
+}
+if dictionaries == 0 { print("SKIP no browser read with AppleScript is installed here") }
 
 // ---------------------------------------------------------------- the speed bump
 section("speed bump")

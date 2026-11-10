@@ -14,7 +14,7 @@ mac/
                          EngineHost (the web's engine in JavaScriptCore), Models, SpeedBump (+ HoldTracker),
                          AwayTracker, PingTracker, Blocklist (lists, modes, schedules, and lists of what's allowed), Categories (the ready-made lists),
                          ListStore (their download), DomainSet (the hashes and the list reader), PageReader (the page in front
-                         of Zen, from Accessibility), GuardPolicy (what a list asks
+                         of Zen or Firefox, from Accessibility), GuardPolicy (what a list asks
                          for now, wait it out, locked, allowances), Breaks (cycles, ideas, eye breaks), Insights (the
                          numbers in Today), Timing (where each block went), Review (streaks with a pause, the
                          week in words, answers, export), MacSettings, Sounds, SyncClient, DocStore, WidgetSnapshot
@@ -111,7 +111,7 @@ The doc is `~/Library/Application Support/<bundle id>/doc.json`, written whole a
 
 ## What I could not check without a person
 
-The permission prompts (Notifications, Automation for each browser, and Accessibility for Zen), Zen read while it's really the front app (the test's Zen stays in the background, so the side being used in a split view is only checked in `core`), a real full-screen app with the cat over it, the two-second hold with a real mouse, and the widgets on a real desktop: how they look when the desktop isn't in front (macOS greys them), and a click on one going to the app. The code for each is there and its rules are tested; the system's side of them is not.
+The permission prompts (Notifications, Automation for each browser, and Accessibility for Zen and Firefox), Zen read while it's really the front app (the test's Zen stays in the background, so the side being used in a split view is only checked in `core`), a real full-screen app with the cat over it, the two-second hold with a real mouse, and the widgets on a real desktop: how they look when the desktop isn't in front (macOS greys them), and a click on one going to the app. The code for each is there and its rules are tested; the system's side of them is not.
 
 ## Releasing
 
