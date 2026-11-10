@@ -38,7 +38,7 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>Chataltul reads the address of the page in front in Safari, Chrome, Brave, Arc and Edge, only to see whether it is a site on your list. Nothing is sent anywhere.</string>
+	<string>Chataltul reads the address of the page in front in Safari, Orion, Chrome, Brave, Arc, Edge and Chromium, only to see whether it is a site on your list. Nothing is sent anywhere.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Free software.</string>
 	<key>NSPrincipalClass</key>

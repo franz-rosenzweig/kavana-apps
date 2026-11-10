@@ -33,12 +33,17 @@ public struct GuardWhen: Codable, Equatable {
     /// Minutes after midnight, for weekdays.
     public var fromMin: Int
     public var toMin: Int
+    /// What it was before a link (chataltul://list?…&watch=on) made it Always, to go back to on watch=off.
+    public var before: Kind?
 
     public init(_ kind: Kind = .blocks, fromMin: Int = 9 * 60, toMin: Int = 17 * 60) { self.kind = kind; self.fromMin = fromMin; self.toMin = toMin }
     public init(from decoder: Decoder) throws {
         let c = try decoder.keyed()
-        kind = c.v("kind", Kind.blocks); fromMin = c.v("fromMin", 540); toMin = c.v("toMin", 1020)
+        kind = c.v("kind", Kind.blocks); fromMin = c.v("fromMin", 540); toMin = c.v("toMin", 1020); before = c.o("before")
     }
+
+    /// Chosen in Settings: the person's choice, so what a link remembered is let go.
+    public mutating func choose(_ k: Kind) { kind = k; before = nil }
 
     /// Is this moment inside the window, outside any block?
     public func covers(_ date: Date, calendar: Calendar = .current) -> Bool {
@@ -111,6 +116,53 @@ public struct GuardList: Codable, Equatable, Identifiable {
     public var onlySites: Bool { kind == .only && !sites.isEmpty }
     /// Is this host one of the list's sites, or under one?
     public func hasSite(_ host: String) -> Bool { sites.contains { host == $0 || host.hasSuffix("." + $0) } }
+
+    /// A link's watch=on: watched all the time, the same as Always, and what it was before is remembered.
+    /// watch=off: back to that (during blocks, or its weekdays), or to during blocks if it was Always already.
+    /// A list that isn't Always is already off. True if it changed.
+    @discardableResult
+    public mutating func watch(_ on: Bool) -> Bool {
+        if on {
+            guard when.kind != .always else { return false }
+            when.before = when.kind
+            when.kind = .always
+        } else {
+            guard when.kind == .always else { return false }
+            when.kind = when.before ?? .blocks
+            when.before = nil
+        }
+        return true
+    }
+}
+
+/// chataltul://list?name=Work&watch=on (or off): a list watched all the time, or back to its own times.
+/// Something else on the Mac opens it (a mode switch, a Shortcut, `open -g`), so it shows nothing.
+public struct ListLink: Equatable {
+    public var name: String
+    public var on: Bool
+
+    public init(name: String, on: Bool) { self.name = name; self.on = on }
+
+    public static let host = "list"
+
+    /// The link read, or nil and why not. The name comes URL-encoded ("Deep%20Work").
+    public static func read(_ url: URL) -> (link: ListLink?, why: String) {
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        func item(_ n: String) -> String? { items.first { $0.name == n }?.value }
+        guard let name = item("name")?.trimmingCharacters(in: .whitespaces), !name.isEmpty else { return (nil, "it names no list (name=…)") }
+        switch item("watch")?.lowercased() {
+        case "on": return (ListLink(name: name, on: true), "")
+        case "off": return (ListLink(name: name, on: false), "")
+        case let w: return (nil, "watch is \(w.map { "\"\($0)\"" } ?? "missing"), not on or off")
+        }
+    }
+
+    public static func make(name: String, on: Bool) -> URL {
+        var c = URLComponents()
+        c.scheme = WidgetSnapshot.scheme; c.host = host
+        c.queryItems = [URLQueryItem(name: "name", value: name), URLQueryItem(name: "watch", value: on ? "on" : "off")]
+        return c.url!
+    }
 }
 
 /// A list, and the thing on it that was found.
@@ -163,6 +215,28 @@ public struct Blocklist: Codable, Equatable {
 
     /// The listed app with this bundle id.
     public func app(_ bundleID: String) -> ListedApp? { apps.first { $0.bundleID == bundleID } }
+
+    /// The lists a link names: by the name as it is in Settings, else ignoring case, else with a + read as a space
+    /// (the way a web form encodes one).
+    public func indices(named name: String) -> [Int] {
+        func plain(_ s: String) -> String { s.trimmingCharacters(in: .whitespaces) }
+        let n = plain(name)
+        for wanted in [n, n.replacingOccurrences(of: "+", with: " ")] {
+            let exact = lists.indices.filter { plain(lists[$0].name) == wanted }
+            if !exact.isEmpty { return exact }
+            let loose = lists.indices.filter { plain(lists[$0].name).caseInsensitiveCompare(wanted) == .orderedSame }
+            if !loose.isEmpty { return loose }
+        }
+        return []
+    }
+
+    /// What a link asks of the lists with its name. Nil when there's no such list; else how many changed
+    /// (none when they were that way already).
+    public mutating func apply(_ link: ListLink) -> Int? {
+        let found = indices(named: link.name)
+        guard !found.isEmpty else { return nil }
+        return found.filter { lists[$0].watch(link.on) }.count
+    }
 
     /// The listed domain a page address falls under (a listed domain covers its subdomains), or nil.
     public func site(forURL url: String, matcher: DomainMatcher? = nil) -> String? {
@@ -274,24 +348,61 @@ public enum Target: Equatable {
     }
 }
 
-/// Browsers whose address the app can read with AppleScript, and how. Firefox and Zen don't have the
-/// scripting needed, so they can't be read.
+/// Browsers whose address the app can read. There are three ways, one for each family a browser is built
+/// on, so a browser only says which family it's in.
 public struct ReadableBrowser: Equatable {
+    public enum Family: Equatable {
+        /// Safari's AppleScript, "URL of current tab": Safari, and Orion, which copies it.
+        case safari
+        /// Chrome's AppleScript, "URL of active tab": the browsers built on Chromium.
+        case chromium
+        /// No AppleScript: the page is read through Accessibility (PageFinder). Firefox and the browsers built on it.
+        case mozilla
+    }
+    public enum Reader: Equatable {
+        /// An AppleScript that gives the front window's current address (run in the browser). macOS asks once
+        /// for each browser, under Privacy → Automation.
+        case appleScript(String)
+        /// The front window's page, found in its accessibility tree. macOS asks once for all such browsers,
+        /// under Privacy → Accessibility.
+        case accessibility
+    }
     public let bundleID: String
     public let name: String
-    /// The AppleScript that gives the front window's current address (run in the browser).
-    public let script: String
+    public let family: Family
+
+    public init(_ bundleID: String, _ name: String, _ family: Family) { self.bundleID = bundleID; self.name = name; self.family = family }
+
+    public var reader: Reader {
+        // AppleScript is sent to one app by its id; the rest of the line is the family's
+        let ask = "tell application id \"\(bundleID)\" to if (count of windows) > 0 then return URL of"
+        switch family {
+        case .safari: return .appleScript("\(ask) current tab of front window")
+        case .chromium: return .appleScript("\(ask) active tab of front window")
+        case .mozilla: return .accessibility
+        }
+    }
+    public var script: String? { if case .appleScript(let s) = reader { return s } else { return nil } }
 
     public static let all: [ReadableBrowser] = [
-        ReadableBrowser(bundleID: "com.apple.Safari", name: "Safari", script: "tell application id \"com.apple.Safari\" to if (count of windows) > 0 then return URL of current tab of front window"),
-        ReadableBrowser(bundleID: "com.google.Chrome", name: "Chrome", script: "tell application id \"com.google.Chrome\" to if (count of windows) > 0 then return URL of active tab of front window"),
-        ReadableBrowser(bundleID: "com.brave.Browser", name: "Brave", script: "tell application id \"com.brave.Browser\" to if (count of windows) > 0 then return URL of active tab of front window"),
-        ReadableBrowser(bundleID: "company.thebrowser.Browser", name: "Arc", script: "tell application id \"company.thebrowser.Browser\" to if (count of windows) > 0 then return URL of active tab of front window"),
-        ReadableBrowser(bundleID: "com.microsoft.edgemac", name: "Edge", script: "tell application id \"com.microsoft.edgemac\" to if (count of windows) > 0 then return URL of active tab of front window"),
+        ReadableBrowser("com.apple.Safari", "Safari", .safari),
+        ReadableBrowser("com.kagi.kagimacOS", "Orion", .safari),
+        ReadableBrowser("com.google.Chrome", "Chrome", .chromium),
+        ReadableBrowser("com.brave.Browser", "Brave", .chromium),
+        ReadableBrowser("company.thebrowser.Browser", "Arc", .chromium),
+        ReadableBrowser("com.microsoft.edgemac", "Edge", .chromium),
+        ReadableBrowser("org.chromium.Chromium", "Chromium", .chromium),
+        ReadableBrowser("io.ungoogled-software.ungoogled-chromium", "Chromium", .chromium),
+        ReadableBrowser("app.zen-browser.zen", "Zen", .mozilla),
+        ReadableBrowser("org.mozilla.firefox", "Firefox", .mozilla),
     ]
 
     public static func with(bundleID: String) -> ReadableBrowser? { all.first { $0.bundleID == bundleID } }
 
-    /// Browsers that can't be read, so the list says so.
-    public static let unreadable: [String: String] = ["org.mozilla.firefox": "Firefox", "app.zen-browser.zen": "Zen"]
+    /// "Safari, Orion, … and Firefox", each name once, for the Blocklist.
+    public static var names: String {
+        var seen = Set<String>()
+        let n = all.map { $0.name }.filter { seen.insert($0).inserted }
+        return n.count < 2 ? n.joined() : n.dropLast().joined(separator: ", ") + " and " + n.last!
+    }
 }

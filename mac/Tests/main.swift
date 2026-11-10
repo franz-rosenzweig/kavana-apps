@@ -1,3 +1,4 @@
+import CoreServices
 import Foundation
 
 // The core self-test: the engine in JavaScriptCore, the pings, the away op, the cat names, and the rules of
@@ -184,8 +185,33 @@ equal("not a domain", Blocklist.normalizeDomain("cats"), nil)
 equal("an app by bundle id", list.app("com.apple.MobileSMS")?.name, "Messages")
 check("adding a site twice adds it once", list.add(site: "reddit.com") && !list.add(site: "www.reddit.com"))
 equal("the starter list has sites", Blocklist.starter.sites.contains("youtube.com"), true)
-equal("Firefox can't be read", ReadableBrowser.with(bundleID: "org.mozilla.firefox") == nil, true)
-equal("Safari can", ReadableBrowser.with(bundleID: "com.apple.Safari")?.name, "Safari")
+
+section("browsers: three ways of reading, one for each family")
+func browser(_ id: String) -> ReadableBrowser? { ReadableBrowser.with(bundleID: id) }
+equal("Safari reads like Safari", browser("com.apple.Safari")?.family, .safari)
+equal("with its AppleScript", browser("com.apple.Safari")?.script, "tell application id \"com.apple.Safari\" to if (count of windows) > 0 then return URL of current tab of front window")
+equal("Orion copies Safari's", browser("com.kagi.kagimacOS")?.script, "tell application id \"com.kagi.kagimacOS\" to if (count of windows) > 0 then return URL of current tab of front window")
+equal("Chrome has its own", browser("com.google.Chrome")?.script, "tell application id \"com.google.Chrome\" to if (count of windows) > 0 then return URL of active tab of front window")
+equal("Brave, Arc, Edge and Chromium (plain and ungoogled) read like Chrome",
+      ["com.brave.Browser", "company.thebrowser.Browser", "com.microsoft.edgemac", "org.chromium.Chromium", "io.ungoogled-software.ungoogled-chromium"].map { browser($0)?.family },
+      [.chromium, .chromium, .chromium, .chromium, .chromium])
+equal("Chromium is called Chromium", browser("io.ungoogled-software.ungoogled-chromium")?.name, "Chromium")
+equal("Zen and Firefox, through Accessibility", ["app.zen-browser.zen", "org.mozilla.firefox"].map { browser($0)?.reader }, [.accessibility, .accessibility])
+equal("with no script", browser("org.mozilla.firefox")?.script, nil)
+equal("each browser is on it once", Set(ReadableBrowser.all.map { $0.bundleID }).count, ReadableBrowser.all.count)
+equal("an app that isn't a browser isn't read", browser("com.apple.mail"), nil)
+equal("the Blocklist names each once", ReadableBrowser.names, "Safari, Orion, Chrome, Brave, Arc, Edge, Chromium, Zen and Firefox")
+// the browsers installed on this Mac: each family's line fits their own dictionary, read from the app without
+// starting it or sending it anything (so no permission is asked)
+func installed(_ id: String) -> Bool { (LSCopyApplicationURLsForBundleIdentifier(id as CFString, nil)?.takeRetainedValue() as? [URL])?.isEmpty == false }
+func fits(_ script: String) -> Bool { var e: NSDictionary?; return NSAppleScript(source: script)?.compileAndReturnError(&e) == true }
+var dictionaries = 0
+for b in ReadableBrowser.all where b.script != nil && installed(b.bundleID) {
+    dictionaries += 1
+    check("\(b.name) (\(b.bundleID)) on this Mac: its family's line fits its dictionary", fits(b.script!))
+    check("\(b.name): the other family's doesn't", !fits(ReadableBrowser(b.bundleID, b.name, b.family == .safari ? .chromium : .safari).script!))
+}
+if dictionaries == 0 { print("SKIP no browser read with AppleScript is installed here") }
 
 // ---------------------------------------------------------------- the speed bump
 section("speed bump")
@@ -488,6 +514,129 @@ if case .show(let lc)? = oa.first {
 other = OtherGuard()
 oa = other.front(hit: tvHit, enforcement: Enforcement(mode: .waitItOut, reason: .allowanceUsed, listName: "Work", until: nil, outside: true), bundleID: nil, cat: "miso", catName: "Miso", now: t)
 if case .show(let uc)? = oa.first { equal("used up: today's time for what isn't on it", uc.line(now: t), "You've used today's time for what isn't on your Work list.") } else { check("used-up card", false) }
+
+// ---------------------------------------------------------------- a list switched by a link
+section("a list switched by a link: reading it")
+func link(_ s: String) -> (link: ListLink?, why: String) { ListLink.read(URL(string: s)!) }
+equal("on", link("chataltul://list?name=Work&watch=on").link, ListLink(name: "Work", on: true))
+equal("off", link("chataltul://list?name=Work&watch=off").link, ListLink(name: "Work", on: false))
+equal("a name with a space, URL-encoded", link("chataltul://list?name=Deep%20Work&watch=on").link?.name, "Deep Work")
+equal("Hebrew, URL-encoded", link("chataltul://list?name=%D7%A2%D7%91%D7%95%D7%93%D7%94&watch=off").link?.name, "עבודה")
+equal("ON in capitals", link("chataltul://list?name=Work&watch=ON").link?.on, true)
+equal("in either order", link("chataltul://list?watch=off&name=Work").link, ListLink(name: "Work", on: false))
+equal("the link it makes reads back", ListLink.read(ListLink.make(name: "Deep Work & Calls", on: true)).link, ListLink(name: "Deep Work & Calls", on: true))
+equal("the link it makes", ListLink.make(name: "Deep Work", on: false).absoluteString, "chataltul://list?name=Deep%20Work&watch=off")
+for (bad, why) in [("chataltul://list?watch=on", "it names no list (name=…)"), ("chataltul://list?name=&watch=on", "it names no list (name=…)"),
+                   ("chataltul://list?name=Work", "watch is missing, not on or off"), ("chataltul://list?name=Work&watch=maybe", "watch is \"maybe\", not on or off")] {
+    equal("\(bad) does nothing", link(bad).link, nil)
+    equal("and says why", link(bad).why, why)
+}
+
+section("a list switched by a link: on and off")
+var linked = GuardList(id: "w", name: "Work", apps: [mail], sites: ["github.com"], kind: .only)
+equal("on: watched all the time", [linked.watch(true), linked.when.kind == .always], [true, true])
+equal("and it remembers it was during blocks", linked.when.before, .blocks)
+equal("on again changes nothing", linked.watch(true), false)
+equal("outside a block it asks for the wait, as Always does", GuardPolicy.enforcement(for: linked, now: sat10, blockEnd: nil, usedMs: 0, calendar: utc)?.mode, .waitItOut)
+equal("and its sites are read every second then", Blocklist(lists: [linked]).watchesSitesOnSchedule, true)
+equal("off: during blocks again", [linked.watch(false), linked.when.kind == .blocks, linked.when.before == nil], [true, true, true])
+equal("off, it asks for nothing outside a block", GuardPolicy.enforcement(for: linked, now: sat10, blockEnd: nil, usedMs: 0, calendar: utc) == nil, true)
+equal("off again changes nothing", linked.watch(false), false)
+var weekdays = GuardList(name: "News", sites: ["bbc.co.uk"], when: GuardWhen(.weekdays, fromMin: 8 * 60, toMin: 13 * 60))
+weekdays.watch(true)
+equal("a list on weekdays, on", [weekdays.when.kind == .always, weekdays.when.before == .weekdays], [true, true])
+weekdays.watch(false)
+equal("goes back to its weekdays, with its own hours", [weekdays.when.kind == .weekdays, weekdays.when.fromMin == 480, weekdays.when.toMin == 780], [true, true, true])
+equal("a list on weekdays is already off", weekdays.watch(false), false)
+var setAlways = GuardList(name: "Chat", when: GuardWhen(.always))
+equal("a list set to Always in Settings is on already", setAlways.watch(true), false)
+equal("off takes it to during blocks", [setAlways.watch(false), setAlways.when.kind == .blocks], [true, true])
+var chosen = GuardList(name: "Mail", when: GuardWhen(.weekdays))
+chosen.watch(true)
+chosen.when.choose(.always)
+equal("choosing in Settings lets go of what the link remembered", chosen.when.before, nil)
+chosen.when.choose(.weekdays); chosen.watch(true); chosen.when.choose(.blocks)
+equal("whatever is chosen", [chosen.when.kind == .blocks, chosen.when.before == nil], [true, true])
+
+section("a list switched by a link: which list")
+var named = Blocklist(lists: [
+    GuardList(id: "d", name: "Distractions", sites: ["youtube.com"]),
+    GuardList(id: "w", name: "Deep Work", apps: [mail], kind: .only),
+    GuardList(id: "c", name: "Calls", apps: [ListedApp(bundleID: "us.zoom.xos", name: "Zoom")], when: GuardWhen(.weekdays)),
+])
+let before = named
+equal("a name no list has", named.apply(ListLink(name: "Work", on: true)), nil)
+equal("changes nothing", named, before)
+equal("by its name", named.apply(ListLink(name: "Deep Work", on: true)), 1)
+equal("only that list", named.lists.map { $0.when.kind }, [.blocks, .always, .weekdays])
+equal("a second time: found, nothing to change", named.apply(ListLink(name: "Deep Work", on: true)), 0)
+equal("in other capitals", named.indices(named: "deep work"), [1])
+equal("with a + for the space", named.indices(named: "Deep+Work"), [1])
+equal("with spaces around it", named.indices(named: " Calls "), [2])
+let twoWorks = Blocklist(lists: [GuardList(name: "work"), GuardList(name: "Work"), GuardList(name: "WORK")])
+equal("the name as typed comes first", twoWorks.indices(named: "Work"), [1])
+equal("else every list it fits", twoWorks.indices(named: "wOrK"), [0, 1, 2])
+var twins = Blocklist(lists: [GuardList(name: "Work"), GuardList(name: "Work", when: GuardWhen(.weekdays))])
+equal("two lists with one name: both", twins.apply(ListLink(name: "Work", on: true)), 2)
+equal("and each goes back to its own", { _ = twins.apply(ListLink(name: "Work", on: false)); return twins.lists.map { $0.when.kind } }(), [GuardWhen.Kind.blocks, .weekdays])
+equal("off on a list that isn't on: found, nothing to change", named.apply(ListLink(name: "Calls", on: false)), 0)
+
+section("a list switched by a link: kept in mac.json")
+let linkFolder = FileManager.default.temporaryDirectory.appendingPathComponent("chataltul-link-\(UUID().uuidString)")
+let linkStore = MacSettingsStore(folder: linkFolder)
+var ms0 = MacSettings(); ms0.blocklist = named
+linkStore.write(ms0)
+equal("what the link changed is read back", linkStore.read().blocklist, named)
+equal("with what it remembered", linkStore.read().blocklist.lists[1].when.before, .blocks)
+let saved = (try? String(contentsOf: linkStore.file, encoding: .utf8)) ?? ""
+equal("a list no link touched has nothing new in the file", saved.components(separatedBy: "\"before\"").count - 1, 1)
+try? FileManager.default.removeItem(at: linkFolder)
+
+// ---------------------------------------------------------------- Zen: the page, from the accessibility tree
+section("Zen: finding the page in the window")
+final class Node: PageNode {
+    let role: String?, address: String?
+    weak var up: Node?
+    var kids: [Node] = []
+    static var asked = 0
+    init(_ role: String, _ address: String? = nil, _ kids: [Node] = []) {
+        self.role = role; self.address = address; self.kids = kids
+        for k in kids { k.up = self }
+    }
+    var parent: Node? { up }
+    var children: [Node] { Node.asked += 1; return kids }
+}
+func zenWindow(pages: [Node], sidebarTabs: Int = 3, urlbar: Node = Node("AXTextField")) -> Node {
+    Node("AXWindow", nil, [Node("AXGroup", nil, [
+        Node("AXMenu", nil, [Node("AXMenuItem"), Node("AXMenuItem")]),
+        Node("AXGroup", nil, [urlbar] + (0..<sidebarTabs).map { _ in Node("AXRadioButton", nil, [Node("AXImage"), Node("AXStaticText"), Node("AXButton")]) }),
+        Node("AXGroup", nil, pages.map { Node("AXGroup", nil, [$0]) }),
+    ])])
+}
+let video = Node("AXWebArea", "https://www.youtube.com/embed/x", [Node("AXGroup")])
+let zenPage = Node("AXWebArea", "https://docs.google.com/document/d/1", [Node("AXGroup", nil, [Node("AXStaticText"), Node("AXGroup", nil, [video])])])
+let w1 = zenWindow(pages: [zenPage])
+equal("the page in the window", PageFinder.address(focused: nil, window: w1), "https://docs.google.com/document/d/1")
+Node.asked = 0
+_ = PageFinder.address(focused: nil, window: zenWindow(pages: [], sidebarTabs: 40))
+equal("the tabs in the sidebar and the menus aren't looked inside", Node.asked, 4)
+equal("a video from another site inside the page is the page", PageFinder.address(focused: video.kids[0], window: w1), "https://docs.google.com/document/d/1")
+let left = Node("AXWebArea", "https://github.com/franz", [Node("AXTextArea")]), right = Node("AXWebArea", "https://www.reddit.com/", [Node("AXLink")])
+let split = zenWindow(pages: [left, right])
+equal("a split view: the side with the keyboard", PageFinder.address(focused: right.kids[0], window: split), "https://www.reddit.com/")
+equal("and with the keyboard nowhere in a page, the first side", PageFinder.address(focused: nil, window: split), "https://github.com/franz")
+let typing = Node("AXTextField")
+let w2 = zenWindow(pages: [Node("AXWebArea", "https://github.com/", [])], urlbar: typing)
+equal("typing in the address bar: still the page that's open", PageFinder.address(focused: typing, window: w2), "https://github.com/")
+equal("a new tab is read as it is (and never counts)", Blocklist.webHost(of: PageFinder.address(focused: nil, window: zenWindow(pages: [Node("AXWebArea", "about:newtab")])) ?? ""), nil)
+equal("the welcome screen, with no page: nothing", PageFinder.address(focused: nil, window: Node("AXWindow", nil, [Node("AXGroup", nil, [Node("AXHeading"), Node("AXButton")])])), nil)
+equal("no window: nothing", PageFinder.address(focused: nil as Node?, window: nil), nil)
+var deep = Node("AXGroup")
+for _ in 0..<5000 { deep = Node("AXGroup", nil, [deep]) }
+Node.asked = 0
+equal("a window too big to search: nothing", PageFinder.address(focused: nil, window: Node("AXWindow", nil, [deep]), maxNodes: 500), nil)
+check("and it stops looking", Node.asked <= 500)
+equal("what's read goes to the lists as any browser's does", sitesOnly.outside(url: PageFinder.address(focused: right.kids[0], window: split) ?? "", browser: "Zen", bundleID: "app.zen-browser.zen")?.target, .site(domain: "reddit.com", browser: "Zen"))
 
 // ---------------------------------------------------------------- breaks
 section("breaks")

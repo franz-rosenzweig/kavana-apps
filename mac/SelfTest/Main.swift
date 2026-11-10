@@ -32,7 +32,10 @@ final class SelfTestDelegate: NSObject, NSApplicationDelegate {
         // from a timer, not the main queue: a block on the main queue would keep the main queue from
         // running the blocks the app's own async code needs while these tests wait on it
         let t = Timer(timeInterval: 0.05, repeats: false) { _ in
-            if let base = UserDefaults.standard.string(forKey: "SelfTestSync") {
+            if UserDefaults.standard.integer(forKey: "SelfTestZen") > 0 {
+                // a Zen of its own, opened by selftest.sh zen, never the person's
+                do { try ZenScenarios.run(pid: pid_t(UserDefaults.standard.integer(forKey: "SelfTestZen")), port: UserDefaults.standard.integer(forKey: "SelfTestZenPort")) } catch { print("FAIL zen scenarios: \(error)"); failed += 1 }
+            } else if let base = UserDefaults.standard.string(forKey: "SelfTestSync") {
                 // against a sandbox copy of the web server on this Mac, never the real one
                 do { try SyncScenarios.run(base: base, outbox: URL(fileURLWithPath: UserDefaults.standard.string(forKey: "SelfTestOutbox") ?? "/nonexistent")) } catch { print("FAIL sync scenarios: \(error)"); failed += 1 }
             } else {
