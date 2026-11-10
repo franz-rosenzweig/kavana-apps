@@ -87,6 +87,11 @@ ui() {
   rm -rf "$FOLDER"
   forget $APP
   grep -E "^(FAIL|[0-9]+ passed|SELFTEST|UNCAUGHT|SIGNAL)" $OUT/ui.log || { echo "no result; see build/selftest/ui.log" >&2; tail -20 $OUT/ui.log; exit 1; }
+  # the list link's lines, read from outside the app the way Console reads them: in words, not <private>
+  # (/usr/bin/log, since zsh has a log of its own)
+  local LINKLOG; LINKLOG=$(/usr/bin/log show --last 15m --style compact --predicate 'subsystem == "xyz.tiresia.chataltul.selftest" AND category == "link"' 2>/dev/null || true)
+  if [[ $LINKLOG == *'no list called "Work"'* && $LINKLOG != *'<private>'* ]]; then echo "PASS the list link's lines can be read in the Mac's log"
+  else echo "FAIL the list link's lines can't be read in the Mac's log"; return 1; fi
   grep -q "SELFTEST passed" $OUT/ui.log
 }
 
