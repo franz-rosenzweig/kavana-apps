@@ -21,7 +21,9 @@ struct BreaksView: View {
                 Row(title: "Full-screen breaks", detail: "The screen goes calm, with \(store.cat(nil).name) stretching.") { Switch(on: $store.settings.breaks.fullScreen) }
                 Row(title: "Strict breaks", detail: "No Postpone and no Skip.") { Switch(on: $store.settings.breaks.strict) }
                 Row(title: "Eye breaks during a block", detail: "Every \(store.settings.breaks.eyeEveryMin) min, \(store.settings.breaks.eyeSeconds) seconds looking far away.") { Switch(on: $store.settings.breaks.eyeBreaks) }
-                Row(title: "Wait during calls and full-screen video", detail: "Eye breaks and check-ins hold until you're done.") { Switch(on: $store.settings.breaks.waitDuringCalls) }
+                PickRow(title: "Sit up straight", options: [(0, "Off")] + [10, 15, 20, 30, 45, 60].map { ($0, "Every \($0) min") },
+                        value: Binding(get: { store.engineSettings.posture }, set: { store.setEngine(["posture": $0]) }))
+                Row(title: "Wait during calls and full-screen video", detail: "Eye breaks, check-ins and Sit up straight hold until you're done.") { Switch(on: $store.settings.breaks.waitDuringCalls) }
                 PickRow(title: "When you're away from the Mac", detail: "More than \(store.settings.awayAfterMin) min in the middle of a block", last: true,
                         options: [(AwayAction.ask, "Ask if it counts"), (.count, "Always count it")] + (store.state.canTakeOff ? [(.takeOff, "Take it off")] : []),
                         value: $store.settings.awayAction)

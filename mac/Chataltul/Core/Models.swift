@@ -138,6 +138,8 @@ public struct Settings: Decodable {
     public var interval: Int
     public var style: String
     public var goal: Int
+    /// Minutes between "Sit up straight" during a block (E.POSTURE); 0 is off.
+    public var posture: Int
     public var cat: Bool
     public var companion: String
     public var tags: [String]
@@ -148,10 +150,10 @@ public struct Settings: Decodable {
     public var closeCounts: Bool
     public var theme: String
 
-    public init() { interval = 15; style = "ask"; goal = 0; cat = true; companion = "miso"; tags = []; tag = ""; mode = "timer"; pause = "five"; overtime = false; closeCounts = true; theme = "classic" }
+    public init() { interval = 15; style = "ask"; goal = 0; posture = 0; cat = true; companion = "miso"; tags = []; tag = ""; mode = "timer"; pause = "five"; overtime = false; closeCounts = true; theme = "classic" }
     public init(from decoder: Decoder) throws {
         let c = try decoder.keyed()
-        interval = c.v("interval", 15); style = c.v("style", "ask"); goal = c.v("goal", 0)
+        interval = c.v("interval", 15); style = c.v("style", "ask"); goal = c.v("goal", 0); posture = c.v("posture", 0)
         cat = c.v("cat", true); companion = c.v("companion", "miso")
         tags = c.v("tags", []); tag = c.v("tag", ""); mode = c.v("mode", "timer")
         pause = c.v("pause", "five"); overtime = c.v("overtime", false); closeCounts = c.v("closeCounts", true)

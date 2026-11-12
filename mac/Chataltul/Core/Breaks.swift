@@ -101,3 +101,23 @@ public struct EyeBreakTimer {
         return true
     }
 }
+
+/// "Sit up straight", from the engine's pings (settings.posture). The cat says it when it comes due, unless the
+/// Mac is busy with a call or full-screen video or another card of the cat's is up: then it waits, and a newer
+/// one takes its place. One whose block ended or was paused in the meantime is dropped.
+public struct PostureHold {
+    public private(set) var waiting: Ping?
+
+    public init() {}
+
+    public mutating func due(_ p: Ping) { waiting = p }
+
+    /// The one to show now, if any. `block` is the running block's id (nil when none runs or it's paused).
+    public mutating func check(block: String?, busy: Bool) -> Ping? {
+        guard let p = waiting else { return nil }
+        guard let block, p.block == block else { waiting = nil; return nil }
+        guard !busy else { return nil }
+        waiting = nil
+        return p
+    }
+}
