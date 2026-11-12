@@ -123,13 +123,17 @@ fun Root(act: MainActivity) {
     val form = remember { StartForm() }
     val snack = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { repo.toasts.collect { snack.showSnackbar(it) } }
+    var sitUp by remember { mutableStateOf<xyz.tiresia.kavana.Ping?>(null) }
+    LaunchedEffect(Unit) { repo.sitUp.collect { sitUp = it } }
+    LaunchedEffect(sitUp) { if (sitUp != null) { delay(7000); sitUp = null } }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
     // The next thing the engine has to notice (a check-in coming due, the end, a break's end).
     // The alarm does this too; this is for when Kavana is open and the alarm is a little late.
     val a = s.view.active
-    val nextAt = listOfNotNull(a?.takeIf { it.paused == null }?.let { minOf(it.next ?: it.end, it.end) }, a?.pauseEnds, s.view.onBreak?.end).minOrNull()
+    val sitAt = s.pings.filter { it.kind == "posture" }.minOfOrNull { it.at }
+    val nextAt = listOfNotNull(a?.takeIf { it.paused == null }?.let { minOf(it.next ?: it.end, it.end) }, a?.pauseEnds, s.view.onBreak?.end, sitAt).minOrNull()
     LaunchedEffect(nextAt) {
         if (nextAt != null) {
             delay((nextAt - System.currentTimeMillis()).coerceAtLeast(0) + 400)
@@ -218,6 +222,7 @@ fun Root(act: MainActivity) {
                         Tab.Settings -> Box(under) { SettingsTab(s, act) { tab = it } }
                     }
                     MenuButton(dot = newsUnread || s.toCollect > 0, dim = darkBackdrop, modifier = Modifier.padding(start = 16.dp, top = 8.dp)) { scope.launch { drawer.open() } }
+                    SitUpCat(sitUp, s, Modifier.align(Alignment.BottomCenter)) { sitUp = null }
                 }
             }
         }
@@ -228,6 +233,35 @@ fun Root(act: MainActivity) {
     if (news) NewsSheet(s, onGo = { to -> go(to ?: "focus") }) {
         news = false
         s.news.firstOrNull()?.let { repo.prefs.edit().putString("newsSeen", it.id).apply(); newsSeen = it.id }
+    }
+}
+
+/** "Sit up straight" while Chataltul is on screen: the block's cat peeks up from the bottom and says it, then goes. */
+@Composable
+private fun SitUpCat(p: xyz.tiresia.kavana.Ping?, s: UiState, modifier: Modifier = Modifier, onDone: () -> Unit) {
+    var last by remember { mutableStateOf(p) }
+    if (p != null) last = p
+    androidx.compose.animation.AnimatedVisibility(
+        visible = p != null, modifier = modifier,
+        enter = androidx.compose.animation.slideInVertically { it } + androidx.compose.animation.fadeIn(),
+        exit = androidx.compose.animation.slideOutVertically { it } + androidx.compose.animation.fadeOut(),
+    ) {
+        val q = last ?: return@AnimatedVisibility
+        val cat = s.view.active?.cat ?: s.companion
+        Box(Modifier.widthIn(max = 460.dp).fillMaxWidth().padding(horizontal = 16.dp).clickable(onClick = onDone)) {
+            Column(
+                Modifier.fillMaxWidth().padding(bottom = 92.dp).shadow(6.dp, RoundedCornerShape(20.dp))
+                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp)).padding(horizontal = 20.dp, vertical = 16.dp),
+            ) {
+                Text("Sit up straight.", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.height(4.dp))
+                Text(q.body, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 96.dp))
+            }
+            // the cat sits tall, its bottom half below the edge of the screen
+            Box(Modifier.align(Alignment.BottomEnd).padding(end = 8.dp).size(width = 132.dp, height = 104.dp).clip(RoundedCornerShape(0.dp)), contentAlignment = Alignment.TopCenter) {
+                Box(Modifier.requiredSize(132.dp).offset(y = 14.dp)) { CatArt(xyz.tiresia.kavana.Art.portrait(cat), 132.dp) }
+            }
+        }
     }
 }
 

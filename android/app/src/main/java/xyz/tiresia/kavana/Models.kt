@@ -71,6 +71,8 @@ data class Settings(
     val interval: Int = 15,
     val style: String = "ask",
     val goal: Int = 0,
+    /** Minutes between "Sit up straight" during a block (E.POSTURE); 0 is off. */
+    val posture: Int = 0,
     val daily: DailySet = DailySet(),
     val cat: Boolean = true,
     val companion: String = "miso",

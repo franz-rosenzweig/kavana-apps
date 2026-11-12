@@ -366,4 +366,55 @@ r = run({ op: 'start', intention: 'Long one', mode: 'stopwatch', cat: 'pepper' }
 const endPing = r.state.pings.find((p) => p.kind === 'end');
 ok('a stopwatch with Milo ends with "Milo came home", not the id', () => assert.equal(endPing && endPing.title, '🐱 Three hours! Milo came home'));
 
+// "Sit up straight" (kavana 68f4c24): settings.posture, its pings, and none of it a check-in.
+KB(`KB.load(${JSON.stringify(JSON.stringify(E2.empty()))})`);
+const st0 = at + 2 * 60 * MIN;
+r = run({ op: 'settings', patch: { interval: 0 } }, st0);
+r = run({ op: 'start', intention: 'Sit', minutes: 25, cat: 'miso' }, st0);
+ok('Sit up straight is off by default', () => {
+  assert.equal(r.state.view.settings.posture, 0);
+  assert.equal(r.state.pings.some((p) => p.kind === 'posture'), false);
+});
+r = run({ op: 'settings', patch: { posture: 10 } }, st0);
+ok('every 10 min: kept as a setting, two in a 25-minute block', () => {
+  assert.equal(r.error, null);
+  assert.equal(r.state.view.settings.posture, 10);
+  assert.deepEqual(r.state.pings.filter((p) => p.kind === 'posture').map((p) => p.at), [st0 + 10 * MIN, st0 + 20 * MIN]);
+});
+const sit = r.state.pings.find((p) => p.kind === 'posture');
+ok('the cat says it, with no buttons and no number to answer', () => {
+  assert.equal(sit.title, '🐱 Sit up straight');
+  assert.equal(sit.body, 'Miso is sitting up tall. Your turn.');
+  assert.equal(sit.tag, 'kavana-posture');
+  assert.equal(sit.cat, 1);
+  assert.equal(sit.actions, undefined);
+  assert.equal(sit.n, undefined);
+});
+r = run({ op: 'settings', patch: { posture: 7 } }, st0);
+ok('a time that isn\'t on the list is refused', () => {
+  assert.notEqual(r.error, null);
+  assert.equal(run({ op: 'tick' }, st0).state.view.settings.posture, 10);
+});
+r = run({ op: 'tick' }, st0 + 10 * MIN + 1000);
+ok('when one comes due, nothing waits for an answer and the next is still to come', () => {
+  assert.equal(r.state.view.active.pending, null);
+  assert.equal(r.state.view.active.kitten, 'growing');
+  assert.deepEqual(r.state.pings.filter((p) => p.kind === 'posture').map((p) => p.at), [st0 + 20 * MIN]);
+});
+r = run({ op: 'pause' }, st0 + 12 * MIN);
+ok('paused: none', () => assert.equal(r.state.pings.some((p) => p.kind === 'posture'), false));
+r = run({ op: 'resume' }, st0 + 14 * MIN);
+ok('a 2-minute pause moves the next one 2 minutes', () => assert.deepEqual(r.state.pings.filter((p) => p.kind === 'posture').map((p) => p.at), [st0 + 22 * MIN]));
+r = run({ op: 'settings', patch: { cat: false } }, st0 + 14 * MIN);
+ok('cat mode off: no cat in it', () => {
+  const p = r.state.pings.find((x) => x.kind === 'posture');
+  assert.equal(p.title, 'Sit up straight');
+  assert.equal(p.body, 'Shoulders back, feet on the floor.');
+});
+r = run({ op: 'stop' }, st0 + 15 * MIN);
+KB(`KB.load(${JSON.stringify(JSON.stringify(E2.empty()))})`);
+run({ op: 'settings', patch: { interval: 10, posture: 10 } }, st0);
+r = run({ op: 'start', intention: 'Both', minutes: 25, style: 'ask' }, st0);
+ok('with a check-in at the same time, it comes 2 minutes after', () => assert.deepEqual(r.state.pings.filter((p) => p.kind === 'posture').map((p) => p.at), [st0 + 12 * MIN, st0 + 22 * MIN]));
+
 console.log(`\n${pass} passed`);
