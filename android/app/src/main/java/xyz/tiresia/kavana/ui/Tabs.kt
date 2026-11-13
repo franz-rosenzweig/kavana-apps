@@ -65,6 +65,7 @@ fun LaterTab(s: UiState, onStart: (LaterItem) -> Unit) {
 // ---------- Settings ----------
 
 private val GOALS = listOf(0 to "Off", 30 to "30 min", 60 to "1 hour", 90 to "1½ hours", 120 to "2 hours", 180 to "3 hours")
+private val POSTURE = listOf(0 to "Off") + listOf(10, 15, 20, 30, 45, 60).map { it to "Every $it min" }
 private val INTERVALS = listOf(10 to "10 min", 15 to "15 min", 20 to "20 min", 30 to "30 min", 45 to "45 min", 60 to "60 min", 0 to "Only at the end")
 private val DAYS = listOf("S", "M", "T", "W", "T", "F", "S")
 
@@ -92,6 +93,8 @@ fun SettingsTab(s: UiState, act: MainActivity, onTab: (Tab) -> Unit) {
             Pick("Daily goal", Icons.Rounded.Flag, MaterialTheme.colorScheme.primary, GOALS, set.goal) { repo.launch(settings("goal" to it)) }
             GroupDivider()
             Pick("Check in every", Icons.Rounded.Notifications, k.orange, INTERVALS, set.interval) { repo.launch(settings("interval" to it)) }
+            GroupDivider()
+            Pick("Sit up straight", Icons.Rounded.SelfImprovement, k.green, POSTURE, set.posture) { repo.launch(settings("posture" to it)) }
             GroupDivider()
             Item("Cat mode", Icons.Rounded.Pets, k.pink) { Switch(set.cat, { repo.launch(settings("cat" to it)) }) }
             if (set.cat) {

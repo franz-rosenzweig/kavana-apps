@@ -25,12 +25,14 @@ object Notify {
     const val CH_FOCUS = "focus"
     const val CH_DAILY = "daily"
     const val CH_AWAY = "away"
+    const val CH_POSTURE = "posture"
 
     const val ID_ONGOING = 1
     const val ID_PING = 10
     const val ID_BREAK = 11
     const val ID_DAILY = 12
     const val ID_AWAY = 13
+    const val ID_POSTURE = 14
 
     private val TINT = Color.parseColor("#2C8A7E")
 
@@ -49,6 +51,9 @@ object Notify {
                 description = "When you leave Chataltul in the middle of a block"
                 setSound(null, null)
             },
+            NotificationChannel(CH_POSTURE, "Sit up straight", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "Every so often during a block, if you picked it in Settings"
+            },
         ))
     }
 
@@ -66,9 +71,9 @@ object Notify {
         return Notification.Action.Builder(null, title, pi).build()
     }
 
-    /** A check-in, a nudge, the end or a break's end, as engine.js words it (E.pings). */
+    /** A check-in, a nudge, Sit up straight, the end or a break's end, as engine.js words it (E.pings). */
     fun ping(ctx: Context, p: Ping, st: UiState?) {
-        val b = Notification.Builder(ctx, CH_CHECKINS)
+        val b = Notification.Builder(ctx, if (p.kind == "posture") CH_POSTURE else CH_CHECKINS)
             .setSmallIcon(R.drawable.ic_notify).setColor(TINT)
             .setContentTitle(p.title).setContentText(p.body)
             .setStyle(Notification.BigTextStyle().bigText(p.body))
@@ -90,7 +95,9 @@ object Notify {
             }
         }
         if (p.kind == "checkin" || p.kind == "end") cancelAway(ctx) // "Miso is waiting" is old news by now
-        post(ctx, if (p.kind == "break-over") ID_BREAK else ID_PING, b.build())
+        // Sit up straight has no buttons and a place of its own, so it never takes a check-in's place, and it doesn't stay
+        if (p.kind == "posture") b.setTimeoutAfter(10 * 60_000L)
+        post(ctx, when (p.kind) { "break-over" -> ID_BREAK; "posture" -> ID_POSTURE; else -> ID_PING }, b.build())
     }
 
     /**
@@ -220,11 +227,19 @@ object Notify {
 /** Where a ping goes: the screen if Kavana is open, the cat over another app, or a notification. */
 object Deliver {
     fun ping(ctx: Context, p: Ping, st: UiState) {
+        if (p.kind == "posture") return posture(ctx, p, st)
         if (MainActivity.visible) { buzz(ctx); return } // the check-in or the end shows on the screen itself
         val pm = ctx.getSystemService(PowerManager::class.java)
         val locked = ctx.getSystemService(KeyguardManager::class.java).isKeyguardLocked
         if (p.cat == 1 && pm.isInteractive && !locked && CatOverlay.allowed(ctx)) CatOverlay.ping(ctx, p, st)
         else Notify.ping(ctx, p, st)
+    }
+
+    /** Sit up straight: the cat says it on Chataltul's own screen, else it's a notification. Never over other apps. */
+    private fun posture(ctx: Context, p: Ping, st: UiState) {
+        if (!MainActivity.visible) return Notify.ping(ctx, p, st)
+        buzz(ctx)
+        if (st.catsOn) KavanaApp.repo.sitUp.tryEmit(p) else KavanaApp.repo.toasts.tryEmit("Sit up straight.")
     }
 
     fun buzz(ctx: Context) {

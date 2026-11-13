@@ -41,6 +41,8 @@ class Repo(private val app: Context) {
     /** Cats met and not celebrated yet (the meet sheet takes them one at a time). */
     val meets = MutableStateFlow<List<String>>(emptyList())
     val toasts = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    /** "Sit up straight" while Chataltul is on screen: the cat pops up and says it (Root's SitUpCat). */
+    val sitUp = MutableSharedFlow<Ping>(extraBufferCapacity = 4)
     /** Set when the engine can't run at all (no JavaScript sandbox on this phone). */
     val broken = MutableStateFlow<String?>(null)
     /** The account and its sync (nothing at all until you sign in). */
