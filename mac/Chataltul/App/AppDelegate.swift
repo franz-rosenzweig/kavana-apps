@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var other = OtherGuard()
     let breakScreen = BreakController()
     var eye = EyeBreakTimer()
+    var posture = PostureHold()
     private var eyeBlockID: String?
     private var usageSaved = 0
     /// What is in front now, if it is on a list.
@@ -240,6 +241,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case "checkin": break   // showPendingCheckin does it
             case "nudge":
                 cat.show("nudge", model: CatCardModel(cat: catID, title: p.body, body: st.view.active?.intention), seconds: 9)
+            case "posture":
+                posture.due(p)
+                showPosture()
             case "end":
                 if let a = st.view.active {
                     cat.show("end", model: CatCardModel(cat: a.cat, title: title, body: p.body, buttons: [CatButton(label: "Open Chataltul", primary: true) { [weak self] in self?.cat.hide(); self?.popover.show(key: true) }]), seconds: 30)
@@ -464,9 +468,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         say("Break postponed.", "\(store.settings.breaks.postponeMin) minutes, then it's back.", cat: store.state.companion, seconds: 4)
     }
 
-    /// Once a second: a postponed break coming back, a long break's end, an eye break.
+    /// Once a second: a postponed break coming back, a long break's end, an eye break, a "Sit up straight" that waited.
     func breaksSecond(_ now: Int) {
         if store.active?.pending != nil { showPendingCheckin(store.state) }
+        if posture.waiting != nil { showPosture() }
         if let p = store.postponed, now >= p.at { store.postponed = nil; store.startBreak(p.minutes) }
         if store.macBreakOver() {
             let c = store.cat(nil)
@@ -476,8 +481,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let bs = store.settings.breaks
         guard bs.eyeBreaks else { return }
         eye.everyMs = bs.eyeEveryMin * 60_000; eye.seconds = bs.eyeSeconds
-        let busy = bs.waitDuringCalls && Busy.now()
+        // an eye break due while the cat says "Sit up straight" comes right after it
+        let busy = (bs.waitDuringCalls && Busy.now()) || cat.kind == "posture"
         if eye.check(now: now, running: store.running, busy: busy) { showEyeBreak(now) }
+    }
+
+    /// "Sit up straight", when the Mac isn't busy with a call or full-screen video and no other card of the cat's is up.
+    func showPosture() {
+        let busy = cat.kind != nil || (store.settings.breaks.waitDuringCalls && Busy.now())
+        guard let p = posture.check(block: store.running ? store.active?.id : nil, busy: busy) else { return }
+        cat.show("posture", model: Self.postureCard(cat: store.cat(store.active?.cat).id, body: p.body), seconds: 10)
+    }
+
+    /// The card, with the block's cat sitting tall; it goes by itself.
+    static func postureCard(cat: String, body: String) -> CatCardModel {
+        CatCardModel(label: "POSTURE", cat: cat, title: "Sit up straight.", body: body)
     }
 
     func showEyeBreak(_ now: Int) {

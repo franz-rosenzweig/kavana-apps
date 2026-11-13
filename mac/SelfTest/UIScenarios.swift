@@ -284,6 +284,10 @@ enum UIScenarios {
             eye.countdownUntil = nowMs() + 14_000
             check("cat-eye \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(CatCardView(model: eye), name: "cat-eye", dark: dark, pad: 24)))
         }
+        for dark in [false, true] {
+            let sit = AppDelegate.postureCard(cat: "miso", body: "Miso is sitting up tall. Your turn.")
+            check("cat-posture \(dark ? "dark" : "light") drawn", Shot.exists(Shot.render(CatCardView(model: sit), name: "cat-posture", dark: dark, pad: 24)))
+        }
 
         // ---- wait it out, locked, used up
         for dark in [false, true] {

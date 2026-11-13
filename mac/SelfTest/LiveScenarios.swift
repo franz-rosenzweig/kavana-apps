@@ -378,6 +378,42 @@ enum LiveScenarios {
         store.settings.breaks.eyeBreaks = true
         store.setEngine(["interval": 15])
 
+        // ---- sit up straight
+        fresh()
+        store.settings.breaks.eyeBreaks = true
+        store.setEngine(["interval": 0, "posture": 10])
+        store.act("start", ["intention": "Posture", "minutes": 60, "style": "ask", "cat": "miso"], now: nowMs() - 11 * MIN)
+        app.eye.blockStarted(at: nowMs() - 11 * MIN)
+        Busy.override = { true }
+        store.act("tick", now: nowMs()); spin()
+        check("sit up straight: it waits while the Mac is busy with a call", app.cat.kind == nil && app.posture.waiting != nil)
+        Busy.override = { false }
+        app.second(nowMs()); spin()
+        check("sit up straight: and comes when the Mac is free", app.cat.kind == "posture")
+        check("sit up straight: it isn't a check-in", store.active?.pending == nil && !app.hotkeys.isSet("yes"))
+        Shot.renderPanel(app.cat.panel, name: "live-posture", dark: false)
+        app.eye.blockStarted(at: nowMs() - 21 * MIN)
+        app.second(nowMs()); spin()
+        check("sit up straight: an eye break due now waits for it", app.cat.kind == "posture")
+        app.cat.hide("posture")
+        app.second(nowMs()); spin()
+        check("sit up straight: and comes after it", app.cat.kind == "eye")
+        app.endEyeBreak()
+        app.cat.show("eye", model: CatCardModel(cat: "miso", title: "Eye"), seconds: 30)
+        app.posture.due(Ping(at: nowMs(), kind: "posture", body: "Miso is sitting up tall. Your turn.", block: store.active?.id))
+        app.second(nowMs()); spin()
+        check("sit up straight: held while another card is up", app.cat.kind == "eye" && app.posture.waiting != nil)
+        app.cat.hide()
+        store.pause()
+        app.second(nowMs()); spin()
+        check("sit up straight: a paused block drops the one that waited", app.cat.kind != "posture" && app.posture.waiting == nil)
+        store.resume()
+        Busy.override = nil
+        store.setEngine(["posture": 0, "interval": 15])
+        store.act("stop"); store.act("tick", now: nowMs() + 70 * MIN)
+        if let a = store.awaiting { store.act("outcome", ["id": a.id, "outcome": nil as Any? ?? NSNull()]) }
+        app.cat.hide()
+
         // ---- check-ins hold during a call
         fresh()
         store.setEngine(["interval": 15])

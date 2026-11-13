@@ -15,7 +15,7 @@ mac/
                          AwayTracker, PingTracker, Blocklist (lists, modes, schedules, and lists of what's allowed), Categories (the ready-made lists),
                          ListStore (their download), DomainSet (the hashes and the list reader), PageReader (the page in front
                          of Zen or Firefox, from Accessibility), GuardPolicy (what a list asks
-                         for now, wait it out, locked, allowances), Breaks (cycles, ideas, eye breaks), Insights (the
+                         for now, wait it out, locked, allowances), Breaks (cycles, ideas, eye breaks, Sit up straight waiting its turn), Insights (the
                          numbers in Today), Timing (where each block went), Review (streaks with a pause, the
                          week in words, answers, export), MacSettings, Sounds, SyncClient, DocStore, WidgetSnapshot
                          (what the widgets show, and what changes in them by itself)
