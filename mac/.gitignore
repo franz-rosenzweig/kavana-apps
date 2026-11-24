@@ -1,3 +1,6 @@
 build/
 *.xcodeproj/
 .DS_Store
+# build is a link to build.noindex, which Spotlight skips (tools/build-folder.sh)
+/build
+/build.noindex/

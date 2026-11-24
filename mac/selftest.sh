@@ -20,6 +20,7 @@ set -euo pipefail
 cd "${0:A:h}"
 MODE=${1:-core}
 OUT=build/selftest
+tools/build-folder.sh   # build/ is a link to build.noindex: Spotlight skips it, so the test copies never show up as apps
 mkdir -p $OUT
 
 core() {
