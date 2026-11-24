@@ -14,6 +14,7 @@ set -euo pipefail
 cd "${0:A:h}"
 
 command -v swiftc >/dev/null || { echo "no swiftc: run xcode-select --install" >&2; exit 1; }
+tools/build-folder.sh   # build/ is a link to build.noindex, which Spotlight skips
 command -v xcodegen >/dev/null || { echo "no xcodegen: run brew install xcodegen" >&2; exit 1; }
 
 setting() { sed -n "s/^ *$1: *\"*\([^\"]*\)\"*$/\1/p" project.yml | head -1; }

@@ -76,6 +76,7 @@ HASH=$(security find-identity -p codesigning "$KC" | sed -n "s/^ *[0-9]*) \([0-9
 [[ -n $HASH ]] || { echo "no identity named $SIGN_NAME in the keychain" >&2; exit 1; }
 security unlock-keychain -p "$(cat "$SIGN_PASSWORD_FILE")" "$KC" || { echo "the keychain didn't unlock with the password in $SIGN_PASSWORD_FILE" >&2; exit 1; }
 OUT=$ROOT/mac/build/release
+mac/tools/build-folder.sh   # build/ is a link to build.noindex, which Spotlight skips
 rm -rf "$OUT"; mkdir -p "$OUT"
 ( cd "$WORK/src/mac" && CHATALTUL_OUT=$OUT CHATALTUL_VERSION=$V CHATALTUL_BUILD=$BUILD CHATALTUL_SIGN=$HASH CHATALTUL_KEYCHAIN=$KC ./build.sh >$OUT/build.log 2>&1 ) || { grep -E "error" "$OUT/build.log" | head; fail "the build (see mac/build/release/build.log)"; }
 APP="$OUT/Chataltul.app"
